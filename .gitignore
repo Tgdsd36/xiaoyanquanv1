@@ -1,0 +1,44 @@
+# === Go ===
+xiaoyanquan-server/server
+xiaoyanquan-server/tmp/
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+
+# === Node / React ===
+xiaoyanquan-admin/node_modules/
+xiaoyanquan-admin/dist/
+xiaoyanquan-admin/.admin_token
+
+# === Flutter ===
+xiaoyanquan/.dart_tool/
+xiaoyanquan/.flutter-plugins
+xiaoyanquan/.flutter-plugins-dependencies
+xiaoyanquan/build/
+xiaoyanquan/.packages
+xiaoyanquan/ios/Pods/
+xiaoyanquan/ios/.symlinks/
+xiaoyanquan/android/.gradle/
+xiaoyanquan/android/app/build/
+xiaoyanquan/android/build/
+xiaoyanquan/.fvm/
+xiaoyanquan/pubspec.lock
+
+# === OS ===
+.DS_Store
+*.swp
+*.swo
+*~
+Thumbs.db
+
+# === IDE ===
+.idea/
+.vscode/
+*.iml
+
+# === Misc ===
+memory/
+ui-ux-pro-max/
+*.log
