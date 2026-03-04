@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../app/colors.dart';
 
 class EmptyState extends StatelessWidget {
   final IconData icon;
@@ -22,11 +23,11 @@ class EmptyState extends StatelessWidget {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(icon, size: 64, color: Colors.grey[700]),
+            Icon(icon, size: 64, color: AppColors.textDisabled),
             const SizedBox(height: 16),
             Text(
               message,
-              style: TextStyle(fontSize: 15, color: Colors.grey[500]),
+              style: const TextStyle(fontSize: 15, color: AppColors.textHint),
               textAlign: TextAlign.center,
             ),
             if (actionLabel != null && onAction != null) ...[
@@ -62,10 +63,10 @@ class ErrorRetry extends StatelessWidget {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(Icons.cloud_off, size: 56, color: Colors.grey[700]),
+            const Icon(Icons.cloud_off, size: 56, color: AppColors.textDisabled),
             const SizedBox(height: 12),
             Text(message,
-                style: TextStyle(fontSize: 14, color: Colors.grey[500])),
+                style: const TextStyle(fontSize: 14, color: AppColors.textHint)),
             const SizedBox(height: 16),
             ElevatedButton.icon(
               onPressed: onRetry,

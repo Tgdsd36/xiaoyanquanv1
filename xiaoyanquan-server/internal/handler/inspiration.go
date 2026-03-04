@@ -13,7 +13,8 @@ import (
 )
 
 type InspirationHandler struct {
-	DB *gorm.DB
+	DB      *gorm.DB
+	BaseURL string
 }
 
 // Feed 随机推荐素材（排除用户已 dislike 的）
@@ -25,7 +26,14 @@ func (h *InspirationHandler) Feed(c *gin.Context) {
 
 	userID := middleware.GetUserID(c)
 
+	// 类型筛选
+	materialType := c.Query("type")
+
 	query := h.DB.Model(&model.Material{}).Where("status = ?", "published")
+
+	if materialType != "" {
+		query = query.Where("type = ?", materialType)
+	}
 
 	// 排除已 dislike 的素材
 	if userID > 0 {
@@ -64,7 +72,8 @@ func (h *InspirationHandler) Feed(c *gin.Context) {
 			ID:            m.ID,
 			Title:         m.Title,
 			Type:          m.Type,
-			ThumbnailURL:  m.ThumbnailURL,
+			ThumbnailURL:  fullURL(h.BaseURL, m.ThumbnailURL),
+			WatermarkURL:  fullURL(h.BaseURL, m.WatermarkURL),
 			Width:         m.Width,
 			Height:        m.Height,
 			Duration:      m.Duration,

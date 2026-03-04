@@ -1,9 +1,15 @@
 package handler
 
 import (
+	"fmt"
+	"os"
+	"path/filepath"
 	"strconv"
+	"strings"
+	"time"
 
 	"github.com/gin-gonic/gin"
+	"github.com/google/uuid"
 	"golang.org/x/crypto/bcrypt"
 	"gorm.io/gorm"
 
@@ -13,7 +19,8 @@ import (
 )
 
 type UserHandler struct {
-	DB *gorm.DB
+	DB      *gorm.DB
+	BaseURL string
 }
 
 type ProfileResponse struct {
@@ -21,6 +28,7 @@ type ProfileResponse struct {
 	Phone                string `json:"phone"`
 	Nickname             string `json:"nickname"`
 	AvatarURL            string `json:"avatar_url"`
+	CoverURL             string `json:"cover_url"`
 	MemberType           string `json:"member_type"`
 	MemberExpireAt       string `json:"member_expire_at"`
 	MonthlyDownloadCount int    `json:"monthly_download_count"`
@@ -30,6 +38,7 @@ type ProfileResponse struct {
 type UpdateProfileReq struct {
 	Nickname  string `json:"nickname" binding:"omitempty,min=1,max=50"`
 	AvatarURL string `json:"avatar_url" binding:"omitempty"`
+	CoverURL  string `json:"cover_url" binding:"omitempty"`
 }
 
 type ChangePasswordReq struct {
@@ -71,7 +80,8 @@ func (h *UserHandler) Profile(c *gin.Context) {
 		ID:                   user.ID,
 		Phone:                user.MaskedPhone(),
 		Nickname:             user.Nickname,
-		AvatarURL:            user.AvatarURL,
+		AvatarURL:            fullURL(h.BaseURL, user.AvatarURL),
+		CoverURL:             fullURL(h.BaseURL, user.CoverURL),
 		MemberType:           user.MemberType,
 		MemberExpireAt:       expireAt,
 		MonthlyDownloadCount: user.MonthlyDownloadCount,
@@ -96,6 +106,9 @@ func (h *UserHandler) UpdateProfile(c *gin.Context) {
 	if req.AvatarURL != "" {
 		updates["avatar_url"] = req.AvatarURL
 	}
+	if req.CoverURL != "" {
+		updates["cover_url"] = req.CoverURL
+	}
 
 	if len(updates) == 0 {
 		response.BadRequest(c, 400, "没有需要更新的内容")
@@ -104,6 +117,44 @@ func (h *UserHandler) UpdateProfile(c *gin.Context) {
 
 	h.DB.Model(&model.User{}).Where("id = ?", userID).Updates(updates)
 	response.SuccessMessage(c, "更新成功")
+}
+
+// UploadImage 用户上传图片（封面/头像）
+func (h *UserHandler) UploadImage(c *gin.Context) {
+	file, err := c.FormFile("file")
+	if err != nil {
+		response.BadRequest(c, 400, "请选择图片")
+		return
+	}
+
+	// 检查文件类型
+	ext := strings.ToLower(filepath.Ext(file.Filename))
+	switch ext {
+	case ".jpg", ".jpeg", ".png", ".webp":
+	default:
+		response.BadRequest(c, 400, "仅支持 jpg/png/webp 格式")
+		return
+	}
+
+	// 限制大小 5MB
+	if file.Size > 5*1024*1024 {
+		response.BadRequest(c, 400, "图片不能超过 5MB")
+		return
+	}
+
+	newFilename := uuid.New().String() + ext
+	dateDir := time.Now().Format("2006/01")
+	uploadDir := filepath.Join("static", "uploads", "user", dateDir)
+	os.MkdirAll(uploadDir, 0755)
+
+	dstPath := filepath.Join(uploadDir, newFilename)
+	if err := c.SaveUploadedFile(file, dstPath); err != nil {
+		response.ServerError(c, "文件保存失败")
+		return
+	}
+
+	url := fmt.Sprintf("/static/uploads/user/%s/%s", dateDir, newFilename)
+	response.Success(c, gin.H{"url": url})
 }
 
 // Downloads 我的下载记录

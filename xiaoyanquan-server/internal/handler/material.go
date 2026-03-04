@@ -14,7 +14,20 @@ import (
 )
 
 type MaterialHandler struct {
-	DB *gorm.DB
+	DB      *gorm.DB
+	BaseURL string
+}
+
+// fullURL 将相对路径转换为完整 URL
+func fullURL(baseURL, path string) string {
+	if path == "" {
+		return ""
+	}
+	// 已经是完整 URL 的直接返回
+	if len(path) > 4 && (path[:4] == "http" || path[:2] == "//") {
+		return path
+	}
+	return baseURL + path
 }
 
 // ==================== 响应结构 ====================
@@ -24,6 +37,7 @@ type MaterialListItem struct {
 	Title         string   `json:"title"`
 	Type          string   `json:"type"`
 	ThumbnailURL  string   `json:"thumbnail_url"`
+	WatermarkURL  string   `json:"watermark_url,omitempty"`
 	Width         int      `json:"width"`
 	Height        int      `json:"height"`
 	Duration      float64  `json:"duration,omitempty"`
@@ -50,6 +64,7 @@ type MaterialDetailResp struct {
 	ThumbnailURL  string   `json:"thumbnail_url"`
 	WatermarkURL  string   `json:"watermark_url"`
 	PreviewMovURL string   `json:"preview_mov_url,omitempty"`
+	OriginalURLs  []string `json:"original_urls"`
 	HotScore      float64  `json:"hot_score"`
 	DownloadCount int      `json:"download_count"`
 	FavoriteCount int      `json:"favorite_count"`
@@ -64,7 +79,7 @@ func (h *MaterialHandler) List(c *gin.Context) {
 	page, _ := strconv.Atoi(c.DefaultQuery("page", "1"))
 	pageSize, _ := strconv.Atoi(c.DefaultQuery("page_size", "20"))
 	categoryID, _ := strconv.Atoi(c.DefaultQuery("category_id", "0"))
-	genderCategoryID, _ := strconv.Atoi(c.DefaultQuery("gender_category_id", "0"))
+	gender := c.DefaultQuery("gender", "")
 	materialType := c.DefaultQuery("type", "")
 	sort := c.DefaultQuery("sort", "hot") // hot, latest, downloads
 
@@ -89,14 +104,8 @@ func (h *MaterialHandler) List(c *gin.Context) {
 			query = query.Where("category_id = ?", categoryID)
 		}
 	}
-	if genderCategoryID > 0 {
-		var genderChildIDs []uint
-		h.DB.Model(&model.Category{}).Where("parent_id = ?", genderCategoryID).Pluck("id", &genderChildIDs)
-		if len(genderChildIDs) > 0 {
-			query = query.Where("gender_category_id IN ?", genderChildIDs)
-		} else {
-			query = query.Where("gender_category_id = ?", genderCategoryID)
-		}
+	if gender != "" {
+		query = query.Where("gender = ?", gender)
 	}
 	if materialType != "" {
 		query = query.Where("type = ?", materialType)
@@ -131,7 +140,8 @@ func (h *MaterialHandler) List(c *gin.Context) {
 			ID:            m.ID,
 			Title:         m.Title,
 			Type:          m.Type,
-			ThumbnailURL:  m.ThumbnailURL,
+			ThumbnailURL:  fullURL(h.BaseURL, m.ThumbnailURL),
+			WatermarkURL:  fullURL(h.BaseURL, m.WatermarkURL),
 			Width:         m.Width,
 			Height:        m.Height,
 			Duration:      m.Duration,
@@ -199,6 +209,16 @@ func (h *MaterialHandler) Detail(c *gin.Context) {
 		tags = material.Tags
 	}
 
+	// 解析原图 URLs
+	var originalURLs []string
+	if len(material.OriginalURLs) > 0 {
+		json.Unmarshal(material.OriginalURLs, &originalURLs)
+	}
+	fullOriginalURLs := make([]string, len(originalURLs))
+	for i, u := range originalURLs {
+		fullOriginalURLs[i] = fullURL(h.BaseURL, u)
+	}
+
 	resp := MaterialDetailResp{
 		ID:            material.ID,
 		Title:         material.Title,
@@ -212,9 +232,10 @@ func (h *MaterialHandler) Detail(c *gin.Context) {
 		Duration:      material.Duration,
 		FileSize:      material.FileSize,
 		FileSizeText:  material.FileSizeText(),
-		ThumbnailURL:  material.ThumbnailURL,
-		WatermarkURL:  material.WatermarkURL,
-		PreviewMovURL: material.PreviewMovURL,
+		ThumbnailURL:  fullURL(h.BaseURL, material.ThumbnailURL),
+		WatermarkURL:  fullURL(h.BaseURL, material.WatermarkURL),
+		PreviewMovURL: fullURL(h.BaseURL, material.PreviewMovURL),
+		OriginalURLs:  fullOriginalURLs,
 		HotScore:      material.HotScore,
 		DownloadCount: material.DownloadCount,
 		FavoriteCount: material.FavoriteCount,
@@ -248,6 +269,22 @@ func (h *MaterialHandler) Search(c *gin.Context) {
 		Where("status = ?", "published").
 		Where("title ILIKE ? OR ? = ANY(tags)", "%"+keyword+"%", keyword)
 
+	// 类型筛选
+	if materialType := c.Query("type"); materialType != "" {
+		query = query.Where("type = ?", materialType)
+	}
+
+	// 分类筛选
+	if categoryID, _ := strconv.Atoi(c.DefaultQuery("category_id", "0")); categoryID > 0 {
+		var childIDs []uint
+		h.DB.Model(&model.Category{}).Where("parent_id = ?", categoryID).Pluck("id", &childIDs)
+		if len(childIDs) > 0 {
+			query = query.Where("category_id IN ?", childIDs)
+		} else {
+			query = query.Where("category_id = ?", categoryID)
+		}
+	}
+
 	var total int64
 	query.Count(&total)
 
@@ -269,7 +306,8 @@ func (h *MaterialHandler) Search(c *gin.Context) {
 			ID:            m.ID,
 			Title:         m.Title,
 			Type:          m.Type,
-			ThumbnailURL:  m.ThumbnailURL,
+			ThumbnailURL:  fullURL(h.BaseURL, m.ThumbnailURL),
+			WatermarkURL:  fullURL(h.BaseURL, m.WatermarkURL),
 			Width:         m.Width,
 			Height:        m.Height,
 			Duration:      m.Duration,

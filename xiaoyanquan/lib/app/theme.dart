@@ -1,67 +1,69 @@
 import 'package:flutter/material.dart';
+import 'colors.dart';
 
 class AppTheme {
-  // 小红书红
-  static const _primaryColor = Color(0xFFFF2442);
-  // 纯白背景
-  static const _bgColor = Colors.white;
-  // 浅灰背景（用于分割或卡片背景）
-  static const _surfaceColor = Color(0xFFF5F5F5);
-  // 主要文字色
-  static const _textColor = Color(0xFF333333);
-  // 次要文字色
-  static const _subTextColor = Color(0xFF999999);
-
   static ThemeData get lightTheme => ThemeData(
         brightness: Brightness.light,
-        primaryColor: _primaryColor,
-        scaffoldBackgroundColor: _bgColor,
+        primaryColor: AppColors.primary,
+        scaffoldBackgroundColor: AppColors.scaffoldBg,
         colorScheme: const ColorScheme.light(
-          primary: _primaryColor,
-          secondary: _primaryColor,
-          surface: Colors.white,
-          onSurface: _textColor,
-          error: Color(0xFFFF4D4F),
+          primary: AppColors.primary,
+          secondary: AppColors.primary,
+          surface: AppColors.cardBg,
+          surfaceContainerHighest: AppColors.scaffoldBg,
+          error: AppColors.error,
+          onPrimary: Colors.white,
+          onSecondary: Colors.white,
+          onSurface: AppColors.textBody,
         ),
-        cardColor: Colors.white,
+        cardColor: AppColors.cardBg,
+        cardTheme: CardTheme(
+          color: AppColors.cardBg,
+          elevation: 0,
+          margin: EdgeInsets.zero,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(14),
+          ),
+        ),
         appBarTheme: const AppBarTheme(
-          backgroundColor: _bgColor,
+          backgroundColor: AppColors.scaffoldBg,
           elevation: 0,
           centerTitle: true,
-          iconTheme: IconThemeData(color: _textColor),
+          iconTheme: IconThemeData(color: AppColors.textBody),
           titleTextStyle: TextStyle(
-            color: _textColor,
+            color: AppColors.textBody,
             fontSize: 17,
             fontWeight: FontWeight.w600,
           ),
-          actionsIconTheme: IconThemeData(color: _textColor),
+          actionsIconTheme: IconThemeData(color: AppColors.textBody),
         ),
         bottomNavigationBarTheme: const BottomNavigationBarThemeData(
-          backgroundColor: Colors.white,
-          selectedItemColor: _textColor, // 选中变黑（或红，看喜好，小红书选中通常是黑色加粗或红色）
-          unselectedItemColor: _subTextColor,
+          backgroundColor: AppColors.cardBg,
+          selectedItemColor: AppColors.textBody,
+          unselectedItemColor: AppColors.textDisabled,
           type: BottomNavigationBarType.fixed,
-          elevation: 0, // 扁平化，用border分割
+          elevation: 0,
           showSelectedLabels: true,
           showUnselectedLabels: true,
           selectedLabelStyle: TextStyle(fontSize: 10, fontWeight: FontWeight.bold),
           unselectedLabelStyle: TextStyle(fontSize: 10),
         ),
         tabBarTheme: const TabBarThemeData(
-          labelColor: _textColor,
-          unselectedLabelColor: _subTextColor,
-          indicatorColor: _primaryColor,
+          labelColor: AppColors.textBody,
+          unselectedLabelColor: AppColors.textHint,
+          indicatorColor: AppColors.primary,
           labelStyle: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
-          unselectedLabelStyle: TextStyle(fontWeight: FontWeight.normal, fontSize: 16),
+          unselectedLabelStyle:
+              TextStyle(fontWeight: FontWeight.normal, fontSize: 16),
         ),
         inputDecorationTheme: InputDecorationTheme(
           filled: true,
-          fillColor: _surfaceColor, // 浅灰输入框背景
-          hintStyle: const TextStyle(color: _subTextColor, fontSize: 14),
+          fillColor: AppColors.surface,
+          hintStyle: const TextStyle(color: AppColors.textHint, fontSize: 14),
           contentPadding:
               const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
           border: OutlineInputBorder(
-            borderRadius: BorderRadius.circular(20), // 圆润的输入框
+            borderRadius: BorderRadius.circular(20),
             borderSide: BorderSide.none,
           ),
           enabledBorder: OutlineInputBorder(
@@ -70,17 +72,17 @@ class AppTheme {
           ),
           focusedBorder: OutlineInputBorder(
             borderRadius: BorderRadius.circular(20),
-            borderSide: const BorderSide(color: _primaryColor, width: 1),
+            borderSide: const BorderSide(color: AppColors.primary, width: 1),
           ),
         ),
         elevatedButtonTheme: ElevatedButtonThemeData(
           style: ElevatedButton.styleFrom(
-            backgroundColor: _primaryColor,
+            backgroundColor: AppColors.primary,
             foregroundColor: Colors.white,
             elevation: 0,
             minimumSize: const Size(double.infinity, 44),
             shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(22), // 圆润按钮
+              borderRadius: BorderRadius.circular(22),
             ),
             textStyle: const TextStyle(
               fontSize: 16,
@@ -88,27 +90,47 @@ class AppTheme {
             ),
           ),
         ),
+        outlinedButtonTheme: OutlinedButtonThemeData(
+          style: OutlinedButton.styleFrom(
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(22),
+            ),
+          ),
+        ),
         textButtonTheme: TextButtonThemeData(
           style: TextButton.styleFrom(
-            foregroundColor: _textColor, // 文字按钮默认黑色
+            foregroundColor: AppColors.textBody,
             textStyle: const TextStyle(fontWeight: FontWeight.w500),
           ),
         ),
+        listTileTheme: ListTileThemeData(
+          iconColor: AppColors.textHint,
+          textColor: AppColors.textBody,
+          contentPadding: const EdgeInsets.symmetric(horizontal: 16),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+        ),
         chipTheme: ChipThemeData(
-          backgroundColor: _surfaceColor,
-          selectedColor: _primaryColor.withValues(alpha: 0.1),
-          labelStyle: const TextStyle(color: _textColor, fontSize: 12),
-          secondaryLabelStyle: const TextStyle(color: _primaryColor), // 选中文字变红
-          shape:
-              RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+          backgroundColor: AppColors.surface,
+          selectedColor: AppColors.primary.withValues(alpha: 0.10),
+          labelStyle: const TextStyle(color: AppColors.textBody, fontSize: 12),
+          secondaryLabelStyle: const TextStyle(color: AppColors.primary),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
           side: BorderSide.none,
         ),
-        dividerColor: const Color(0xFFEEEEEE),
+        snackBarTheme: SnackBarThemeData(
+          behavior: SnackBarBehavior.floating,
+          backgroundColor: AppColors.textPrimary,
+          contentTextStyle: const TextStyle(color: Colors.white, fontSize: 14),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+        ),
+        progressIndicatorTheme:
+            const ProgressIndicatorThemeData(color: AppColors.primary),
+        dividerColor: AppColors.divider,
         dividerTheme: const DividerThemeData(
-          color: Color(0xFFEEEEEE),
+          color: AppColors.divider,
           thickness: 0.5,
           space: 1,
         ),
-        iconTheme: const IconThemeData(color: _textColor),
+        iconTheme: const IconThemeData(color: AppColors.textBody),
       );
 }

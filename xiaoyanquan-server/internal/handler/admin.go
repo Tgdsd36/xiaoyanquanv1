@@ -89,13 +89,12 @@ func (h *AdminHandler) InitAdmin(c *gin.Context) {
 
 func (h *AdminHandler) Dashboard(c *gin.Context) {
 	var stats struct {
-		UserCount     int64 `json:"user_count"`
-		MaterialCount int64 `json:"material_count"`
-		MomentCount   int64 `json:"moment_count"`
-		OrderCount    int64 `json:"order_count"`
-		MemberCount   int64 `json:"member_count"`
-		QuestionCount int64 `json:"question_count"`
-		TodayNewUsers int64 `json:"today_new_users"`
+		UserCount      int64 `json:"user_count"`
+		MaterialCount  int64 `json:"material_count"`
+		OrderCount     int64 `json:"order_count"`
+		MemberCount    int64 `json:"member_count"`
+		QuestionCount  int64 `json:"question_count"`
+		TodayNewUsers  int64 `json:"today_new_users"`
 		TodayDownloads int64 `json:"today_downloads"`
 	}
 
@@ -103,7 +102,6 @@ func (h *AdminHandler) Dashboard(c *gin.Context) {
 
 	h.DB.Model(&model.User{}).Count(&stats.UserCount)
 	h.DB.Model(&model.Material{}).Count(&stats.MaterialCount)
-	h.DB.Model(&model.Moment{}).Count(&stats.MomentCount)
 	h.DB.Model(&model.Order{}).Where("status = ?", "paid").Count(&stats.OrderCount)
 	h.DB.Model(&model.User{}).Where("member_type != ? AND member_expire_at > ?", "free", time.Now()).Count(&stats.MemberCount)
 	h.DB.Model(&model.Question{}).Where("status = ?", "pending").Count(&stats.QuestionCount)
@@ -141,7 +139,7 @@ func (h *AdminHandler) MaterialList(c *gin.Context) {
 	query.Count(&total)
 
 	var materials []model.Material
-	query.Preload("Category").Preload("GenderCategory").
+	query.Preload("Category").
 		Order("created_at DESC").
 		Offset((page - 1) * pageSize).Limit(pageSize).
 		Find(&materials)
@@ -155,7 +153,7 @@ func (h *AdminHandler) MaterialCreate(c *gin.Context) {
 		Description   string   `json:"description"`
 		Type             string   `json:"type" binding:"required"`
 		CategoryID        uint     `json:"category_id"`
-		GenderCategoryID  uint     `json:"gender_category_id"`
+		Gender            string   `json:"gender"`
 		Tags             []string `json:"tags"`
 		Width         int      `json:"width"`
 		Height        int      `json:"height"`
@@ -190,9 +188,7 @@ func (h *AdminHandler) MaterialCreate(c *gin.Context) {
 	if req.CategoryID > 0 {
 		material.CategoryID = &req.CategoryID
 	}
-	if req.GenderCategoryID > 0 {
-		material.GenderCategoryID = &req.GenderCategoryID
-	}
+	material.Gender = req.Gender
 	if material.Status == "" {
 		material.Status = "draft"
 	}
@@ -264,33 +260,8 @@ func (h *AdminHandler) MaterialUpdate(c *gin.Context) {
 		}
 	}
 
-	// Normalize gender_category_id: 0 -> NULL, number -> uint
-	if gidRaw, ok := req["gender_category_id"]; ok {
-		switch v := gidRaw.(type) {
-		case float64:
-			if v <= 0 {
-				req["gender_category_id"] = nil
-			} else {
-				req["gender_category_id"] = uint(v)
-			}
-		case int:
-			if v <= 0 {
-				req["gender_category_id"] = nil
-			} else {
-				req["gender_category_id"] = uint(v)
-			}
-		case int64:
-			if v <= 0 {
-				req["gender_category_id"] = nil
-			} else {
-				req["gender_category_id"] = uint(v)
-			}
-		case uint:
-			if v == 0 {
-				req["gender_category_id"] = nil
-			}
-		}
-	}
+	// gender: 直接使用字符串
+	// 无需特殊处理，string 值会直接更新
 
 	// Normalize original_urls into jsonb
 	if ouRaw, ok := req["original_urls"]; ok {
@@ -308,7 +279,7 @@ func (h *AdminHandler) MaterialUpdate(c *gin.Context) {
 			return
 		}
 	}
-	h.DB.Preload("Category").Preload("GenderCategory").First(&material, id)
+	h.DB.Preload("Category").First(&material, id)
 	response.Success(c, material)
 }
 
@@ -502,130 +473,6 @@ func (h *AdminHandler) CategorySort(c *gin.Context) {
 		h.DB.Model(&model.Category{}).Where("id = ?", id).Update("sort_order", i)
 	}
 	response.SuccessMessage(c, "排序成功")
-}
-
-// ==================== 动态管理 ====================
-
-func (h *AdminHandler) MomentList(c *gin.Context) {
-	page, _ := strconv.Atoi(c.DefaultQuery("page", "1"))
-	pageSize, _ := strconv.Atoi(c.DefaultQuery("page_size", "20"))
-	status := c.Query("status")
-
-	query := h.DB.Model(&model.Moment{})
-	if status != "" {
-		query = query.Where("status = ?", status)
-	}
-
-	var total int64
-	query.Count(&total)
-
-	var moments []model.Moment
-	query.Order("created_at DESC").
-		Offset((page - 1) * pageSize).Limit(pageSize).
-		Find(&moments)
-
-	response.SuccessPage(c, moments, total, page, pageSize)
-}
-
-func (h *AdminHandler) MomentCreate(c *gin.Context) {
-	var req struct {
-		ContentText string          `json:"content_text"`
-		MediaType   string          `json:"media_type"`
-		MediaURLs   json.RawMessage `json:"media_urls"`
-		Status      string          `json:"status"`
-	}
-	if err := c.ShouldBindJSON(&req); err != nil {
-		response.BadRequest(c, 400, "参数错误")
-		return
-	}
-
-	adminID := middleware.GetAdminID(c)
-	moment := model.Moment{
-		AdminID:     adminID,
-		ContentText: req.ContentText,
-		MediaType:   req.MediaType,
-		MediaURLs:   model.JSON(req.MediaURLs),
-		Status:      req.Status,
-	}
-	if moment.Status == "" {
-		moment.Status = "draft"
-	}
-
-	if err := h.DB.Create(&moment).Error; err != nil {
-		response.ServerError(c, "创建失败")
-		return
-	}
-	response.Success(c, moment)
-}
-
-func (h *AdminHandler) MomentUpdate(c *gin.Context) {
-	id, _ := strconv.Atoi(c.Param("id"))
-	var moment model.Moment
-	if err := h.DB.First(&moment, id).Error; err != nil {
-		response.NotFound(c, "动态不存在")
-		return
-	}
-
-	var req struct {
-		ContentText *string          `json:"content_text"`
-		MediaType   *string          `json:"media_type"`
-		MediaURLs   *json.RawMessage `json:"media_urls"`
-		Status      *string          `json:"status"`
-	}
-	if err := c.ShouldBindJSON(&req); err != nil {
-		response.BadRequest(c, 400, "参数错误")
-		return
-	}
-
-	if req.ContentText != nil {
-		moment.ContentText = *req.ContentText
-	}
-	if req.MediaType != nil {
-		moment.MediaType = *req.MediaType
-	}
-	if req.MediaURLs != nil {
-		moment.MediaURLs = model.JSON(*req.MediaURLs)
-	}
-	if req.Status != nil {
-		moment.Status = *req.Status
-	}
-
-	h.DB.Save(&moment)
-	response.Success(c, moment)
-}
-
-func (h *AdminHandler) MomentDelete(c *gin.Context) {
-	id, _ := strconv.Atoi(c.Param("id"))
-	if err := h.DB.Delete(&model.Moment{}, id).Error; err != nil {
-		response.ServerError(c, "删除失败")
-		return
-	}
-	response.SuccessMessage(c, "删除成功")
-}
-
-func (h *AdminHandler) MomentBatchDelete(c *gin.Context) {
-	var req struct {
-		IDs []uint `json:"ids" binding:"required"`
-	}
-	if err := c.ShouldBindJSON(&req); err != nil {
-		response.BadRequest(c, 400, "参数错误")
-		return
-	}
-	h.DB.Where("id IN ?", req.IDs).Delete(&model.Moment{})
-	response.SuccessMessage(c, "批量删除成功")
-}
-
-func (h *AdminHandler) MomentBatchStatus(c *gin.Context) {
-	var req struct {
-		IDs    []uint `json:"ids" binding:"required"`
-		Status string `json:"status" binding:"required"`
-	}
-	if err := c.ShouldBindJSON(&req); err != nil {
-		response.BadRequest(c, 400, "参数错误")
-		return
-	}
-	h.DB.Model(&model.Moment{}).Where("id IN ?", req.IDs).Update("status", req.Status)
-	response.SuccessMessage(c, "批量更新成功")
 }
 
 // ==================== 提问管理 ====================

@@ -14,7 +14,10 @@ final categoriesProvider =
 
 /// 类型筛选：''=全部, 'video', 'image', 'live_photo'
 final selectedTypeProvider = StateProvider<String>((ref) => '');
-final selectedGenderCategoryProvider = StateProvider<int>((ref) => 0);
+/// 分类筛选：0=全部
+final selectedCategoryProvider = StateProvider<int>((ref) => 0);
+/// 性别筛选：''=不限, 'male', 'female'
+final selectedGenderProvider = StateProvider<String>((ref) => '');
 
 // ==================== 排序 ====================
 
@@ -57,14 +60,16 @@ class MaterialListState {
 class MaterialListNotifier extends StateNotifier<MaterialListState> {
   final MaterialRepository _repo = MaterialRepository();
   String _type = '';
-  int _genderCategoryId = 0;
+  int _categoryId = 0;
+  String _gender = '';
   String _sort = 'hot';
 
   MaterialListNotifier() : super(const MaterialListState());
 
-  void updateFilters({String? type, int? genderCategoryId, String? sort}) {
+  void updateFilters({String? type, int? categoryId, String? gender, String? sort}) {
     if (type != null) _type = type;
-    if (genderCategoryId != null) _genderCategoryId = genderCategoryId;
+    if (categoryId != null) _categoryId = categoryId;
+    if (gender != null) _gender = gender;
     if (sort != null) _sort = sort;
     refresh();
   }
@@ -75,7 +80,8 @@ class MaterialListNotifier extends StateNotifier<MaterialListState> {
       final result = await _repo.getMaterials(
         page: 1,
         type: _type.isNotEmpty ? _type : null,
-        genderCategoryId: _genderCategoryId > 0 ? _genderCategoryId : null,
+        categoryId: _categoryId > 0 ? _categoryId : null,
+        gender: _gender.isNotEmpty ? _gender : null,
         sort: _sort,
       );
       state = MaterialListState(
@@ -97,7 +103,8 @@ class MaterialListNotifier extends StateNotifier<MaterialListState> {
       final result = await _repo.getMaterials(
         page: nextPage,
         type: _type.isNotEmpty ? _type : null,
-        genderCategoryId: _genderCategoryId > 0 ? _genderCategoryId : null,
+        categoryId: _categoryId > 0 ? _categoryId : null,
+        gender: _gender.isNotEmpty ? _gender : null,
         sort: _sort,
       );
       state = state.copyWith(

@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:math';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../../../app/colors.dart';
 import '../../../core/auth/auth_provider.dart';
 
 class LoginPage extends ConsumerStatefulWidget {
@@ -119,7 +120,7 @@ class _LoginPageState extends ConsumerState<LoginPage>
   void _showError(String msg) {
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text(msg), backgroundColor: Colors.red[700]),
+      SnackBar(content: Text(msg), backgroundColor: AppColors.error),
     );
   }
 
@@ -143,12 +144,12 @@ class _LoginPageState extends ConsumerState<LoginPage>
               Text('小颜圈',
                   style: theme.textTheme.headlineMedium?.copyWith(
                     fontWeight: FontWeight.bold,
-                    color: Colors.white,
+                    color: theme.colorScheme.primary,
                   )),
               const SizedBox(height: 8),
               Text('创作者的素材灵感库',
                   style: theme.textTheme.bodyMedium
-                      ?.copyWith(color: Colors.grey[500])),
+                      ?.copyWith(color: AppColors.textHint)),
               const SizedBox(height: 40),
               // Tab 切换
               TabBar(

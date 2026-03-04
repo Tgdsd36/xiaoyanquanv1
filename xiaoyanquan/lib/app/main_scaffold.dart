@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
+import 'colors.dart';
 
 class MainScaffold extends StatelessWidget {
   final StatefulNavigationShell navigationShell;
@@ -21,11 +22,11 @@ class MainScaffold extends StatelessWidget {
     return Scaffold(
       body: navigationShell,
       bottomNavigationBar: Container(
-        decoration: BoxDecoration(
-          color: Colors.white,
+        decoration: const BoxDecoration(
+          color: AppColors.cardBg,
           border: Border(
             top: BorderSide(
-              color: Colors.grey.withValues(alpha: 0.15),
+              color: AppColors.divider,
               width: 0.5,
             ),
           ),
@@ -71,7 +72,7 @@ class MainScaffold extends StatelessWidget {
                                 size: 22,
                                 color: isSelected
                                     ? primary
-                                    : const Color(0xFFBBBBBB),
+                                    : AppColors.textDisabled,
                               ),
                             ),
                             // 红色未读数角标
@@ -88,7 +89,7 @@ class MainScaffold extends StatelessWidget {
                                     color: primary,
                                     borderRadius: BorderRadius.circular(10),
                                     border: Border.all(
-                                      color: Colors.white,
+                                      color: AppColors.cardBg,
                                       width: 1.5,
                                     ),
                                   ),
@@ -116,7 +117,7 @@ class MainScaffold extends StatelessWidget {
                                 isSelected ? FontWeight.w600 : FontWeight.normal,
                             color: isSelected
                                 ? primary
-                                : const Color(0xFFBBBBBB),
+                                : AppColors.textDisabled,
                             letterSpacing: 0.2,
                           ),
                         ),

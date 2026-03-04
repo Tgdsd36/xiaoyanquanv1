@@ -1,11 +1,18 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:cached_network_image/cached_network_image.dart';
+import 'package:go_router/go_router.dart';
+import '../../../app/colors.dart';
+import '../../../app/styles.dart';
 import '../../../core/auth/auth_provider.dart';
-import '../../../shared/live_photo_view.dart';
+import '../../../core/constants/api.dart';
+import '../../../core/network/http_client.dart';
+import '../../../shared/favorite_group_sheet.dart';
 import '../../../shared/share_helper.dart';
 import '../models/material_model.dart';
+import '../providers/favorite_provider.dart';
 import '../repositories/material_repository.dart';
+import 'material_preview_page.dart';
 
 final materialDetailProvider =
     FutureProvider.family<MaterialDetail?, int>((ref, id) async {
@@ -25,11 +32,12 @@ class MaterialDetailPage extends ConsumerWidget {
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('素材详情'),
+        title: const Text('详情'),
+        centerTitle: true,
         actions: [
           if (detailAsync.valueOrNull != null)
             IconButton(
-              icon: const Icon(Icons.share),
+              icon: const Icon(Icons.share_outlined, size: 22),
               onPressed: () => ShareHelper.shareMaterial(
                 id: materialId,
                 title: detailAsync.valueOrNull!.title,
@@ -44,197 +52,464 @@ class MaterialDetailPage extends ConsumerWidget {
           }
           return _DetailContent(
             detail: detail,
-            isGuest: authState.status == AuthStatus.guest,
             isAuthenticated:
                 authState.status == AuthStatus.authenticated,
           );
         },
-        loading: () => const Center(child: CircularProgressIndicator()),
+        loading: () => const Center(
+            child: CircularProgressIndicator(strokeWidth: 2)),
         error: (e, _) => Center(child: Text('加载失败: $e')),
       ),
     );
   }
 }
 
-class _DetailContent extends StatelessWidget {
+class _DetailContent extends ConsumerStatefulWidget {
   final MaterialDetail detail;
-  final bool isGuest;
   final bool isAuthenticated;
 
   const _DetailContent({
     required this.detail,
-    required this.isGuest,
     required this.isAuthenticated,
   });
 
   @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
+  ConsumerState<_DetailContent> createState() => _DetailContentState();
+}
 
-    return Column(
-      children: [
-        Expanded(
-          child: SingleChildScrollView(
+class _DetailContentState extends ConsumerState<_DetailContent> {
+  MaterialDetail get detail => widget.detail;
+  bool get isAuthenticated => widget.isAuthenticated;
+
+  // 提问相关
+  List<Map<String, dynamic>> _questions = [];
+  bool _questionsLoading = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadQuestions();
+    // 初始化共享收藏状态（仅当还未被预览页设置时才生效）
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      ref.read(materialFavoriteProvider(detail.id).notifier).init(
+        isFavorited: detail.isFavorited,
+        favoriteCount: detail.favoriteCount,
+      );
+    });
+  }
+
+  Future<void> _loadQuestions() async {
+    try {
+      final resp = await HttpClient()
+          .get(Api.questionsByMaterial(detail.id), params: {'page': 1, 'page_size': 50});
+      if (resp.isSuccess && resp.data != null) {
+        if (!mounted) return;
+        setState(() {
+          _questions = List<Map<String, dynamic>>.from(resp.data['list'] ?? []);
+          _questionsLoading = false;
+        });
+      } else {
+        if (mounted) setState(() => _questionsLoading = false);
+      }
+    } catch (_) {
+      if (mounted) setState(() => _questionsLoading = false);
+    }
+  }
+
+  void _showQuestionSheet() {
+    if (!isAuthenticated) {
+      _showLoginHint(context);
+      return;
+    }
+    final controller = TextEditingController();
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (ctx) {
+        return Padding(
+          padding: EdgeInsets.only(
+            bottom: MediaQuery.of(ctx).viewInsets.bottom,
+          ),
+          child: Container(
+            decoration: const BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
+            ),
+            padding: EdgeInsets.fromLTRB(
+              16, 16, 16, MediaQuery.of(ctx).padding.bottom + 16,
+            ),
             child: Column(
+              mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                // 预览图 / Live Photo
-                AspectRatio(
-                  aspectRatio: (detail.width > 0 && detail.height > 0)
-                      ? detail.width / detail.height
-                      : 4 / 3,
-                  child: detail.isLivePhoto && detail.previewMovUrl.isNotEmpty
-                      ? LivePhotoView(
-                          imageUrl: detail.watermarkUrl.isNotEmpty
-                              ? detail.watermarkUrl
-                              : detail.thumbnailUrl,
-                          videoUrl: detail.previewMovUrl,
-                        )
-                      : Stack(
-                          fit: StackFit.expand,
-                          children: [
-                            CachedNetworkImage(
-                              imageUrl: detail.watermarkUrl.isNotEmpty
-                                  ? detail.watermarkUrl
-                                  : detail.thumbnailUrl,
-                              fit: BoxFit.cover,
-                              placeholder: (_, __) =>
-                                  Container(color: Colors.grey[900]),
-                              errorWidget: (_, __, ___) => Container(
-                                color: Colors.grey[900],
-                                child: const Center(
-                                    child: Icon(Icons.broken_image,
-                                        color: Colors.grey, size: 48)),
+                const Text('提问',
+                    style: TextStyle(
+                        fontSize: 16, fontWeight: FontWeight.w600)),
+                const SizedBox(height: 12),
+                TextField(
+                  controller: controller,
+                  maxLines: 3,
+                  maxLength: 500,
+                  autofocus: true,
+                  decoration: InputDecoration(
+                    hintText: '输入你的提问...',
+                    hintStyle: const TextStyle(
+                        color: AppColors.textHint, fontSize: 14),
+                    filled: true,
+                    fillColor: AppColors.surface,
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(8),
+                      borderSide: BorderSide.none,
+                    ),
+                    contentPadding: const EdgeInsets.all(12),
+                  ),
+                ),
+                const SizedBox(height: 12),
+                SizedBox(
+                  width: double.infinity,
+                  height: 44,
+                  child: ElevatedButton(
+                    onPressed: () async {
+                      final text = controller.text.trim();
+                      if (text.length < 2) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(content: Text('请输入至少2个字')),
+                        );
+                        return;
+                      }
+
+                      final messenger = ScaffoldMessenger.of(context);
+
+                      try {
+                        final resp =
+                            await HttpClient().post(Api.questions, data: {
+                          'target_type': 'material',
+                          'target_id': detail.id,
+                          'question_text': text,
+                        });
+
+                        if (!mounted) return;
+
+                        if (ctx.mounted) Navigator.pop(ctx);
+
+                        if (resp.isSuccess) {
+                          messenger.showSnackBar(
+                            const SnackBar(content: Text('提问成功，等待回复')),
+                          );
+                          _loadQuestions();
+                        } else {
+                          messenger.showSnackBar(
+                            SnackBar(
+                              content: Text(
+                                resp.message.isNotEmpty ? resp.message : '提问失败',
                               ),
                             ),
-                            if (detail.isVideo)
-                              const Center(
-                                child: Icon(Icons.play_circle_outline,
-                                    size: 64, color: Colors.white70),
-                              ),
-                          ],
-                        ),
-                ),
-                // 信息区
-                Padding(
-                  padding: const EdgeInsets.all(16),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(detail.title,
-                          style: theme.textTheme.titleLarge
-                              ?.copyWith(fontWeight: FontWeight.bold)),
-                      if (detail.description.isNotEmpty) ...[
-                        const SizedBox(height: 8),
-                        Text(detail.description,
-                            style: TextStyle(
-                                color: Colors.grey[400], fontSize: 14)),
-                      ],
-                      const SizedBox(height: 16),
-                      // 统计
-                      Row(
-                        children: [
-                          _StatItem(Icons.visibility, '${detail.viewCount}'),
-                          const SizedBox(width: 20),
-                          _StatItem(
-                              Icons.download, '${detail.downloadCount}'),
-                          const SizedBox(width: 20),
-                          _StatItem(
-                              Icons.favorite, '${detail.favoriteCount}'),
-                        ],
+                          );
+                        }
+                      } catch (_) {
+                        if (!mounted) return;
+                        if (ctx.mounted) Navigator.pop(ctx);
+                        messenger.showSnackBar(
+                          const SnackBar(content: Text('提问失败')),
+                        );
+                      }
+                    },
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: AppColors.primary,
+                      foregroundColor: Colors.white,
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(8),
                       ),
-                      const Divider(height: 32),
-                      // 详细信息
-                      _InfoRow('分类', detail.categoryName),
-                      _InfoRow(
-                          '尺寸', '${detail.width} × ${detail.height}'),
-                      _InfoRow('大小', detail.fileSizeText),
-                      if (detail.duration > 0)
-                        _InfoRow(
-                            '时长', '${detail.duration.toStringAsFixed(1)}秒'),
-                      _InfoRow('发布时间', detail.createdAt),
-                      // 标签
-                      if (detail.tags.isNotEmpty) ...[
-                        const SizedBox(height: 12),
-                        Wrap(
-                          spacing: 8,
-                          runSpacing: 8,
-                          children: detail.tags
-                              .map((tag) => Chip(
-                                    label: Text(tag,
-                                        style:
-                                            const TextStyle(fontSize: 12)),
-                                    materialTapTargetSize:
-                                        MaterialTapTargetSize.shrinkWrap,
-                                    visualDensity: VisualDensity.compact,
-                                  ))
-                              .toList(),
-                        ),
-                      ],
-                    ],
+                    ),
+                    child: const Text('发送', style: TextStyle(fontSize: 15)),
                   ),
                 ),
               ],
             ),
           ),
-        ),
-        // 底部操作栏
-        Container(
-          padding: EdgeInsets.only(
-            left: 16,
-            right: 16,
-            top: 12,
-            bottom: MediaQuery.of(context).padding.bottom + 12,
+        );
+      },
+    );
+  }
+
+  Future<void> _handleFavorite() async {
+    if (!isAuthenticated) {
+      _showLoginHint(context);
+      return;
+    }
+
+    final favState = ref.read(materialFavoriteProvider(detail.id));
+    final isFavorited = favState?.isFavorited ?? detail.isFavorited;
+
+    if (isFavorited) {
+      // 已收藏 → 直接取消
+      final error = await ref
+          .read(materialFavoriteProvider(detail.id).notifier)
+          .removeFavorite(detail.id);
+      if (error != null && mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(error)),
+        );
+      }
+    } else {
+      // 未收藏 → 弹出分组选择
+      final groupId = await FavoriteGroupSheet.show(context);
+      if (groupId == null || !mounted) return;
+      final error = await ref
+          .read(materialFavoriteProvider(detail.id).notifier)
+          .addToGroup(detail.id, groupId);
+      if (error != null && mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(error)),
+        );
+      }
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final favState = ref.watch(materialFavoriteProvider(detail.id));
+    final isFavorited = favState?.isFavorited ?? detail.isFavorited;
+    final favoriteCount = favState?.favoriteCount ?? detail.favoriteCount;
+
+    return Column(
+      children: [
+        // ========== 可滚动内容 ==========
+        Expanded(
+          child: SingleChildScrollView(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const SizedBox(height: 16),
+                // 发布者 + 标题/描述
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 16),
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      // 左侧类型徽章
+                      Container(
+                        width: 48,
+                        height: 48,
+                        decoration: BoxDecoration(
+                          color: AppStyles.typeBadgeColor(
+                            isVideo: detail.isVideo,
+                            isLivePhoto: detail.isLivePhoto,
+                          ),
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        child: Center(
+                          child: Text(
+                            AppStyles.typeBadgeText(
+                              isVideo: detail.isVideo,
+                              isLivePhoto: detail.isLivePhoto,
+                            ),
+                            style: const TextStyle(
+                              color: Colors.white,
+                              fontSize: 13,
+                              fontWeight: FontWeight.w700,
+                            ),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      // 右侧标题
+                      Expanded(
+                        child: Text(
+                          detail.title,
+                          style: const TextStyle(
+                              fontSize: 15, height: 1.5),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 16),
+                // 缩略图区域（可点击进入预览）
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 16),
+                  child: _buildThumbnails(context),
+                ),
+                const SizedBox(height: 12),
+                // 素材信息
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 16),
+                  child: _infoText('浏览 ${detail.viewCount}  收藏 $favoriteCount  下载 ${detail.downloadCount}'),
+                ),
+                // 标签
+                if (detail.tags.isNotEmpty) ...[
+                  const SizedBox(height: 12),
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 16),
+                    child: Wrap(
+                      spacing: 6,
+                      runSpacing: 6,
+                      children: detail.tags
+                          .map((tag) => Container(
+                                padding: const EdgeInsets.symmetric(
+                                    horizontal: 10, vertical: 4),
+                                decoration: BoxDecoration(
+                                  color: AppColors.surface,
+                                  borderRadius: BorderRadius.circular(12),
+                                ),
+                                child: Text('#$tag',
+                                    style: const TextStyle(
+                                        fontSize: 12,
+                                        color: AppColors.textSecondary)),
+                              ))
+                          .toList(),
+                    ),
+                  ),
+                ],
+                // 提问区域
+                const SizedBox(height: 16),
+                const Divider(height: 1, color: AppColors.divider),
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
+                  child: Text(
+                    '提问 (${_questions.length})',
+                    style: const TextStyle(
+                        fontSize: 15, fontWeight: FontWeight.w600),
+                  ),
+                ),
+                const SizedBox(height: 8),
+                if (_questionsLoading)
+                  const Padding(
+                    padding: EdgeInsets.all(20),
+                    child: Center(
+                        child: CircularProgressIndicator(strokeWidth: 2)),
+                  )
+                else if (_questions.isEmpty)
+                  const Padding(
+                    padding: EdgeInsets.symmetric(vertical: 20),
+                    child: Center(
+                      child: Text('暂无提问，点击下方“提问”按钮发起提问',
+                          style: TextStyle(
+                              color: AppColors.textHint, fontSize: 13)),
+                    ),
+                  )
+                else
+                  ...List.generate(_questions.length, (i) {
+                    final q = _questions[i];
+                    return Container(
+                      margin: const EdgeInsets.fromLTRB(16, 0, 16, 10),
+                      padding: const EdgeInsets.all(12),
+                      decoration: BoxDecoration(
+                        color: AppColors.cardBg,
+                        borderRadius: BorderRadius.circular(8),
+                        border: Border.all(color: AppColors.borderLight),
+                      ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Row(
+                            children: [
+                              Text(
+                                q['user_nickname'] ?? '匿名',
+                                style: const TextStyle(
+                                    fontSize: 13,
+                                    fontWeight: FontWeight.w500),
+                              ),
+                              const Spacer(),
+                              Text(
+                                q['created_at'] ?? '',
+                                style: const TextStyle(
+                                    fontSize: 11,
+                                    color: AppColors.textHint),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 6),
+                          Text(q['question_text'] ?? '',
+                              style: const TextStyle(fontSize: 14)),
+                          if ((q['reply_text'] ?? '').isNotEmpty) ...[
+                            const SizedBox(height: 8),
+                            Container(
+                              padding: const EdgeInsets.all(8),
+                              decoration: BoxDecoration(
+                                color: AppColors.surface,
+                                borderRadius: BorderRadius.circular(6),
+                              ),
+                              child: Row(
+                                crossAxisAlignment:
+                                    CrossAxisAlignment.start,
+                                children: [
+                                  const Icon(Icons.reply,
+                                      size: 14,
+                                      color: AppColors.textHint),
+                                  const SizedBox(width: 6),
+                                  Expanded(
+                                    child: Text(
+                                      q['reply_text'],
+                                      style: const TextStyle(
+                                          fontSize: 13,
+                                          color:
+                                              AppColors.textSecondary),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ],
+                        ],
+                      ),
+                    );
+                  }),
+                const SizedBox(height: 20),
+              ],
+            ),
           ),
-          decoration: BoxDecoration(
-            color: theme.colorScheme.surface,
+        ),
+        // ========== 底部操作栏 ==========
+        Container(
+          decoration: const BoxDecoration(
             border: Border(
-                top: BorderSide(color: Colors.grey[800]!, width: 0.5)),
+                top: BorderSide(color: AppColors.divider, width: 0.5)),
+          ),
+          padding: EdgeInsets.only(
+            left: 8,
+            right: 8,
+            top: 10,
+            bottom: MediaQuery.of(context).padding.bottom + 10,
           ),
           child: Row(
+            mainAxisAlignment: MainAxisAlignment.spaceAround,
             children: [
-              // 收藏按钮
-              Expanded(
-                child: OutlinedButton.icon(
-                  onPressed: isAuthenticated
-                      ? () {
-                          // TODO: 收藏功能
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            const SnackBar(content: Text('收藏功能即将上线')),
-                          );
-                        }
-                      : () => _showLoginHint(context),
-                  icon: Icon(
-                    detail.isFavorited
-                        ? Icons.favorite
-                        : Icons.favorite_border,
-                    color: detail.isFavorited ? Colors.red : null,
-                  ),
-                  label: Text(detail.isFavorited ? '已收藏' : '收藏'),
-                  style: OutlinedButton.styleFrom(
-                    minimumSize: const Size(0, 48),
-                    side: BorderSide(color: Colors.grey[700]!),
-                    shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(12)),
-                  ),
-                ),
+              _ActionBtn(
+                icon: isFavorited
+                    ? Icons.star_rounded
+                    : Icons.star_border_rounded,
+                label: isFavorited ? '已收藏' : '收藏',
+                color: isFavorited ? AppColors.favoriteActive : null,
+                onTap: _handleFavorite,
               ),
-              const SizedBox(width: 12),
-              // 下载按钮
-              Expanded(
-                flex: 2,
-                child: ElevatedButton.icon(
-                  onPressed: isAuthenticated
-                      ? () {
-                          // TODO: 下载功能
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            const SnackBar(content: Text('下载功能即将上线')),
-                          );
-                        }
-                      : () => _showLoginHint(context),
-                  icon: const Icon(Icons.download),
-                  label: Text(detail.isLivePhoto ? '保存 Live Photo' : '下载原图'),
-                ),
+              _ActionBtn(
+                icon: Icons.sentiment_dissatisfied_outlined,
+                label: '不喜欢',
+                onTap: () {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(content: Text('已标记不喜欢')),
+                  );
+                },
+              ),
+              _ActionBtn(
+                icon: Icons.chat_bubble_outline_rounded,
+                label: '提问',
+                onTap: _showQuestionSheet,
+              ),
+              _ActionBtn(
+                icon: Icons.file_download_outlined,
+                label: '下载',
+                onTap: () {
+                  if (!isAuthenticated) {
+                    _showLoginHint(context);
+                    return;
+                  }
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(content: Text('下载功能即将上线')),
+                  );
+                },
               ),
             ],
           ),
@@ -243,58 +518,147 @@ class _DetailContent extends StatelessWidget {
     );
   }
 
+  /// 原图列表（优先 originalUrls，否则封面/水印图）
+  List<String> get _displayUrls {
+    if (detail.originalUrls.isNotEmpty) {
+      return detail.originalUrls.where((e) => e.isNotEmpty).toList();
+    }
+    final url =
+        detail.watermarkUrl.isNotEmpty ? detail.watermarkUrl : detail.thumbnailUrl;
+    if (url.isNotEmpty) return [url];
+    return const [];
+  }
+
+  /// 微信九宫格缩略图
+  Widget _buildThumbnails(BuildContext context) {
+    final urls = _displayUrls;
+    if (urls.isEmpty) {
+      return const SizedBox.shrink();
+    }
+
+    // 单张：宽度最多占 2/3，最高 240
+    if (urls.length == 1) {
+      return GestureDetector(
+        onTap: () => _openPreview(context, urls, 0),
+        child: ClipRRect(
+          borderRadius: BorderRadius.circular(6),
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxHeight: 240),
+            child: CachedNetworkImage(
+              imageUrl: urls[0],
+              fit: BoxFit.cover,
+              width: double.infinity,
+      placeholder: (_, __) =>
+                  Container(height: 180, color: AppColors.shimmer),
+              errorWidget: (_, __, ___) => Container(
+                height: 180,
+                color: AppColors.shimmer,
+                child: const Center(
+                    child: Icon(Icons.broken_image_outlined,
+                        color: AppColors.textDisabled, size: 36)),
+              ),
+            ),
+          ),
+        ),
+      );
+    }
+
+    // 多张：微信九宫格布局
+    final screenWidth = MediaQuery.of(context).size.width;
+    const padding = 16.0 * 2;
+    const spacing = 4.0;
+    final columns = urls.length == 4 ? 2 : 3;
+    final cellSize = (screenWidth - padding - spacing * (columns - 1)) / columns;
+
+    return Wrap(
+      spacing: spacing,
+      runSpacing: spacing,
+      children: List.generate(urls.length, (i) {
+        return GestureDetector(
+          onTap: () => _openPreview(context, urls, i),
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(4),
+            child: SizedBox(
+              width: cellSize,
+              height: cellSize,
+              child: CachedNetworkImage(
+                imageUrl: urls[i],
+                fit: BoxFit.cover,
+                placeholder: (_, __) => Container(color: AppColors.shimmer),
+                errorWidget: (_, __, ___) => Container(
+                  color: AppColors.shimmer,
+                  child: const Icon(Icons.broken_image_outlined,
+                      color: AppColors.textDisabled, size: 24),
+                ),
+              ),
+            ),
+          ),
+        );
+      }),
+    );
+  }
+
+  void _openPreview(BuildContext context, List<String> urls, int index) {
+    context.push(
+      '/material/${detail.id}/preview',
+      extra: MaterialPreviewArgs(
+        imageUrls: urls,
+        initialIndex: index,
+        title: detail.title,
+      ),
+    );
+  }
+
   void _showLoginHint(BuildContext context) {
     ScaffoldMessenger.of(context).showSnackBar(
       const SnackBar(
         content: Text('请先登录并开通会员'),
-        backgroundColor: Colors.orange,
+        backgroundColor: AppColors.warning,
       ),
+    );
+  }
+
+  static Widget _infoText(String text) {
+    return Text(
+      text,
+      style: const TextStyle(fontSize: 12, color: AppColors.textHint),
     );
   }
 }
 
-class _StatItem extends StatelessWidget {
+// ==================== 底部操作按钮 ====================
+
+class _ActionBtn extends StatelessWidget {
   final IconData icon;
-  final String value;
-
-  const _StatItem(this.icon, this.value);
-
-  @override
-  Widget build(BuildContext context) {
-    return Row(
-      children: [
-        Icon(icon, size: 16, color: Colors.grey[500]),
-        const SizedBox(width: 4),
-        Text(value, style: TextStyle(fontSize: 13, color: Colors.grey[400])),
-      ],
-    );
-  }
-}
-
-class _InfoRow extends StatelessWidget {
   final String label;
-  final String value;
+  final Color? color;
+  final VoidCallback onTap;
 
-  const _InfoRow(this.label, this.value);
+  const _ActionBtn({
+    required this.icon,
+    required this.label,
+    this.color,
+    required this.onTap,
+  });
 
   @override
   Widget build(BuildContext context) {
-    if (value.isEmpty) return const SizedBox.shrink();
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 8),
-      child: Row(
-        children: [
-          SizedBox(
-            width: 70,
-            child: Text(label,
-                style: TextStyle(fontSize: 13, color: Colors.grey[500])),
-          ),
-          Expanded(
-            child:
-                Text(value, style: const TextStyle(fontSize: 13)),
-          ),
-        ],
+    final c = color ?? AppColors.textSecondary;
+    return GestureDetector(
+      onTap: onTap,
+      behavior: HitTestBehavior.opaque,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(icon, size: 20, color: c),
+            const SizedBox(width: 4),
+            Text(label, style: TextStyle(fontSize: 14, color: c)),
+          ],
+        ),
       ),
     );
   }
 }
+

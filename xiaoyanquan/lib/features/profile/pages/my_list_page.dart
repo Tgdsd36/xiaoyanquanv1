@@ -1,8 +1,11 @@
 import 'package:flutter/material.dart';
-import 'package:cached_network_image/cached_network_image.dart';
 import 'package:go_router/go_router.dart';
+import '../../../app/colors.dart';
 import '../../../core/constants/api.dart';
 import '../../../core/network/http_client.dart';
+import '../../home/models/favorite_group_model.dart';
+import '../../home/repositories/favorite_repository.dart';
+import '../widgets/profile_tab_widgets.dart';
 
 enum MyListType { favorites, downloads, questions }
 
@@ -16,7 +19,9 @@ class MyListPage extends StatefulWidget {
 
 class _MyListPageState extends State<MyListPage> {
   final HttpClient _http = HttpClient();
+  final FavoriteRepository _groupRepo = FavoriteRepository();
   List<Map<String, dynamic>> _items = [];
+  List<FavoriteGroup> _groups = [];
   bool _isLoading = true;
   final int _page = 1;
 
@@ -51,190 +56,160 @@ class _MyListPageState extends State<MyListPage> {
   Future<void> _load() async {
     setState(() => _isLoading = true);
     try {
-      final resp = await _http.get(_apiPath, params: {'page': _page});
-      if (resp.isSuccess && resp.data != null) {
+      if (widget.type == MyListType.favorites) {
+        // 收藏页加载分组列表
+        final groups = await _groupRepo.getGroups();
+        if (!mounted) return;
         setState(() {
-          _items = List<Map<String, dynamic>>.from(resp.data['list'] ?? []);
+          _groups = groups;
           _isLoading = false;
         });
+      } else {
+        final resp = await _http.get(_apiPath, params: {'page': _page});
+        if (resp.isSuccess && resp.data != null) {
+          setState(() {
+            _items = List<Map<String, dynamic>>.from(resp.data['list'] ?? []);
+            _isLoading = false;
+          });
+        }
       }
     } catch (_) {
       setState(() => _isLoading = false);
     }
   }
 
+  Future<void> _createGroup() async {
+    final name = await _showCreateGroupDialog();
+    if (name == null || name.isEmpty) return;
+    final result = await _groupRepo.createGroup(name);
+    if (!mounted) return;
+    if (result.group != null) {
+      _load();
+    } else {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(result.error ?? '创建失败')),
+      );
+    }
+  }
+
+  Future<String?> _showCreateGroupDialog() {
+    final controller = TextEditingController();
+    return showDialog<String>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('新建分组'),
+        content: TextField(
+          controller: controller,
+          autofocus: true,
+          maxLength: 20,
+          decoration: const InputDecoration(
+            hintText: '输入分组名称',
+            counterText: '',
+          ),
+          onSubmitted: (v) => Navigator.pop(ctx, v.trim()),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('取消'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, controller.text.trim()),
+            child: const Text('创建'),
+          ),
+        ],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: Text(_title)),
+      appBar: AppBar(
+        title: Text(_title),
+        actions: [
+          if (widget.type == MyListType.favorites)
+            IconButton(
+              icon: const Icon(Icons.add, size: 24),
+              tooltip: '新建分组',
+              onPressed: _createGroup,
+            ),
+        ],
+      ),
       body: _isLoading
-          ? const Center(child: CircularProgressIndicator())
-          : _items.isEmpty
-              ? const Center(
-                  child: Text('暂无数据', style: TextStyle(color: Colors.grey)))
-              : ListView.separated(
-                  padding: const EdgeInsets.all(12),
-                  itemCount: _items.length,
-                  separatorBuilder: (_, __) => const SizedBox(height: 8),
-                  itemBuilder: (context, index) {
-                    final item = _items[index];
-                    switch (widget.type) {
-                      case MyListType.favorites:
-                        return _FavoriteItem(item);
-                      case MyListType.downloads:
-                        return _DownloadItem(item);
-                      case MyListType.questions:
-                        return _QuestionListItem(item);
-                    }
-                  },
-                ),
+          ? const Center(child: CircularProgressIndicator(strokeWidth: 2))
+          : widget.type == MyListType.favorites
+              ? _buildFavoriteGroups()
+              : _items.isEmpty
+                  ? const Center(
+                      child: Text('暂无数据',
+                          style: TextStyle(color: AppColors.textHint)))
+                  : ListView.separated(
+                      padding: const EdgeInsets.all(12),
+                      itemCount: _items.length,
+                      separatorBuilder: (_, __) =>
+                          const SizedBox(height: 8),
+                      itemBuilder: (context, index) {
+                        final item = _items[index];
+                        switch (widget.type) {
+                          case MyListType.favorites:
+                            return const SizedBox.shrink();
+                          case MyListType.downloads:
+                            return DownloadListItem(item: item);
+                          case MyListType.questions:
+                            return QuestionListItem(item: item);
+                        }
+                      },
+                    ),
     );
   }
-}
 
-class _FavoriteItem extends StatelessWidget {
-  final Map<String, dynamic> item;
-  const _FavoriteItem(this.item);
-
-  @override
-  Widget build(BuildContext context) {
-    return ListTile(
-      leading: ClipRRect(
-        borderRadius: BorderRadius.circular(6),
-        child: SizedBox(
-          width: 50,
-          height: 50,
-          child: item['thumbnail'] != null && (item['thumbnail'] as String).isNotEmpty
-              ? CachedNetworkImage(
-                  imageUrl: item['thumbnail'],
-                  fit: BoxFit.cover,
-                )
-              : Container(
-                  color: Colors.grey[800],
-                  child: const Icon(Icons.image, color: Colors.grey)),
-        ),
-      ),
-      title: Text(item['title'] ?? '未知素材', maxLines: 1),
-      subtitle: Text(item['created_at'] ?? '',
-          style: TextStyle(fontSize: 12, color: Colors.grey[500])),
-      trailing: const Icon(Icons.chevron_right, size: 18),
-      onTap: () {
-        final targetId = item['target_id'];
-        if (targetId != null) {
-          context.push('/material/$targetId');
-        }
-      },
-      tileColor: Theme.of(context).cardColor,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-    );
-  }
-}
-
-class _DownloadItem extends StatelessWidget {
-  final Map<String, dynamic> item;
-  const _DownloadItem(this.item);
-
-  @override
-  Widget build(BuildContext context) {
-    return ListTile(
-      leading: ClipRRect(
-        borderRadius: BorderRadius.circular(6),
-        child: SizedBox(
-          width: 50,
-          height: 50,
-          child: item['thumbnail_url'] != null &&
-                  (item['thumbnail_url'] as String).isNotEmpty
-              ? CachedNetworkImage(
-                  imageUrl: item['thumbnail_url'],
-                  fit: BoxFit.cover,
-                )
-              : Container(
-                  color: Colors.grey[800],
-                  child: const Icon(Icons.image, color: Colors.grey)),
-        ),
-      ),
-      title: Text(item['title'] ?? '未知素材', maxLines: 1),
-      subtitle: Text(item['downloaded_at'] ?? '',
-          style: TextStyle(fontSize: 12, color: Colors.grey[500])),
-      trailing: const Icon(Icons.chevron_right, size: 18),
-      onTap: () {
-        final materialId = item['material_id'];
-        if (materialId != null) {
-          context.push('/material/$materialId');
-        }
-      },
-      tileColor: Theme.of(context).cardColor,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-    );
-  }
-}
-
-class _QuestionListItem extends StatelessWidget {
-  final Map<String, dynamic> item;
-  const _QuestionListItem(this.item);
-
-  @override
-  Widget build(BuildContext context) {
-    final status = item['status'] ?? 'pending';
-    return Container(
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        color: Theme.of(context).cardColor,
-        borderRadius: BorderRadius.circular(8),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Container(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                decoration: BoxDecoration(
-                  color: status == 'replied'
-                      ? Colors.green.withValues(alpha: 0.15)
-                      : Colors.orange.withValues(alpha: 0.15),
-                  borderRadius: BorderRadius.circular(4),
-                ),
-                child: Text(
-                  status == 'replied' ? '已回复' : '待回复',
-                  style: TextStyle(
-                    fontSize: 11,
-                    color: status == 'replied' ? Colors.green : Colors.orange,
-                  ),
-                ),
-              ),
-              const Spacer(),
-              Text(item['created_at'] ?? '',
-                  style: TextStyle(fontSize: 11, color: Colors.grey[500])),
-            ],
-          ),
-          const SizedBox(height: 8),
-          Text(item['question_text'] ?? '',
-              style: const TextStyle(fontSize: 14)),
-          if ((item['reply_text'] ?? '').isNotEmpty) ...[
-            const SizedBox(height: 8),
-            Container(
-              padding: const EdgeInsets.all(8),
-              decoration: BoxDecoration(
-                color: Colors.grey[850],
-                borderRadius: BorderRadius.circular(6),
-              ),
-              child: Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Icon(Icons.reply, size: 14, color: Colors.grey[500]),
-                  const SizedBox(width: 6),
-                  Expanded(
-                    child: Text(item['reply_text'],
-                        style:
-                            TextStyle(fontSize: 13, color: Colors.grey[300])),
-                  ),
-                ],
-              ),
+  Widget _buildFavoriteGroups() {
+    if (_groups.isEmpty) {
+      return Center(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Icon(Icons.collections_bookmark_outlined,
+                size: 48, color: AppColors.textDisabled),
+            const SizedBox(height: 12),
+            const Text('还没有收藏分组',
+                style: TextStyle(color: AppColors.textHint, fontSize: 14)),
+            const SizedBox(height: 16),
+            TextButton.icon(
+              onPressed: _createGroup,
+              icon: const Icon(Icons.add, size: 18),
+              label: const Text('创建分组'),
             ),
           ],
-        ],
+        ),
+      );
+    }
+
+    return RefreshIndicator(
+      onRefresh: _load,
+      child: GridView.builder(
+        padding: const EdgeInsets.all(16),
+        gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+          crossAxisCount: 2,
+          mainAxisSpacing: 12,
+          crossAxisSpacing: 12,
+          childAspectRatio: 0.85,
+        ),
+        itemCount: _groups.length,
+        itemBuilder: (context, index) {
+          final group = _groups[index];
+          return FavoriteGroupCard(
+            group: group,
+            onTap: () async {
+              final result = await context.push<bool>(
+                '/favorite-group/${group.id}',
+                extra: group.name,
+              );
+              if (result == true) _load();
+            },
+          );
+        },
       ),
     );
   }

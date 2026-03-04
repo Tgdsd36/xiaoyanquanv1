@@ -1,3 +1,4 @@
+import 'package:dio/dio.dart';
 import '../../../core/constants/api.dart';
 import '../../../core/network/http_client.dart';
 import '../models/category_model.dart';
@@ -23,7 +24,7 @@ class MaterialRepository {
     int page = 1,
     int pageSize = 20,
     int? categoryId,
-    int? genderCategoryId,
+    String? gender,
     String? type,
     String sort = 'hot',
   }) async {
@@ -35,8 +36,8 @@ class MaterialRepository {
     if (categoryId != null && categoryId > 0) {
       params['category_id'] = categoryId;
     }
-    if (genderCategoryId != null && genderCategoryId > 0) {
-      params['gender_category_id'] = genderCategoryId;
+    if (gender != null && gender.isNotEmpty) {
+      params['gender'] = gender;
     }
     if (type != null && type.isNotEmpty) {
       params['type'] = type;
@@ -72,12 +73,17 @@ class MaterialRepository {
     required String keyword,
     int page = 1,
     int pageSize = 20,
+    String? type,
+    int? categoryId,
   }) async {
-    final resp = await _http.get(Api.materialSearch, params: {
+    final params = <String, dynamic>{
       'keyword': keyword,
       'page': page,
       'page_size': pageSize,
-    });
+    };
+    if (type != null && type.isNotEmpty) params['type'] = type;
+    if (categoryId != null && categoryId > 0) params['category_id'] = categoryId;
+    final resp = await _http.get(Api.materialSearch, params: params);
     if (resp.isSuccess && resp.data != null) {
       final data = resp.data;
       final list = (data['list'] as List?)
@@ -96,5 +102,42 @@ class MaterialRepository {
   /// 下载素材
   Future<ApiResponse> download(int id) {
     return _http.get(Api.materialDownload(id));
+  }
+
+  /// 切换收藏状态
+  /// groupId > 0: 收藏到指定分组；groupId == 0: 取消收藏（从所有分组移除）
+  /// error 为 null 表示成功，非 null 表示失败原因
+  Future<({bool isFavorited, int favoriteCount, String? error})> toggleFavorite({
+    required String targetType,
+    required int targetId,
+    int groupId = 0,
+  }) async {
+    try {
+      final resp = await _http.post(Api.favoriteToggle, data: {
+        'target_type': targetType,
+        'target_id': targetId,
+        'group_id': groupId,
+      });
+      if (resp.isSuccess && resp.data != null) {
+        return (
+          isFavorited: resp.data['is_favorited'] as bool? ?? false,
+          favoriteCount: resp.data['favorite_count'] as int? ?? 0,
+          error: null,
+        );
+      }
+      return (isFavorited: false, favoriteCount: 0, error: resp.message.isNotEmpty ? resp.message : '操作失败');
+    } on DioException catch (e) {
+      // 403 等业务错误，提取后端返回的 message
+      final data = e.response?.data;
+      if (data is Map<String, dynamic>) {
+        final msg = data['message'] as String? ?? '';
+        if (msg.isNotEmpty) {
+          return (isFavorited: false, favoriteCount: 0, error: msg);
+        }
+      }
+      return (isFavorited: false, favoriteCount: 0, error: '网络错误，请重试');
+    } catch (_) {
+      return (isFavorited: false, favoriteCount: 0, error: '操作失败，请重试');
+    }
   }
 }

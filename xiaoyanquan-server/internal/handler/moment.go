@@ -13,30 +13,23 @@ import (
 )
 
 type MomentHandler struct {
-	DB *gorm.DB
+	DB      *gorm.DB
+	BaseURL string
 }
 
 type MomentListItem struct {
-	ID            uint     `json:"id"`
-	ContentText   string   `json:"content_text"`
-	MediaType     string   `json:"media_type"`
-	MediaURLs     []string `json:"media_urls"`
-	QuestionCount int      `json:"question_count"`
-	IsFavorited   bool     `json:"is_favorited"`
-	CreatedAt     string   `json:"created_at"`
+	ID          uint     `json:"id"`
+	Nickname    string   `json:"nickname"`
+	AvatarURL   string   `json:"avatar_url"`
+	Gender      string   `json:"gender"`
+	ContentText string   `json:"content_text"`
+	MediaType   string   `json:"media_type"`
+	MediaURLs   []string `json:"media_urls"`
+	IsFavorited bool     `json:"is_favorited"`
+	CreatedAt   string   `json:"created_at"`
 }
 
-type MomentDetailResp struct {
-	ID            uint     `json:"id"`
-	ContentText   string   `json:"content_text"`
-	MediaType     string   `json:"media_type"`
-	MediaURLs     []string `json:"media_urls"`
-	QuestionCount int      `json:"question_count"`
-	IsFavorited   bool     `json:"is_favorited"`
-	CreatedAt     string   `json:"created_at"`
-}
-
-// List 朋友圈列表
+// List 朋友圈列表（数据源：素材表）
 func (h *MomentHandler) List(c *gin.Context) {
 	page, _ := strconv.Atoi(c.DefaultQuery("page", "1"))
 	pageSize, _ := strconv.Atoi(c.DefaultQuery("page_size", "20"))
@@ -47,149 +40,81 @@ func (h *MomentHandler) List(c *gin.Context) {
 		pageSize = 20
 	}
 
-	var total int64
-	h.DB.Model(&model.Moment{}).Where("status = ?", "published").Count(&total)
+	query := h.DB.Model(&model.Material{}).Where("status = ?", "published")
 
-	var moments []model.Moment
-	h.DB.Where("status = ?", "published").
-		Order("created_at DESC").
+	// 类型过滤
+	if mediaType := c.Query("type"); mediaType != "" {
+		query = query.Where("type = ?", mediaType)
+	}
+	// 性别过滤
+	if gender := c.Query("gender"); gender != "" {
+		query = query.Where("gender = ?", gender)
+	}
+
+	var total int64
+	query.Count(&total)
+
+	var materials []model.Material
+	query.Order("created_at DESC").
 		Offset((page - 1) * pageSize).Limit(pageSize).
-		Find(&moments)
+		Find(&materials)
 
 	userID := middleware.GetUserID(c)
-	favoriteMap := h.getMomentFavorites(userID, moments)
+	favoriteMap := h.getFavorites(userID, materials)
 
-	list := make([]MomentListItem, len(moments))
-	for i, m := range moments {
+	list := make([]MomentListItem, len(materials))
+	for i, m := range materials {
+		// 优先使用 original_urls（多图九宫格），回退到水印图/缩略图
+		var mediaURLs []string
+		var rawURLs []string
+		if len(m.OriginalURLs) > 0 {
+			_ = json.Unmarshal(m.OriginalURLs, &rawURLs)
+		}
+		if len(rawURLs) > 0 {
+			for _, u := range rawURLs {
+				if fu := fullURL(h.BaseURL, u); fu != "" {
+					mediaURLs = append(mediaURLs, fu)
+				}
+			}
+		}
+		if len(mediaURLs) == 0 {
+			if img := fullURL(h.BaseURL, m.WatermarkURL); img != "" {
+				mediaURLs = []string{img}
+			} else if img := fullURL(h.BaseURL, m.ThumbnailURL); img != "" {
+				mediaURLs = []string{img}
+			}
+		}
+
 		list[i] = MomentListItem{
-			ID:            m.ID,
-			ContentText:   m.ContentText,
-			MediaType:     m.MediaType,
-			MediaURLs:     parseMediaURLs(m.MediaURLs),
-			QuestionCount: m.QuestionCount,
-			IsFavorited:   favoriteMap[m.ID],
-			CreatedAt:     m.CreatedAt.Format("2006-01-02 15:04"),
+			ID:          m.ID,
+			Nickname:    "小颜圈",
+			AvatarURL:   "",
+			Gender:      m.Gender,
+			ContentText: m.Title,
+			MediaType:   m.Type,
+			MediaURLs:   mediaURLs,
+			IsFavorited: favoriteMap[m.ID],
+			CreatedAt:   m.CreatedAt.Format("2006-01-02 15:04"),
 		}
 	}
 
 	response.SuccessPage(c, list, total, page, pageSize)
 }
 
-// Detail 动态详情
-func (h *MomentHandler) Detail(c *gin.Context) {
-	id, err := strconv.ParseUint(c.Param("id"), 10, 64)
-	if err != nil {
-		response.BadRequest(c, 400, "参数错误")
-		return
-	}
-
-	var moment model.Moment
-	if err := h.DB.First(&moment, id).Error; err != nil {
-		response.NotFound(c, "动态不存在")
-		return
-	}
-
-	userID := middleware.GetUserID(c)
-	isFavorited := false
-	if userID > 0 {
-		var count int64
-		h.DB.Model(&model.Favorite{}).
-			Where("user_id = ? AND target_type = ? AND target_id = ?", userID, "moment", id).
-			Count(&count)
-		isFavorited = count > 0
-	}
-
-	resp := MomentDetailResp{
-		ID:            moment.ID,
-		ContentText:   moment.ContentText,
-		MediaType:     moment.MediaType,
-		MediaURLs:     parseMediaURLs(moment.MediaURLs),
-		QuestionCount: moment.QuestionCount,
-		IsFavorited:   isFavorited,
-		CreatedAt:     moment.CreatedAt.Format("2006-01-02 15:04"),
-	}
-
-	response.Success(c, resp)
-}
-
-// Questions 动态下的公开提问
-func (h *MomentHandler) Questions(c *gin.Context) {
-	id, err := strconv.ParseUint(c.Param("id"), 10, 64)
-	if err != nil {
-		response.BadRequest(c, 400, "参数错误")
-		return
-	}
-
-	page, _ := strconv.Atoi(c.DefaultQuery("page", "1"))
-	pageSize, _ := strconv.Atoi(c.DefaultQuery("page_size", "20"))
-	if page < 1 {
-		page = 1
-	}
-
-	var total int64
-	h.DB.Model(&model.Question{}).
-		Where("target_type = ? AND target_id = ?", "moment", id).
-		Count(&total)
-
-	var questions []model.Question
-	h.DB.Preload("User").
-		Where("target_type = ? AND target_id = ?", "moment", id).
-		Order("created_at DESC").
-		Offset((page - 1) * pageSize).Limit(pageSize).
-		Find(&questions)
-
-	list := make([]QuestionItem, len(questions))
-	for i, q := range questions {
-		nickname := ""
-		avatar := ""
-		if q.User != nil {
-			nickname = q.User.Nickname
-			avatar = q.User.AvatarURL
-		}
-		repliedAt := ""
-		if q.RepliedAt != nil {
-			repliedAt = q.RepliedAt.Format("2006-01-02 15:04")
-		}
-		list[i] = QuestionItem{
-			ID:           q.ID,
-			UserNickname: nickname,
-			UserAvatar:   avatar,
-			QuestionText: q.QuestionText,
-			ReplyText:    q.ReplyText,
-			Status:       q.Status,
-			CreatedAt:    q.CreatedAt.Format("2006-01-02 15:04"),
-			RepliedAt:    repliedAt,
-		}
-	}
-
-	response.SuccessPage(c, list, total, page, pageSize)
-}
-
-func (h *MomentHandler) getMomentFavorites(userID uint, moments []model.Moment) map[uint]bool {
+func (h *MomentHandler) getFavorites(userID uint, materials []model.Material) map[uint]bool {
 	result := make(map[uint]bool)
-	if userID == 0 || len(moments) == 0 {
+	if userID == 0 || len(materials) == 0 {
 		return result
 	}
-	ids := make([]uint, len(moments))
-	for i, m := range moments {
+	ids := make([]uint, len(materials))
+	for i, m := range materials {
 		ids[i] = m.ID
 	}
 	var favorites []model.Favorite
-	h.DB.Where("user_id = ? AND target_type = ? AND target_id IN ?", userID, "moment", ids).
+	h.DB.Where("user_id = ? AND target_type = ? AND target_id IN ?", userID, "material", ids).
 		Find(&favorites)
 	for _, f := range favorites {
 		result[f.TargetID] = true
 	}
 	return result
-}
-
-func parseMediaURLs(raw model.JSON) []string {
-	var urls []string
-	if len(raw) > 0 {
-		_ = json.Unmarshal(raw, &urls)
-	}
-	if urls == nil {
-		return []string{}
-	}
-	return urls
 }

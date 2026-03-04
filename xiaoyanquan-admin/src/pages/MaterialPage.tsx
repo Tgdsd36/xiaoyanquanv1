@@ -94,7 +94,7 @@ export default function MaterialPage() {
     { title: '标题', dataIndex: 'title', ellipsis: true },
     { title: '类型', dataIndex: 'type', width: 90, render: (t: string) => typeLabels[t] || t },
     { title: '分类', dataIndex: ['category', 'name'], width: 90 },
-    { title: '性别', dataIndex: ['gender_category', 'name'], width: 80, render: (v: any) => v || '-' },
+    { title: '性别', dataIndex: 'gender', width: 80, render: (v: string) => v === 'male' ? '男' : v === 'female' ? '女' : '不限' },
     {
       title: '状态', dataIndex: 'status', width: 80,
       render: (s: string) => <Tag color={statusColors[s]}>{statusLabels[s] || s}</Tag>,
@@ -124,7 +124,7 @@ export default function MaterialPage() {
           onClick={() => {
             setEditItem(null);
             form.resetFields();
-            form.setFieldsValue({ status: 'published' });
+            form.setFieldsValue({ status: 'published', gender: '' });
             setModalOpen(true);
           }}
         >
@@ -148,7 +148,7 @@ export default function MaterialPage() {
       />
 
       <Modal title={editItem ? '编辑素材' : '新增素材'} open={modalOpen} onOk={handleSave} onCancel={() => setModalOpen(false)} width={640}>
-        <Form form={form} layout="vertical" initialValues={{ status: 'published' }}>
+        <Form form={form} layout="vertical" initialValues={{ status: 'published', gender: '' }}>
           <Form.Item name="title" label="标题" rules={[{ required: true }]}><Input /></Form.Item>
           <Form.Item name="description" label="描述"><Input.TextArea rows={2} /></Form.Item>
           <Space>
@@ -162,13 +162,12 @@ export default function MaterialPage() {
                   .map((c: any) => ({ value: c.id, label: c.name }))}
               />
             </Form.Item>
-            <Form.Item name="gender_category_id" label="性别">
-              <Select style={{ width: 120 }} placeholder="不限" allowClear
+            <Form.Item name="gender" label="性别">
+              <Select style={{ width: 120 }}
                 options={[
-                  { value: 0, label: '不限' },
-                  ...categories
-                    .filter((c: any) => c.slug === 'male' || c.slug === 'female')
-                    .map((c: any) => ({ value: c.id, label: c.name })),
+                  { value: '', label: '不限' },
+                  { value: 'male', label: '男' },
+                  { value: 'female', label: '女' },
                 ]}
               />
             </Form.Item>

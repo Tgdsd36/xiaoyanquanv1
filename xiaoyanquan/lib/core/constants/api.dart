@@ -24,12 +24,15 @@ class Api {
 
   // 朋友圈
   static const String moments = '/moments';
-  static String momentDetail(int id) => '/moments/$id';
-  static String momentQuestions(int id) => '/moments/$id/questions';
 
   // 收藏
   static const String favorites = '/favorites';
+  static const String favoriteToggle = '/favorites/toggle';
   static String favoriteDelete(int id) => '/favorites/$id';
+
+  // 收藏分组
+  static const String favoriteGroups = '/favorite-groups';
+  static String favoriteGroupDetail(int id) => '/favorite-groups/$id';
 
   // 提问
   static const String questions = '/questions';
@@ -37,6 +40,7 @@ class Api {
 
   // 用户
   static const String userProfile = '/user/profile';
+  static const String userUpload = '/user/upload';
   static const String userDownloads = '/user/downloads';
   static const String userPassword = '/user/password';
 

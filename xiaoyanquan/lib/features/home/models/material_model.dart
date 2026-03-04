@@ -3,12 +3,13 @@ class MaterialListItem {
   final String title;
   final String type;
   final String thumbnailUrl;
+  final String watermarkUrl;
   final int width;
   final int height;
   final double duration;
   final double hotScore;
   final int downloadCount;
-  final int favoriteCount;
+  int favoriteCount;
   final List<String> tags;
   bool isFavorited;
 
@@ -17,6 +18,7 @@ class MaterialListItem {
     required this.title,
     required this.type,
     required this.thumbnailUrl,
+    this.watermarkUrl = '',
     this.width = 0,
     this.height = 0,
     this.duration = 0,
@@ -33,6 +35,7 @@ class MaterialListItem {
       title: json['title'] ?? '',
       type: json['type'] ?? '',
       thumbnailUrl: json['thumbnail_url'] ?? '',
+      watermarkUrl: json['watermark_url'] ?? '',
       width: json['width'] ?? 0,
       height: json['height'] ?? 0,
       duration: (json['duration'] ?? 0).toDouble(),
@@ -72,6 +75,7 @@ class MaterialDetail {
   final String thumbnailUrl;
   final String watermarkUrl;
   final String previewMovUrl;
+  final List<String> originalUrls;
   final double hotScore;
   final int downloadCount;
   final int favoriteCount;
@@ -95,6 +99,7 @@ class MaterialDetail {
     this.thumbnailUrl = '',
     this.watermarkUrl = '',
     this.previewMovUrl = '',
+    this.originalUrls = const [],
     this.hotScore = 0,
     this.downloadCount = 0,
     this.favoriteCount = 0,
@@ -120,6 +125,7 @@ class MaterialDetail {
       thumbnailUrl: json['thumbnail_url'] ?? '',
       watermarkUrl: json['watermark_url'] ?? '',
       previewMovUrl: json['preview_mov_url'] ?? '',
+      originalUrls: (json['original_urls'] as List?)?.map((e) => e.toString()).toList() ?? [],
       hotScore: (json['hot_score'] ?? 0).toDouble(),
       downloadCount: json['download_count'] ?? 0,
       favoriteCount: json['favorite_count'] ?? 0,

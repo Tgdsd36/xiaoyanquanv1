@@ -34,6 +34,12 @@ func main() {
 		log.Fatalf("数据库迁移失败: %v", err)
 	}
 
+	// 数据迁移：删除废弃的 gender_category_id 列
+	migrateGenderField(db)
+
+	// 数据迁移：收藏分组（为旧收藏记录创建默认分组）
+	migrateFavoriteGroups(db)
+
 	// 初始化种子数据
 	seedData(db)
 
@@ -139,7 +145,7 @@ func autoMigrate(db *gorm.DB) error {
 		&model.User{},
 		&model.Material{},
 		&model.Category{},
-		&model.Moment{},
+		&model.FavoriteGroup{},
 		&model.Favorite{},
 		&model.Download{},
 		&model.Question{},
@@ -151,7 +157,57 @@ func autoMigrate(db *gorm.DB) error {
 	)
 }
 
-// seedData 初始化种子数据（分类 + 系统配置）
+// migrateGenderField 将旧的 gender_category_id 迁移到 gender 字符串字段
+func migrateGenderField(db *gorm.DB) {
+	if db.Migrator().HasColumn(&model.Material{}, "gender_category_id") {
+		// 将已有数据迁移到新字段
+		db.Exec(`UPDATE materials SET gender = 'male' WHERE gender_category_id IN (SELECT id FROM categories WHERE slug = 'male')`)
+		db.Exec(`UPDATE materials SET gender = 'female' WHERE gender_category_id IN (SELECT id FROM categories WHERE slug = 'female')`)
+		// 删除旧列
+		db.Migrator().DropColumn(&model.Material{}, "gender_category_id")
+		log.Println("已迁移 gender_category_id -> gender")
+	}
+}
+
+// migrateFavoriteGroups 为已有收藏记录的用户创建默认分组，并将 group_id=0 的记录迁移到默认分组
+func migrateFavoriteGroups(db *gorm.DB) {
+	// 检查是否有 group_id=0 的收藏记录需要迁移
+	var count int64
+	db.Model(&model.Favorite{}).Where("group_id = 0").Count(&count)
+	if count == 0 {
+		return
+	}
+
+	log.Printf("发现 %d 条旧收藏记录需要迁移到默认分组", count)
+
+	// 查找所有有收藏的用户 ID
+	var userIDs []uint
+	db.Model(&model.Favorite{}).Where("group_id = 0").Distinct("user_id").Pluck("user_id", &userIDs)
+
+	for _, uid := range userIDs {
+		// 检查该用户是否已有默认分组
+		var group model.FavoriteGroup
+		err := db.Where("user_id = ? AND is_default = true", uid).First(&group).Error
+		if err != nil {
+			// 创建默认分组
+			group = model.FavoriteGroup{
+				UserID:    uid,
+				Name:      "默认收藏",
+				IsDefault: true,
+				CreatedAt: time.Now(),
+				UpdatedAt: time.Now(),
+			}
+			db.Create(&group)
+		}
+		// 将该用户的旧记录更新到默认分组
+		db.Model(&model.Favorite{}).Where("user_id = ? AND group_id = 0", uid).
+			Update("group_id", group.ID)
+	}
+
+	log.Printf("收藏分组迁移完成，处理 %d 个用户", len(userIDs))
+}
+
+// seedData 初始化种子数据（系统配置）
 func seedData(db *gorm.DB) {
 
 	// 初始化系统配置

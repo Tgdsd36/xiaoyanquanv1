@@ -6,12 +6,15 @@ import '../features/auth/pages/login_page.dart';
 import '../features/auth/pages/register_page.dart';
 import '../features/home/pages/home_page.dart';
 import '../features/home/pages/material_detail_page.dart';
+import '../features/home/pages/material_preview_page.dart';
+import '../features/home/models/material_model.dart'; // ignore: unused_import
+import '../features/home/pages/search_page.dart'; // SearchArgs
 import '../features/inspiration/pages/inspiration_page.dart';
 import '../features/moments/pages/moments_page.dart';
-import '../features/moments/pages/moment_detail_page.dart';
 import '../features/profile/pages/profile_page.dart';
 import '../features/profile/pages/membership_page.dart';
 import '../features/profile/pages/my_list_page.dart';
+import '../features/profile/pages/favorite_group_detail_page.dart';
 import '../features/profile/pages/change_password_page.dart';
 import 'main_scaffold.dart';
 
@@ -43,6 +46,36 @@ final routerProvider = Provider<GoRouter>((ref) {
         path: '/register',
         builder: (context, state) => const RegisterPage(),
       ),
+      // Search
+      GoRoute(
+        path: '/search',
+        parentNavigatorKey: _rootNavigatorKey,
+        builder: (context, state) {
+          final args = state.extra as SearchArgs?;
+          return SearchPage(args: args);
+        },
+      ),
+      // Material preview (full-screen image/video)
+      GoRoute(
+        path: '/material/:id/preview',
+        parentNavigatorKey: _rootNavigatorKey,
+        builder: (context, state) {
+          final id = int.tryParse(state.pathParameters['id'] ?? '') ?? 0;
+          final extra = state.extra;
+          // 兼容旧的 MaterialListItem 传参和新的 MaterialPreviewArgs
+          if (extra is MaterialPreviewArgs) {
+            return MaterialPreviewPage(
+              materialId: id,
+              initialItem: extra.initialItem,
+              imageUrls: extra.imageUrls,
+              initialIndex: extra.initialIndex,
+              titleOverride: extra.title,
+            );
+          }
+          final item = extra as MaterialListItem?;
+          return MaterialPreviewPage(materialId: id, initialItem: item);
+        },
+      ),
       // Material detail
       GoRoute(
         path: '/material/:id',
@@ -50,15 +83,6 @@ final routerProvider = Provider<GoRouter>((ref) {
         builder: (context, state) {
           final id = int.tryParse(state.pathParameters['id'] ?? '') ?? 0;
           return MaterialDetailPage(materialId: id);
-        },
-      ),
-      // Moment detail
-      GoRoute(
-        path: '/moment/:id',
-        parentNavigatorKey: _rootNavigatorKey,
-        builder: (context, state) {
-          final id = int.tryParse(state.pathParameters['id'] ?? '') ?? 0;
-          return MomentDetailPage(momentId: id);
         },
       ),
       // Membership
@@ -73,6 +97,16 @@ final routerProvider = Provider<GoRouter>((ref) {
         parentNavigatorKey: _rootNavigatorKey,
         builder: (context, state) =>
             const MyListPage(type: MyListType.favorites),
+      ),
+      // Favorite group detail
+      GoRoute(
+        path: '/favorite-group/:id',
+        parentNavigatorKey: _rootNavigatorKey,
+        builder: (context, state) {
+          final id = int.tryParse(state.pathParameters['id'] ?? '') ?? 0;
+          final name = state.extra as String? ?? '';
+          return FavoriteGroupDetailPage(groupId: id, groupName: name);
+        },
       ),
       // My downloads
       GoRoute(

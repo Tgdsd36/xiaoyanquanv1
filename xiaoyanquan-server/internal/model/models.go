@@ -18,6 +18,7 @@ type User struct {
 	PasswordHash         string         `gorm:"size:255" json:"-"`
 	Nickname             string         `gorm:"size:50" json:"nickname"`
 	AvatarURL            string         `gorm:"size:500" json:"avatar_url"`
+	CoverURL             string         `gorm:"size:500" json:"cover_url"`
 	Status               string         `gorm:"size:20;default:active" json:"status"` // active, disabled
 	MemberType           string         `gorm:"size:20;default:free" json:"member_type"` // free, pro, flagship
 	MemberExpireAt       *time.Time     `json:"member_expire_at"`
@@ -54,8 +55,7 @@ type Material struct {
 	Type          string         `gorm:"size:20;not null;index" json:"type"` // image, video, live_photo
 	CategoryID         *uint     `gorm:"index" json:"category_id"`
 	Category           *Category `gorm:"foreignKey:CategoryID" json:"category,omitempty"`
-	GenderCategoryID   *uint     `gorm:"index" json:"gender_category_id"`
-	GenderCategory     *Category `gorm:"foreignKey:GenderCategoryID" json:"gender_category,omitempty"`
+	Gender             string    `gorm:"size:10;default:''" json:"gender"` // male, female, ""(不限)
 	Tags          pq.StringArray `gorm:"type:text[]" json:"tags"`
 	Width         int            `json:"width"`
 	Height        int            `json:"height"`
@@ -102,26 +102,27 @@ type Category struct {
 	CreatedAt time.Time   `json:"created_at"`
 }
 
-// ==================== 朋友圈动态 ====================
+// ==================== 收藏分组 ====================
 
-type Moment struct {
-	ID            uint      `gorm:"primaryKey" json:"id"`
-	AdminID       uint      `gorm:"index" json:"admin_id"`
-	ContentText   string    `gorm:"type:text" json:"content_text"`
-	MediaType     string    `gorm:"size:20" json:"media_type"` // image, video
-	MediaURLs     JSON      `gorm:"type:jsonb" json:"media_urls"`
-	QuestionCount int       `gorm:"default:0" json:"question_count"`
-	Status        string    `gorm:"size:20;default:draft" json:"status"`
-	CreatedAt     time.Time `gorm:"index" json:"created_at"`
-	UpdatedAt     time.Time `json:"updated_at"`
+type FavoriteGroup struct {
+	ID        uint      `gorm:"primaryKey" json:"id"`
+	UserID    uint      `gorm:"index;not null" json:"user_id"`
+	Name      string    `gorm:"size:100;not null" json:"name"`
+	IsDefault bool      `gorm:"default:false" json:"is_default"`
+	SortOrder int       `gorm:"default:0" json:"sort_order"`
+	CreatedAt time.Time `json:"created_at"`
+	UpdatedAt time.Time `json:"updated_at"`
 }
+
+func (FavoriteGroup) TableName() string { return "favorite_groups" }
 
 // ==================== 收藏 ====================
 
 type Favorite struct {
 	ID         uint      `gorm:"primaryKey" json:"id"`
 	UserID     uint      `gorm:"index;not null" json:"user_id"`
-	TargetType string    `gorm:"size:20;not null" json:"target_type"` // material, moment
+	GroupID    uint      `gorm:"index;not null;default:0" json:"group_id"`
+	TargetType string    `gorm:"size:20;not null" json:"target_type"` // material
 	TargetID   uint      `gorm:"not null" json:"target_id"`
 	CreatedAt  time.Time `json:"created_at"`
 }

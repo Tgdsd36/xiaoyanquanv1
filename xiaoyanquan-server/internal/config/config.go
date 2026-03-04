@@ -16,8 +16,9 @@ type Config struct {
 }
 
 type ServerConfig struct {
-	Port string
-	Mode string // debug, release
+	Port    string
+	Mode    string // debug, release
+	BaseURL string // 对外访问地址，用于拼接完整 URL
 }
 
 type DatabaseConfig struct {
@@ -61,8 +62,9 @@ type OSSConfig struct {
 func Load() *Config {
 	return &Config{
 		Server: ServerConfig{
-			Port: getEnv("SERVER_PORT", "8080"),
-			Mode: getEnv("SERVER_MODE", "debug"),
+			Port:    getEnv("SERVER_PORT", "8080"),
+			Mode:    getEnv("SERVER_MODE", "debug"),
+			BaseURL: getEnv("SERVER_BASE_URL", "http://localhost:8080"),
 		},
 		Database: DatabaseConfig{
 			Host:     getEnv("DB_HOST", "localhost"),

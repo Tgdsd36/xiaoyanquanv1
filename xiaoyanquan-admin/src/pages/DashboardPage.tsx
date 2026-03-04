@@ -6,7 +6,6 @@ import {
   ShoppingOutlined,
   CrownOutlined,
   QuestionCircleOutlined,
-  MessageOutlined,
   UserAddOutlined,
   DownloadOutlined,
 } from '@ant-design/icons';
@@ -15,7 +14,6 @@ import http from '../api/http';
 interface Stats {
   user_count: number;
   material_count: number;
-  moment_count: number;
   order_count: number;
   member_count: number;
   question_count: number;
@@ -40,7 +38,6 @@ export default function DashboardPage() {
     { title: '活跃会员', value: stats.member_count, icon: <CrownOutlined />, color: '#faad14' },
     { title: '已付订单', value: stats.order_count, icon: <ShoppingOutlined />, color: '#722ed1' },
     { title: '待回复提问', value: stats.question_count, icon: <QuestionCircleOutlined />, color: '#eb2f96' },
-    { title: '动态总数', value: stats.moment_count, icon: <MessageOutlined />, color: '#13c2c2' },
     { title: '今日新增用户', value: stats.today_new_users, icon: <UserAddOutlined />, color: '#1890ff' },
     { title: '今日下载次数', value: stats.today_downloads, icon: <DownloadOutlined />, color: '#52c41a' },
   ];

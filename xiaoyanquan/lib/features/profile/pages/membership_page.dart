@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../../../app/colors.dart';
+import '../../../app/styles.dart';
 import '../../../core/constants/api.dart';
 import '../../../core/network/http_client.dart';
 
@@ -41,8 +43,8 @@ class MembershipPage extends ConsumerWidget {
                     decoration: BoxDecoration(
                       gradient: LinearGradient(
                         colors: memberType == 'flagship'
-                            ? [const Color(0xFFFFD54F), const Color(0xFFFF8F00)]
-                            : [const Color(0xFF42A5F5), const Color(0xFF1565C0)],
+                            ? [AppColors.memberFlagship, AppColors.memberFlagshipEnd]
+                            : [AppColors.memberPro, AppColors.memberProEnd],
                       ),
                       borderRadius: BorderRadius.circular(16),
                     ),
@@ -154,8 +156,9 @@ class _PlanCard extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: Theme.of(context).cardColor,
-        borderRadius: BorderRadius.circular(12),
+        color: AppColors.cardBg,
+        borderRadius: BorderRadius.circular(14),
+        boxShadow: AppStyles.cardShadow,
         border: isRecommended
             ? Border.all(color: color, width: 1.5)
             : null,

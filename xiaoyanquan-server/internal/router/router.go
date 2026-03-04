@@ -21,12 +21,13 @@ func Setup(cfg *config.Config, db *gorm.DB, rdb *redis.Client) *gin.Engine {
 	// 初始化 handlers
 	authHandler := &handler.AuthHandler{DB: db, RDB: rdb, Cfg: cfg}
 	categoryHandler := &handler.CategoryHandler{DB: db}
-	materialHandler := &handler.MaterialHandler{DB: db}
-	inspirationHandler := &handler.InspirationHandler{DB: db}
-	momentHandler := &handler.MomentHandler{DB: db}
+	materialHandler := &handler.MaterialHandler{DB: db, BaseURL: cfg.Server.BaseURL}
+	inspirationHandler := &handler.InspirationHandler{DB: db, BaseURL: cfg.Server.BaseURL}
+	momentHandler := &handler.MomentHandler{DB: db, BaseURL: cfg.Server.BaseURL}
 	favoriteHandler := &handler.FavoriteHandler{DB: db}
-	questionHandler := &handler.QuestionHandler{DB: db}
-	userHandler := &handler.UserHandler{DB: db}
+	favoriteGroupHandler := &handler.FavoriteGroupHandler{DB: db, BaseURL: cfg.Server.BaseURL}
+	questionHandler := &handler.QuestionHandler{DB: db, BaseURL: cfg.Server.BaseURL}
+	userHandler := &handler.UserHandler{DB: db, BaseURL: cfg.Server.BaseURL}
 	membershipHandler := &handler.MembershipHandler{DB: db}
 
 	// 公共 API
@@ -76,13 +77,21 @@ func Setup(cfg *config.Config, db *gorm.DB, rdb *redis.Client) *gin.Engine {
 		}
 		v1.POST("/inspiration/dislike", middleware.AuthRequired(&cfg.JWT), inspirationHandler.Dislike)
 
-		// 朋友圈（游客可浏览）
+		// 朋友圈（游客可浏览，数据源为素材表）
 		moments := v1.Group("/moments")
 		moments.Use(middleware.AuthOptional(&cfg.JWT))
 		{
 			moments.GET("", momentHandler.List)
-			moments.GET("/:id", momentHandler.Detail)
-			moments.GET("/:id/questions", momentHandler.Questions)
+		}
+
+		// 收藏分组（需登录）
+		favoriteGroups := v1.Group("/favorite-groups")
+		favoriteGroups.Use(middleware.AuthRequired(&cfg.JWT))
+		{
+			favoriteGroups.GET("", favoriteGroupHandler.List)
+			favoriteGroups.POST("", favoriteGroupHandler.Create)
+			favoriteGroups.PUT("/:id", favoriteGroupHandler.Update)
+			favoriteGroups.DELETE("/:id", favoriteGroupHandler.Delete)
 		}
 
 		// 收藏（需会员）
@@ -90,6 +99,7 @@ func Setup(cfg *config.Config, db *gorm.DB, rdb *redis.Client) *gin.Engine {
 		favorites.Use(middleware.AuthRequired(&cfg.JWT))
 		{
 			favorites.POST("", favoriteHandler.Create)
+			favorites.POST("/toggle", favoriteHandler.Toggle)
 			favorites.DELETE("/:id", favoriteHandler.Delete)
 			favorites.GET("", favoriteHandler.List)
 		}
@@ -108,8 +118,9 @@ func Setup(cfg *config.Config, db *gorm.DB, rdb *redis.Client) *gin.Engine {
 		user := v1.Group("/user")
 		user.Use(middleware.AuthRequired(&cfg.JWT))
 		{
-			user.GET("/profile", userHandler.Profile)
+		user.GET("/profile", userHandler.Profile)
 			user.PUT("/profile", userHandler.UpdateProfile)
+			user.POST("/upload", userHandler.UploadImage)
 			user.GET("/downloads", userHandler.Downloads)
 			user.PUT("/password", userHandler.ChangePassword)
 		}
@@ -155,14 +166,6 @@ func Setup(cfg *config.Config, db *gorm.DB, rdb *redis.Client) *gin.Engine {
 			adminAuth.POST("/categories/sort", adminHandler.CategorySort)
 			adminAuth.POST("/categories/batch-delete", adminHandler.CategoryBatchDelete)
 
-			// 动态管理
-			adminAuth.GET("/moments", adminHandler.MomentList)
-			adminAuth.POST("/moments", adminHandler.MomentCreate)
-			adminAuth.PUT("/moments/:id", adminHandler.MomentUpdate)
-			adminAuth.DELETE("/moments/:id", adminHandler.MomentDelete)
-			adminAuth.POST("/moments/batch-delete", adminHandler.MomentBatchDelete)
-			adminAuth.POST("/moments/batch-status", adminHandler.MomentBatchStatus)
-
 			// 提问管理
 			adminAuth.GET("/questions", adminHandler.QuestionList)
 			adminAuth.PUT("/questions/:id/reply", adminHandler.QuestionReply)
@@ -202,16 +205,7 @@ func Setup(cfg *config.Config, db *gorm.DB, rdb *redis.Client) *gin.Engine {
 				`</head><body><p>正在打开小颜圈...</p></body></html>`,
 		))
 	})
-	r.GET("/share/moment/:id", func(c *gin.Context) {
-		id := c.Param("id")
-		c.Data(200, "text/html; charset=utf-8", []byte(
-			`<!DOCTYPE html><html><head><meta charset="utf-8"><title>小颜圈</title>`+
-				`<meta http-equiv="refresh" content="0;url=xiaoyanquan://moment/`+id+`">`+
-				`</head><body><p>正在打开小颜圈...</p></body></html>`,
-		))
-	})
-
-	// 静态文件服务（素材库上传文件）
+	// 静态文件服务
 	r.Static("/static", "./static")
 
 	// 健康检查

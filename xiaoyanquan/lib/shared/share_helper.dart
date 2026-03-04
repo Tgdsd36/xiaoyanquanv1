@@ -13,18 +13,6 @@ class ShareHelper {
     await Share.share('【小颜圈】$title\n$url', subject: title);
   }
 
-  /// 分享动态
-  static Future<void> shareMoment({
-    required int id,
-    String? contentText,
-  }) async {
-    final url = '$_baseUrl/moment/$id';
-    final text = contentText != null && contentText.isNotEmpty
-        ? '【小颜圈】$contentText\n$url'
-        : '【小颜圈】看看这条动态\n$url';
-    await Share.share(text);
-  }
-
   /// 分享 App
   static Future<void> shareApp() async {
     await Share.share(

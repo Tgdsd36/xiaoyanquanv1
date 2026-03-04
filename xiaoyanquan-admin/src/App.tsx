@@ -5,7 +5,6 @@ import LoginPage from './pages/LoginPage';
 import DashboardPage from './pages/DashboardPage';
 import MaterialPage from './pages/MaterialPage';
 import CategoryPage from './pages/CategoryPage';
-import MomentPage from './pages/MomentPage';
 import QuestionPage from './pages/QuestionPage';
 import UserPage from './pages/UserPage';
 import OrderPage from './pages/OrderPage';
@@ -32,7 +31,6 @@ export default function App() {
         <Route path="assets" element={<AssetPage />} />
         <Route path="materials" element={<MaterialPage />} />
         <Route path="categories" element={<CategoryPage />} />
-        <Route path="moments" element={<MomentPage />} />
         <Route path="questions" element={<QuestionPage />} />
         <Route path="users" element={<UserPage />} />
         <Route path="orders" element={<OrderPage />} />

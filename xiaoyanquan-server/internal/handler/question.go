@@ -13,22 +13,27 @@ import (
 )
 
 type QuestionHandler struct {
-	DB *gorm.DB
+	DB      *gorm.DB
+	BaseURL string
 }
 
 type QuestionItem struct {
-	ID           uint   `json:"id"`
-	UserNickname string `json:"user_nickname"`
-	UserAvatar   string `json:"user_avatar"`
-	QuestionText string `json:"question_text"`
-	ReplyText    string `json:"reply_text"`
-	Status       string `json:"status"`
-	CreatedAt    string `json:"created_at"`
-	RepliedAt    string `json:"replied_at,omitempty"`
+	ID                 uint   `json:"id"`
+	UserNickname       string `json:"user_nickname"`
+	UserAvatar         string `json:"user_avatar"`
+	TargetType         string `json:"target_type,omitempty"`
+	TargetID           uint   `json:"target_id,omitempty"`
+	TargetTitle        string `json:"target_title,omitempty"`
+	TargetThumbnailURL string `json:"target_thumbnail_url,omitempty"`
+	QuestionText       string `json:"question_text"`
+	ReplyText          string `json:"reply_text"`
+	Status             string `json:"status"`
+	CreatedAt          string `json:"created_at"`
+	RepliedAt          string `json:"replied_at,omitempty"`
 }
 
 type CreateQuestionReq struct {
-	TargetType   string `json:"target_type" binding:"required,oneof=material moment"`
+	TargetType   string `json:"target_type" binding:"required,oneof=material"`
 	TargetID     uint   `json:"target_id" binding:"required"`
 	QuestionText string `json:"question_text" binding:"required,min=2,max=500"`
 }
@@ -67,12 +72,6 @@ func (h *QuestionHandler) Create(c *gin.Context) {
 		return
 	}
 
-	// 更新朋友圈提问数
-	if req.TargetType == "moment" {
-		h.DB.Model(&model.Moment{}).Where("id = ?", req.TargetID).
-			UpdateColumn("question_count", gorm.Expr("question_count + 1"))
-	}
-
 	response.Success(c, gin.H{"id": q.ID})
 }
 
@@ -94,19 +93,47 @@ func (h *QuestionHandler) MyList(c *gin.Context) {
 		Offset((page - 1) * pageSize).Limit(pageSize).
 		Find(&questions)
 
+	// 批量获取关联素材信息
+	var materialIDs []uint
+	for _, q := range questions {
+		if q.TargetType == "material" {
+			materialIDs = append(materialIDs, q.TargetID)
+		}
+	}
+
+	materialMap := map[uint]model.Material{}
+	if len(materialIDs) > 0 {
+		var materials []model.Material
+		h.DB.Select("id, title, thumbnail_url").Where("id IN ?", materialIDs).Find(&materials)
+		for _, m := range materials {
+			materialMap[m.ID] = m
+		}
+	}
+
 	list := make([]QuestionItem, len(questions))
 	for i, q := range questions {
 		repliedAt := ""
 		if q.RepliedAt != nil {
 			repliedAt = q.RepliedAt.Format("2006-01-02 15:04")
 		}
+
+		var targetTitle, targetThumb string
+		if m, ok := materialMap[q.TargetID]; ok {
+			targetTitle = m.Title
+			targetThumb = fullURL(h.BaseURL, m.ThumbnailURL)
+		}
+
 		list[i] = QuestionItem{
-			ID:           q.ID,
-			QuestionText: q.QuestionText,
-			ReplyText:    q.ReplyText,
-			Status:       q.Status,
-			CreatedAt:    q.CreatedAt.Format("2006-01-02 15:04"),
-			RepliedAt:    repliedAt,
+			ID:                 q.ID,
+			TargetType:         q.TargetType,
+			TargetID:           q.TargetID,
+			TargetTitle:        targetTitle,
+			TargetThumbnailURL: targetThumb,
+			QuestionText:       q.QuestionText,
+			ReplyText:          q.ReplyText,
+			Status:             q.Status,
+			CreatedAt:          q.CreatedAt.Format("2006-01-02 15:04"),
+			RepliedAt:          repliedAt,
 		}
 	}
 
