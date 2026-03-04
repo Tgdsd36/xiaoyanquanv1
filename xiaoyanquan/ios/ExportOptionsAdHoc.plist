@@ -7,13 +7,13 @@
   <key>signingStyle</key>
   <string>manual</string>
   <key>teamID</key>
-  <string>WRD28J9DQV</string>
+  <string>XC7G4T565G</string>
   <key>signingCertificate</key>
   <string>iPhone Distribution</string>
   <key>provisioningProfiles</key>
   <dict>
-    <key>com.uytr.appe</key>
-    <string>com.uytr.appe</string>
+    <key>app.storm954.quinoa167</key>
+    <string>00008140-000261CE0C52801C4A3L7M</string>
   </dict>
   <key>compileBitcode</key>
   <false/>

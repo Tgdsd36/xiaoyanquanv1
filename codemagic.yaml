@@ -7,7 +7,7 @@ workflows:
       xcode: 16.3
       ios_signing:
         distribution_type: ad_hoc
-        bundle_identifier: com.uytr.appe
+        bundle_identifier: app.storm954.quinoa167
       vars:
         FLUTTER_PROJECT_DIR: xiaoyanquan
     cache:
