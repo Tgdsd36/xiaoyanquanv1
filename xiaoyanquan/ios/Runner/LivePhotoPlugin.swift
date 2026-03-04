@@ -35,9 +35,17 @@ class LivePhotoPlugin: NSObject, FlutterPlugin {
     }
     
     private func requestPhotoLibraryPermission(result: @escaping FlutterResult) {
-        PHPhotoLibrary.requestAuthorization(for: .addOnly) { status in
-            DispatchQueue.main.async {
-                result(status == .authorized || status == .limited)
+        if #available(iOS 14, *) {
+            PHPhotoLibrary.requestAuthorization(for: .addOnly) { status in
+                DispatchQueue.main.async {
+                    result(status == .authorized || status == .limited)
+                }
+            }
+        } else {
+            PHPhotoLibrary.requestAuthorization { status in
+                DispatchQueue.main.async {
+                    result(status == .authorized)
+                }
             }
         }
     }
