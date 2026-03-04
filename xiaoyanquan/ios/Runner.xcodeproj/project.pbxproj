@@ -7,6 +7,7 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		8F4B2A1C3D5E7F9012345678 /* LivePhotoPlugin.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8F4B2A1C3D5E7F9012345679 /* LivePhotoPlugin.swift */; };
 		1498D2341E8E89220040F4C2 /* GeneratedPluginRegistrant.m in Sources */ = {isa = PBXBuildFile; fileRef = 1498D2331E8E89220040F4C2 /* GeneratedPluginRegistrant.m */; };
 		331C808B294A63AB00263BE5 /* RunnerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 331C807B294A618700263BE5 /* RunnerTests.swift */; };
 		37FCB05AAE78A6D051041B57 /* Pods_RunnerTests.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 0B1A8F735BA6447AE1586424 /* Pods_RunnerTests.framework */; };
@@ -43,6 +44,7 @@
 
 /* Begin PBXFileReference section */
 		0B1A8F735BA6447AE1586424 /* Pods_RunnerTests.framework */ = {isa = PBXFileReference; explicitFileType = wrapper.framework; includeInIndex = 0; path = Pods_RunnerTests.framework; sourceTree = BUILT_PRODUCTS_DIR; };
+		8F4B2A1C3D5E7F9012345679 /* LivePhotoPlugin.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LivePhotoPlugin.swift; sourceTree = "<group>"; };
 		1498D2321E8E86230040F4C2 /* GeneratedPluginRegistrant.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = GeneratedPluginRegistrant.h; sourceTree = "<group>"; };
 		1498D2331E8E89220040F4C2 /* GeneratedPluginRegistrant.m */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.objc; path = GeneratedPluginRegistrant.m; sourceTree = "<group>"; };
 		331C807B294A618700263BE5 /* RunnerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RunnerTests.swift; sourceTree = "<group>"; };
@@ -146,6 +148,7 @@
 				1498D2321E8E86230040F4C2 /* GeneratedPluginRegistrant.h */,
 				1498D2331E8E89220040F4C2 /* GeneratedPluginRegistrant.m */,
 				74858FAE1ED2DC5600515810 /* AppDelegate.swift */,
+				8F4B2A1C3D5E7F9012345679 /* LivePhotoPlugin.swift */,
 				74858FAD1ED2DC5600515810 /* Runner-Bridging-Header.h */,
 			);
 			path = Runner;
@@ -378,6 +381,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				74858FAF1ED2DC5600515810 /* AppDelegate.swift in Sources */,
+				8F4B2A1C3D5E7F9012345678 /* LivePhotoPlugin.swift in Sources */,
 				1498D2341E8E89220040F4C2 /* GeneratedPluginRegistrant.m in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
