@@ -17,7 +17,7 @@ class AppTheme {
           onSurface: AppColors.textBody,
         ),
         cardColor: AppColors.cardBg,
-        cardTheme: CardTheme(
+        cardTheme: CardThemeData(
           color: AppColors.cardBg,
           elevation: 0,
           margin: EdgeInsets.zero,
@@ -28,6 +28,9 @@ class AppTheme {
         appBarTheme: const AppBarTheme(
           backgroundColor: AppColors.scaffoldBg,
           elevation: 0,
+          scrolledUnderElevation: 0,
+          surfaceTintColor: Colors.transparent,
+          shadowColor: Colors.transparent,
           centerTitle: true,
           iconTheme: IconThemeData(color: AppColors.textBody),
           titleTextStyle: TextStyle(
