@@ -1,0 +1,61 @@
+workflows:
+  ios_adhoc:
+    name: iOS AdHoc (Flutter)
+    max_build_duration: 120
+    environment:
+      flutter: stable
+      xcode: 16.3
+      ios_signing:
+        distribution_type: ad_hoc
+        bundle_identifier: com.uytr.appe
+      vars:
+        FLUTTER_PROJECT_DIR: xiaoyanquan
+    cache:
+      cache_paths:
+        - $FLUTTER_ROOT/.pub-cache
+        - /Users/builder/Library/Caches/CocoaPods
+    scripts:
+      - name: Install dependencies
+        script: |
+          cd "$FLUTTER_PROJECT_DIR"
+          flutter pub get
+      - name: Apply provisioning profiles to Xcode project
+        script: |
+          cd "$FLUTTER_PROJECT_DIR/ios"
+          xcode-project use-profiles
+      - name: Build IPA (ad-hoc)
+        script: |
+          cd "$FLUTTER_PROJECT_DIR"
+          flutter build ipa --release --export-method ad-hoc
+    artifacts:
+      - xiaoyanquan/build/ios/ipa/*.ipa
+      - xiaoyanquan/build/ios/archive/*.xcarchive
+      - /tmp/xcodebuild_logs/*.log
+
+  android_release:
+    name: Android Release (Flutter)
+    max_build_duration: 120
+    environment:
+      flutter: stable
+      vars:
+        FLUTTER_PROJECT_DIR: xiaoyanquan
+    cache:
+      cache_paths:
+        - $FLUTTER_ROOT/.pub-cache
+        - /Users/builder/.gradle/caches
+    scripts:
+      - name: Install dependencies
+        script: |
+          cd "$FLUTTER_PROJECT_DIR"
+          flutter pub get
+      - name: Build APK
+        script: |
+          cd "$FLUTTER_PROJECT_DIR"
+          flutter build apk --release
+      - name: Build AAB
+        script: |
+          cd "$FLUTTER_PROJECT_DIR"
+          flutter build appbundle --release
+    artifacts:
+      - xiaoyanquan/build/app/outputs/flutter-apk/*.apk
+      - xiaoyanquan/build/app/outputs/bundle/release/*.aab
