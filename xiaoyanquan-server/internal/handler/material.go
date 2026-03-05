@@ -2,7 +2,12 @@ package handler
 
 import (
 	"encoding/json"
+	"net/url"
+	"os"
+	"path"
+	"path/filepath"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -356,7 +361,7 @@ func (h *MaterialHandler) Download(c *gin.Context) {
 	now := time.Now()
 	if user.DownloadCountResetAt == nil || user.DownloadCountResetAt.Month() != now.Month() {
 		h.DB.Model(&user).Updates(map[string]interface{}{
-			"monthly_download_count": 0,
+			"monthly_download_count":  0,
 			"download_count_reset_at": now,
 		})
 		user.MonthlyDownloadCount = 0
@@ -396,10 +401,14 @@ func (h *MaterialHandler) Download(c *gin.Context) {
 	// 更新热度
 	go h.updateHotScore(&material)
 
-	// 解析原图 URLs
+	// 解析原图 URLs（视频下载优先返回可用的移动端 MP4）
 	var urls []string
 	if len(material.OriginalURLs) > 0 {
 		json.Unmarshal(material.OriginalURLs, &urls)
+	}
+	urls = normalizeDownloadURLs(urls)
+	if material.Type == "video" {
+		urls = prioritizeVideoURLsForMobile(urls)
 	}
 	downloadURL := ""
 	if len(urls) > 0 {
@@ -407,11 +416,149 @@ func (h *MaterialHandler) Download(c *gin.Context) {
 	}
 
 	response.Success(c, gin.H{
-		"download_url":     downloadURL,
-		"download_urls":    urls,
-		"remaining_count":  monthlyLimit - user.MonthlyDownloadCount - 1,
-		"monthly_limit":    monthlyLimit,
+		"download_url":    downloadURL,
+		"download_urls":   urls,
+		"remaining_count": monthlyLimit - user.MonthlyDownloadCount - 1,
+		"monthly_limit":   monthlyLimit,
 	})
+}
+
+func normalizeDownloadURLs(raw []string) []string {
+	out := make([]string, 0, len(raw))
+	seen := make(map[string]struct{}, len(raw))
+	for _, item := range raw {
+		u := strings.TrimSpace(item)
+		if u == "" {
+			continue
+		}
+		if _, exists := seen[u]; exists {
+			continue
+		}
+		seen[u] = struct{}{}
+		out = append(out, u)
+	}
+	return out
+}
+
+func prioritizeVideoURLsForMobile(urls []string) []string {
+	if len(urls) == 0 {
+		return urls
+	}
+
+	preferred := ""
+	for _, u := range urls {
+		if !isVideoURL(u) {
+			continue
+		}
+		if mobile := findMobileVideoVariantURL(u); mobile != "" {
+			preferred = mobile
+			break
+		}
+	}
+	if preferred == "" {
+		for _, u := range urls {
+			if isVideoURL(u) {
+				preferred = u
+				break
+			}
+		}
+	}
+	if preferred == "" {
+		return urls
+	}
+
+	out := make([]string, 0, len(urls)+1)
+	out = append(out, preferred)
+	for _, u := range urls {
+		if u == preferred {
+			continue
+		}
+		out = append(out, u)
+	}
+	return normalizeDownloadURLs(out)
+}
+
+func isVideoURL(raw string) bool {
+	ext := strings.ToLower(filepath.Ext(extractURLPath(raw)))
+	switch ext {
+	case ".mp4", ".mov", ".m4v", ".avi", ".mkv", ".webm":
+		return true
+	default:
+		return false
+	}
+}
+
+func findMobileVideoVariantURL(raw string) string {
+	cleanPath := extractURLPath(raw)
+	if cleanPath == "" {
+		return ""
+	}
+
+	ext := strings.ToLower(filepath.Ext(cleanPath))
+	if ext == ".mp4" {
+		return raw
+	}
+	if !isVideoURL(raw) {
+		return ""
+	}
+
+	dir := path.Dir(cleanPath)
+	base := strings.TrimSuffix(path.Base(cleanPath), path.Ext(cleanPath))
+	candidates := []string{
+		path.Join(dir, base+"_mobile.mp4"),
+		path.Join(dir, base+".mp4"),
+	}
+
+	for _, candidatePath := range candidates {
+		candidate := rewriteURLPath(raw, candidatePath)
+		if localStaticURLExists(candidate) {
+			return candidate
+		}
+	}
+	return ""
+}
+
+func extractURLPath(raw string) string {
+	trimmed := strings.TrimSpace(raw)
+	if trimmed == "" {
+		return ""
+	}
+	if strings.HasPrefix(trimmed, "/") {
+		return trimmed
+	}
+	parsed, err := url.Parse(trimmed)
+	if err != nil {
+		return ""
+	}
+	return parsed.Path
+}
+
+func rewriteURLPath(raw, newPath string) string {
+	trimmed := strings.TrimSpace(raw)
+	if trimmed == "" {
+		return newPath
+	}
+	if strings.HasPrefix(trimmed, "/") {
+		return newPath
+	}
+	parsed, err := url.Parse(trimmed)
+	if err != nil {
+		return newPath
+	}
+	parsed.Path = newPath
+	parsed.RawQuery = ""
+	parsed.Fragment = ""
+	return parsed.String()
+}
+
+func localStaticURLExists(raw string) bool {
+	p := extractURLPath(raw)
+	if p == "" || !strings.HasPrefix(p, "/static/") {
+		return false
+	}
+	local := filepath.Join(".", strings.TrimPrefix(p, "/"))
+	_, err := os.Stat(local)
+	return err == nil
 }
 
 // ==================== 内部方法 ====================

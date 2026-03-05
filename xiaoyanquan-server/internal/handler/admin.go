@@ -957,6 +957,12 @@ func (h *AdminHandler) AssetUpload(c *gin.Context) {
 			previewURL = generated
 		}
 	}
+	if fileType == "video" {
+		// 异步生成移动端 MP4 版本，避免后台上传阻塞。
+		go func(sourceURL string) {
+			_, _ = ensureMobileVideoVariant(sourceURL)
+		}(url)
+	}
 
 	asset := model.Asset{
 		Filename:     newFilename,
@@ -1740,6 +1746,53 @@ func ensureHEICPreview(sourceURL string) (string, error) {
 	}
 
 	return "", fmt.Errorf("generate heic preview failed")
+}
+
+// ensureMobileVideoVariant 为视频生成移动端 MP4（_mobile.mp4），用于客户端下载优先加速。
+func ensureMobileVideoVariant(sourceURL string) (string, error) {
+	sourcePath := filepath.Join(".", strings.TrimPrefix(sourceURL, "/"))
+	if _, err := os.Stat(sourcePath); err != nil {
+		return "", err
+	}
+
+	ext := strings.ToLower(filepath.Ext(sourcePath))
+	if ext == ".mp4" {
+		return sourceURL, nil
+	}
+	switch ext {
+	case ".mov", ".m4v", ".avi", ".mkv", ".webm":
+	default:
+		return "", fmt.Errorf("not supported video ext")
+	}
+
+	baseName := strings.TrimSuffix(filepath.Base(sourcePath), ext)
+	mobileFilename := baseName + "_mobile.mp4"
+	mobilePath := filepath.Join(filepath.Dir(sourcePath), mobileFilename)
+	mobileURL := path.Join(path.Dir(sourceURL), mobileFilename)
+
+	if _, err := os.Stat(mobilePath); err == nil {
+		return mobileURL, nil
+	}
+
+	if _, err := exec.LookPath("ffmpeg"); err != nil {
+		return "", err
+	}
+
+	cmd := exec.Command(
+		"ffmpeg", "-y", "-i", sourcePath,
+		"-movflags", "+faststart",
+		"-c:v", "libx264", "-preset", "veryfast", "-crf", "24",
+		"-pix_fmt", "yuv420p",
+		"-c:a", "aac", "-b:a", "128k",
+		mobilePath,
+	)
+	if err := cmd.Run(); err != nil {
+		return "", err
+	}
+	if _, err := os.Stat(mobilePath); err != nil {
+		return "", err
+	}
+	return mobileURL, nil
 }
 
 func (h *AdminHandler) ConfigUpdate(c *gin.Context) {

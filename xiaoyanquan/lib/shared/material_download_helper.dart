@@ -116,7 +116,8 @@ class MaterialDownloadHelper {
         }
         successMessage = 'Live Photo 已保存到 iPhone 相册';
       } else if (kind == _DownloadKind.video) {
-        progress.update('正在下载视频...');
+        const prefix = '正在下载视频';
+        progress.update('$prefix...');
         final videoUrl = UrlUtils.firstVideoUrl(mergedUrls);
         if (videoUrl.isEmpty) {
           if (!context.mounted) return false;
@@ -126,6 +127,9 @@ class MaterialDownloadHelper {
         saved = await _saveRemoteFileToAlbum(
           videoUrl,
           cancelToken: progress.cancelToken,
+          onReceiveProgress:
+              (received, total) =>
+                  progress.update(_buildProgressText(prefix, received, total)),
         );
         if (progress.isCanceled) {
           canceledByUser = true;
@@ -149,10 +153,15 @@ class MaterialDownloadHelper {
             canceledByUser = true;
             break;
           }
-          progress.update('正在下载$label ${i + 1}/$total...');
+          final prefix = '正在下载$label ${i + 1}/$total';
+          progress.update('$prefix...');
           final ok = await _saveRemoteFileToAlbum(
             imageUrls[i],
             cancelToken: progress.cancelToken,
+            onReceiveProgress:
+                (received, totalBytes) => progress.update(
+                  _buildProgressText(prefix, received, totalBytes),
+                ),
           );
           if (progress.isCanceled) {
             canceledByUser = true;
@@ -257,9 +266,8 @@ class MaterialDownloadHelper {
     return result ?? false;
   }
 
-  static Future<({bool granted, bool shouldOpenSettings})> _ensureMediaPermission(
-    _DownloadKind kind,
-  ) async {
+  static Future<({bool granted, bool shouldOpenSettings})>
+  _ensureMediaPermission(_DownloadKind kind) async {
     if (kIsWeb) {
       return (granted: false, shouldOpenSettings: false);
     }
@@ -401,6 +409,7 @@ class MaterialDownloadHelper {
   static Future<bool> _saveRemoteFileToAlbum(
     String url, {
     CancelToken? cancelToken,
+    void Function(int received, int total)? onReceiveProgress,
   }) async {
     final normalizedUrl = UrlUtils.absolute(url);
     if (normalizedUrl.isEmpty) return false;
@@ -408,6 +417,7 @@ class MaterialDownloadHelper {
     final tempFile = await _downloadToTempFile(
       normalizedUrl,
       cancelToken: cancelToken,
+      onReceiveProgress: onReceiveProgress,
     );
     try {
       if (_isDesktopPlatform()) {
@@ -429,15 +439,22 @@ class MaterialDownloadHelper {
   static Future<File> _downloadToTempFile(
     String url, {
     CancelToken? cancelToken,
+    void Function(int received, int total)? onReceiveProgress,
   }) async {
     final tempDir = await getTemporaryDirectory();
     final uri = Uri.parse(url);
-    final originalName = uri.pathSegments.isNotEmpty ? uri.pathSegments.last : '';
+    final originalName =
+        uri.pathSegments.isNotEmpty ? uri.pathSegments.last : '';
     final extension = _extractExtension(originalName);
     final fileName =
         'xyq_${DateTime.now().millisecondsSinceEpoch}_${_randomSuffix()}$extension';
     final file = File('${tempDir.path}/$fileName');
-    await HttpClient().dio.download(url, file.path, cancelToken: cancelToken);
+    await HttpClient().dio.download(
+      url,
+      file.path,
+      cancelToken: cancelToken,
+      onReceiveProgress: onReceiveProgress,
+    );
     return file;
   }
 
@@ -467,7 +484,10 @@ class MaterialDownloadHelper {
               elevation: 0,
               backgroundColor: Colors.transparent,
               child: Container(
-                constraints: const BoxConstraints(minHeight: 116, maxWidth: 560),
+                constraints: const BoxConstraints(
+                  minHeight: 116,
+                  maxWidth: 560,
+                ),
                 padding: const EdgeInsets.fromLTRB(24, 22, 24, 20),
                 decoration: BoxDecoration(
                   color: Colors.white.withValues(alpha: 0.95),
@@ -542,7 +562,8 @@ class MaterialDownloadHelper {
   static Future<bool> _saveToDesktopDirectory(File tempFile) async {
     try {
       final downloadsDir = await getDownloadsDirectory();
-      final targetDir = downloadsDir ?? await getApplicationDocumentsDirectory();
+      final targetDir =
+          downloadsDir ?? await getApplicationDocumentsDirectory();
       if (!await targetDir.exists()) {
         await targetDir.create(recursive: true);
       }
@@ -590,9 +611,33 @@ class MaterialDownloadHelper {
     return DateTime.now().microsecond.toString().padLeft(6, '0');
   }
 
+  static String _buildProgressText(String prefix, int received, int total) {
+    if (total > 0) {
+      final percent = (received * 100 / total).clamp(0, 100).toStringAsFixed(0);
+      return '$prefix $percent% (${_formatBytes(received)}/${_formatBytes(total)})';
+    }
+    return '$prefix (${_formatBytes(received)})';
+  }
+
+  static String _formatBytes(int bytes) {
+    if (bytes <= 0) return '0B';
+    const units = ['B', 'KB', 'MB', 'GB'];
+    var value = bytes.toDouble();
+    var index = 0;
+    while (value >= 1024 && index < units.length - 1) {
+      value /= 1024;
+      index += 1;
+    }
+    final text =
+        value >= 100 ? value.toStringAsFixed(0) : value.toStringAsFixed(1);
+    return '$text${units[index]}';
+  }
+
   static void _showSnack(BuildContext context, String message) {
     if (!context.mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message)));
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(SnackBar(content: Text(message)));
   }
 }
 
