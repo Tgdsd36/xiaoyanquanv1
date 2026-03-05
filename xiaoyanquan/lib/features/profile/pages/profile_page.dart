@@ -632,7 +632,12 @@ class _ProfilePageState extends ConsumerState<ProfilePage>
               iconColor: AppColors.memberFlagship,
               title: '会员中心',
               subtitle: memberType == 'free' ? '开通更多权益' : '管理会员',
-              onTap: () => context.push('/membership'),
+              onTap: () async {
+                await context.push('/membership');
+                if (!mounted) return;
+                ref.invalidate(profileProvider);
+                await ref.read(authProvider.notifier).refreshUserProfile();
+              },
             ),
           ),
           const SizedBox(width: 10),

@@ -21,14 +21,13 @@ import 'main_scaffold.dart';
 final _rootNavigatorKey = GlobalKey<NavigatorState>();
 
 final routerProvider = Provider<GoRouter>((ref) {
-  final authState = ref.watch(authProvider);
+  final authStatus = ref.watch(authProvider.select((state) => state.status));
 
   return GoRouter(
     navigatorKey: _rootNavigatorKey,
     initialLocation: '/',
     redirect: (context, state) {
-      final isUnauthenticated =
-          authState.status == AuthStatus.unauthenticated;
+      final isUnauthenticated = authStatus == AuthStatus.unauthenticated;
       final isLoginRoute = state.matchedLocation == '/login';
 
       if (isUnauthenticated && !isLoginRoute) return '/login';
@@ -162,4 +161,3 @@ final routerProvider = Provider<GoRouter>((ref) {
     ],
   );
 });
-

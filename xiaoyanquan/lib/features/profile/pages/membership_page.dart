@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../../../core/auth/auth_provider.dart';
 import '../../../core/constants/api.dart';
 import '../../../core/network/http_client.dart';
 import '../../../core/utils/url_utils.dart';
+import 'profile_page.dart';
 
 final membershipStatusProvider = FutureProvider<Map<String, dynamic>?>((
   ref,
@@ -36,8 +38,25 @@ class MembershipPage extends ConsumerStatefulWidget {
 }
 
 class _MembershipPageState extends ConsumerState<MembershipPage> {
+  static const String _customerServiceQrAsset =
+      'assets/images/covers/membership_service_qr.jpg';
+
   String? _selectedPlanId;
-  bool _purchasing = false;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _refreshMembershipState();
+    });
+  }
+
+  Future<void> _refreshMembershipState() async {
+    ref.invalidate(membershipStatusProvider);
+    ref.invalidate(membershipProfileProvider);
+    ref.invalidate(profileProvider);
+    await ref.read(authProvider.notifier).refreshUserProfile();
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -103,11 +122,10 @@ class _MembershipPageState extends ConsumerState<MembershipPage> {
               selectedPlan == null
                   ? null
                   : _BottomActionBar(
-                    loading: _purchasing,
+                    loading: false,
                     text:
                         '${selectedPlan.price.toStringAsFixed(2)}元${isActive ? '续费会员' : '开通会员'}',
-                    onTap:
-                        _purchasing ? null : () => _purchase(ref, selectedPlan),
+                    onTap: () => _purchase(ref, selectedPlan),
                   ),
         );
       },
@@ -234,35 +252,55 @@ class _MembershipPageState extends ConsumerState<MembershipPage> {
   }
 
   Future<void> _purchase(WidgetRef ref, _MembershipPlan plan) async {
-    if (_purchasing) return;
-    setState(() => _purchasing = true);
-    try {
-      final resp = await HttpClient().post(
-        Api.membershipPurchase,
-        data: {
-          'plan_id': plan.id,
-          'plan_type': plan.id,
-          'payment_channel': 'apple_iap',
-        },
-      );
-      if (!mounted) return;
-      final messenger = ScaffoldMessenger.of(context);
-      if (resp.isSuccess) {
-        messenger.showSnackBar(const SnackBar(content: Text('开通成功，请完成支付确认')));
-        ref.invalidate(membershipStatusProvider);
-      } else {
-        messenger.showSnackBar(SnackBar(content: Text(resp.message)));
-      }
-    } catch (_) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(const SnackBar(content: Text('操作失败，请稍后重试')));
-    } finally {
-      if (mounted) {
-        setState(() => _purchasing = false);
-      }
-    }
+    await _showCustomerServiceDialog(plan);
+  }
+
+  Future<void> _showCustomerServiceDialog(_MembershipPlan plan) async {
+    if (!mounted) return;
+
+    await showDialog<void>(
+      context: context,
+      builder: (ctx) {
+        return AlertDialog(
+          title: const Text('联系客服'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              ClipRRect(
+                borderRadius: BorderRadius.circular(12),
+                child: Image.asset(
+                  _customerServiceQrAsset,
+                  width: 220,
+                  height: 220,
+                  fit: BoxFit.cover,
+                  errorBuilder:
+                      (_, __, ___) => Container(
+                        width: 220,
+                        height: 220,
+                        alignment: Alignment.center,
+                        color: const Color(0xFFF3F4F6),
+                        child: const Text(
+                          '未找到客服二维码\n请将二维码图片放到：\nassets/images/covers/',
+                          textAlign: TextAlign.center,
+                          style: TextStyle(color: Colors.black54, fontSize: 13),
+                        ),
+                      ),
+                ),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(ctx).pop(),
+              child: const Text('我知道了'),
+            ),
+          ],
+        );
+      },
+    );
+
+    if (!mounted) return;
+    await _refreshMembershipState();
   }
 }
 

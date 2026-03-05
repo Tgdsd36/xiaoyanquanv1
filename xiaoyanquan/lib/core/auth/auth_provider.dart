@@ -1,4 +1,7 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:dio/dio.dart';
+import '../constants/api.dart';
+import '../network/http_client.dart';
 import '../storage/token_storage.dart';
 import '../../features/auth/models/user_model.dart';
 import '../../features/auth/repositories/auth_repository.dart';
@@ -44,6 +47,8 @@ class AuthState {
 class AuthNotifier extends StateNotifier<AuthState> {
   final TokenStorage _storage = TokenStorage();
   final AuthRepository _repo = AuthRepository();
+  final HttpClient _http = HttpClient();
+  static const int _errCodeDeviceBoundOther = 10007;
 
   AuthNotifier() : super(AuthState.initial());
 
@@ -64,7 +69,7 @@ class AuthNotifier extends StateNotifier<AuthState> {
       return null; // 成功
     } catch (e) {
       state = state.copyWith(isLoading: false);
-      return '网络错误，请检查网络连接';
+      return _mapAuthError(e);
     }
   }
 
@@ -81,7 +86,7 @@ class AuthNotifier extends StateNotifier<AuthState> {
       return resp.message;
     } catch (e) {
       state = state.copyWith(isLoading: false);
-      return '网络错误，请检查网络连接';
+      return _mapAuthError(e);
     }
   }
 
@@ -98,7 +103,7 @@ class AuthNotifier extends StateNotifier<AuthState> {
       return resp.message;
     } catch (e) {
       state = state.copyWith(isLoading: false);
-      return '网络错误，请检查网络连接';
+      return _mapAuthError(e);
     }
   }
 
@@ -125,8 +130,58 @@ class AuthNotifier extends StateNotifier<AuthState> {
       return resp.message;
     } catch (e) {
       state = state.copyWith(isLoading: false);
-      return '网络错误，请检查网络连接';
+      return _mapAuthError(e);
     }
+  }
+
+  String _mapAuthError(Object error) {
+    if (error is DioException) {
+      final data = error.response?.data;
+      if (data is Map) {
+        final code = data['code'];
+        final message = (data['message'] ?? '').toString().trim();
+        if (code == _errCodeDeviceBoundOther || _isDeviceBoundMessage(message)) {
+          return '该账号设备未解除，请先在旧设备解绑后再登录';
+        }
+        if (message.isNotEmpty) {
+          return message;
+        }
+      }
+      if (data is String) {
+        final message = data.trim();
+        if (message.isNotEmpty && !message.startsWith('<')) {
+          if (_isDeviceBoundMessage(message)) {
+            return '该账号设备未解除，请先在旧设备解绑后再登录';
+          }
+          return message;
+        }
+      }
+
+      if (error.type == DioExceptionType.connectionTimeout ||
+          error.type == DioExceptionType.connectionError ||
+          error.type == DioExceptionType.sendTimeout ||
+          error.type == DioExceptionType.receiveTimeout) {
+        return '网络错误，请检查网络连接';
+      }
+
+      if (_isDeviceBoundMessage(error.message ?? '')) {
+        return '该账号设备未解除，请先在旧设备解绑后再登录';
+      }
+
+      if (error.message != null && error.message!.trim().isNotEmpty) {
+        return error.message!.trim();
+      }
+    }
+
+    return '网络错误，请检查网络连接';
+  }
+
+  bool _isDeviceBoundMessage(String message) {
+    if (message.isEmpty) return false;
+    return message.contains('绑定其他设备') ||
+        message.contains('原设备解绑') ||
+        message.contains('账号已绑定设备') ||
+        message.contains('设备未解除');
   }
 
   /// 游客模式
@@ -138,6 +193,47 @@ class AuthNotifier extends StateNotifier<AuthState> {
   Future<void> logout() async {
     await _storage.clear();
     state = const AuthState(status: AuthStatus.unauthenticated);
+  }
+
+  /// 拉取最新个人信息，同步会员状态（会员类型/到期时间）
+  Future<void> refreshUserProfile() async {
+    if (state.status != AuthStatus.authenticated) return;
+    try {
+      final resp = await _http.get(Api.userProfile);
+      if (!resp.isSuccess || resp.data is! Map) return;
+      final profile = Map<String, dynamic>.from(resp.data as Map);
+      final current = state.user;
+
+      final updated = UserModel(
+        id: _toInt(profile['id']) ?? current?.id ?? 0,
+        phone: (profile['phone'] ?? current?.phone ?? '').toString(),
+        nickname: (profile['nickname'] ?? current?.nickname ?? '').toString(),
+        avatarUrl:
+            (profile['avatar_url'] ?? current?.avatarUrl ?? '').toString(),
+        memberType:
+            (profile['member_type'] ?? current?.memberType ?? 'free')
+                .toString(),
+        memberExpireAt:
+            _parseDate(profile['member_expire_at']) ?? current?.memberExpireAt,
+        isNewUser: current?.isNewUser ?? false,
+      );
+
+      state = state.copyWith(user: updated, error: null);
+    } catch (_) {
+      // 静默失败，避免影响当前页面体验
+    }
+  }
+
+  int? _toInt(dynamic value) {
+    if (value is int) return value;
+    if (value is num) return value.toInt();
+    return int.tryParse(value?.toString() ?? '');
+  }
+
+  DateTime? _parseDate(dynamic raw) {
+    final text = raw?.toString().trim() ?? '';
+    if (text.isEmpty) return null;
+    return DateTime.tryParse(text);
   }
 
   bool get isGuest => state.status == AuthStatus.guest;

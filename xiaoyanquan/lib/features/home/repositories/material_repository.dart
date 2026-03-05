@@ -129,13 +129,31 @@ class MaterialRepository {
     } on DioException catch (e) {
       // 403 等业务错误，提取后端返回的 message
       final data = e.response?.data;
-      if (data is Map<String, dynamic>) {
-        final msg = data['message'] as String? ?? '';
+      if (data is Map) {
+        final msg = (data['message'] ?? '').toString().trim();
         if (msg.isNotEmpty) {
           return (isFavorited: false, favoriteCount: 0, error: msg);
         }
       }
-      return (isFavorited: false, favoriteCount: 0, error: '网络错误，请重试');
+      if (data is String) {
+        final msg = data.trim();
+        if (msg.isNotEmpty && !msg.startsWith('<')) {
+          return (isFavorited: false, favoriteCount: 0, error: msg);
+        }
+      }
+
+      if (e.type == DioExceptionType.connectionTimeout ||
+          e.type == DioExceptionType.connectionError ||
+          e.type == DioExceptionType.sendTimeout ||
+          e.type == DioExceptionType.receiveTimeout) {
+        return (isFavorited: false, favoriteCount: 0, error: '网络错误，请重试');
+      }
+
+      final msg = (e.message ?? '').trim();
+      if (msg.isNotEmpty) {
+        return (isFavorited: false, favoriteCount: 0, error: msg);
+      }
+      return (isFavorited: false, favoriteCount: 0, error: '操作失败，请重试');
     } catch (_) {
       return (isFavorited: false, favoriteCount: 0, error: '操作失败，请重试');
     }
