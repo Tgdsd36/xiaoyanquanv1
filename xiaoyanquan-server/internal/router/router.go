@@ -194,6 +194,7 @@ func Setup(cfg *config.Config, db *gorm.DB, rdb *redis.Client) *gin.Engine {
 			adminAuth.POST("/users/batch-delete", adminHandler.UserBatchDelete)
 			adminAuth.POST("/users/batch-status", adminHandler.UserBatchStatus)
 			adminAuth.PUT("/users/:id/status", adminHandler.UserToggleStatus)
+			adminAuth.PUT("/users/:id/membership", adminHandler.UserSetMembership)
 			adminAuth.POST("/users/:id/device/unbind", adminHandler.UserDeviceUnbind)
 
 			// 素材库(文件管理)

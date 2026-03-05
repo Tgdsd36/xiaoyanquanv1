@@ -697,6 +697,66 @@ func (h *AdminHandler) UserToggleStatus(c *gin.Context) {
 	response.Success(c, gin.H{"id": user.ID, "status": req.Status})
 }
 
+func (h *AdminHandler) UserSetMembership(c *gin.Context) {
+	id, _ := strconv.Atoi(c.Param("id"))
+	if id <= 0 {
+		response.BadRequest(c, 400, "用户ID无效")
+		return
+	}
+
+	var user model.User
+	if err := h.DB.First(&user, id).Error; err != nil {
+		response.NotFound(c, "用户不存在")
+		return
+	}
+
+	var req struct {
+		MemberType string `json:"member_type" binding:"required,oneof=free pro"`
+		ExpireDays int    `json:"expire_days"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.BadRequest(c, 400, "参数错误")
+		return
+	}
+
+	updates := map[string]interface{}{
+		"member_type": req.MemberType,
+	}
+
+	expireAtText := ""
+	if req.MemberType == "free" {
+		updates["member_expire_at"] = nil
+	} else {
+		days := req.ExpireDays
+		if days <= 0 {
+			days = 30
+		}
+		if days > 3650 {
+			response.BadRequest(c, 400, "会员天数不能超过3650天")
+			return
+		}
+
+		base := time.Now()
+		if user.MemberExpireAt != nil && user.MemberExpireAt.After(base) {
+			base = *user.MemberExpireAt
+		}
+		expireAt := base.AddDate(0, 0, days)
+		updates["member_expire_at"] = expireAt
+		expireAtText = expireAt.Format("2006-01-02 15:04:05")
+	}
+
+	if err := h.DB.Model(&user).Updates(updates).Error; err != nil {
+		response.ServerError(c, "设置会员失败")
+		return
+	}
+
+	response.Success(c, gin.H{
+		"id":               user.ID,
+		"member_type":      req.MemberType,
+		"member_expire_at": expireAtText,
+	})
+}
+
 func (h *AdminHandler) UserDeviceUnbind(c *gin.Context) {
 	id, _ := strconv.Atoi(c.Param("id"))
 	if id <= 0 {
@@ -724,7 +784,11 @@ func (h *AdminHandler) UserList(c *gin.Context) {
 		query = query.Where("phone LIKE ? OR nickname LIKE ?", "%"+keyword+"%", "%"+keyword+"%")
 	}
 	if memberType != "" {
-		query = query.Where("member_type = ?", memberType)
+		if memberType == "pro" {
+			query = query.Where("member_type IN ?", []string{"pro", "flagship"})
+		} else {
+			query = query.Where("member_type = ?", memberType)
+		}
 	}
 	if deviceBound == "1" {
 		query = query.Where("EXISTS (SELECT 1 FROM user_device_bindings udb WHERE udb.user_id = users.id)")
@@ -1389,8 +1453,8 @@ func (h *AdminHandler) AssetFolderBatchUpdate(c *gin.Context) {
 	}
 
 	response.Success(c, gin.H{
-		"folder":         folder,
-		"asset_count":    len(assetIDs),
+		"folder":          folder,
+		"asset_count":     len(assetIDs),
 		"live_pack_count": len(livePackIDs),
 	})
 }

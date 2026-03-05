@@ -1,5 +1,5 @@
 import { useEffect, useState, useCallback } from 'react';
-import { Table, Input, Select, Space, Tag, Button, Modal, Form, Switch, Popconfirm, Tooltip, message } from 'antd';
+import { Table, Input, Select, Space, Tag, Button, Modal, Form, Switch, Popconfirm, Tooltip, InputNumber, message } from 'antd';
 import { SearchOutlined, PlusOutlined } from '@ant-design/icons';
 import http from '../api/http';
 import { formatDateTime } from '../utils/time';
@@ -7,7 +7,7 @@ import { formatDateTime } from '../utils/time';
 const memberLabels: Record<string, { text: string; color: string }> = {
   free: { text: '普通', color: 'default' },
   pro: { text: '标准版', color: 'blue' },
-  flagship: { text: '专业版', color: 'gold' },
+  flagship: { text: '标准版', color: 'blue' },
 };
 
 export default function UserPage() {
@@ -19,8 +19,11 @@ export default function UserPage() {
   const [memberType, setMemberType] = useState('');
   const [deviceBound, setDeviceBound] = useState('');
   const [modalOpen, setModalOpen] = useState(false);
+  const [membershipModalOpen, setMembershipModalOpen] = useState(false);
   const [selectedRowKeys, setSelectedRowKeys] = useState<React.Key[]>([]);
+  const [editingUser, setEditingUser] = useState<any | null>(null);
   const [form] = Form.useForm();
+  const [membershipForm] = Form.useForm();
 
   const fetchData = useCallback(async () => {
     setLoading(true);
@@ -88,6 +91,34 @@ export default function UserPage() {
     await http.post(`/users/${id}/device/unbind`);
     message.success('设备解绑成功');
     fetchData();
+  };
+
+  const openMembershipModal = (row: any) => {
+    setEditingUser(row);
+    membershipForm.setFieldsValue({
+      member_type: row.member_type === 'free' ? 'free' : 'pro',
+      expire_days: 30,
+    });
+    setMembershipModalOpen(true);
+  };
+
+  const handleSetMembership = async () => {
+    if (!editingUser) return;
+    const values = await membershipForm.validateFields();
+    const payload: any = { member_type: values.member_type };
+    if (values.member_type === 'pro') {
+      payload.expire_days = Number(values.expire_days) || 30;
+    }
+    const { data: resp } = await http.put(`/users/${editingUser.id}/membership`, payload);
+    if (resp.code === 0) {
+      message.success('会员设置成功');
+      setMembershipModalOpen(false);
+      setEditingUser(null);
+      membershipForm.resetFields();
+      fetchData();
+    } else {
+      message.error(resp.message || '会员设置失败');
+    }
   };
 
   const shortDeviceId = (id?: string) => {
@@ -171,7 +202,7 @@ export default function UserPage() {
       render: (v: string) => formatDateTime(v),
     },
     {
-      title: '操作', width: 260,
+      title: '操作', width: 340,
       render: (_: any, row: any) => (
         <Space>
           <Switch
@@ -180,6 +211,7 @@ export default function UserPage() {
             unCheckedChildren="禁用"
             onChange={() => handleToggleStatus(row.id, row.status || 'active')}
           />
+          <Button size="small" onClick={() => openMembershipModal(row)}>设置会员</Button>
           <Popconfirm
             title="确认解绑该用户设备？"
             onConfirm={() => handleAdminUnbindDevice(row.id)}
@@ -200,7 +232,7 @@ export default function UserPage() {
       <Space style={{ marginBottom: 16 }} wrap>
         <Input placeholder="搜索手机/昵称" prefix={<SearchOutlined />} value={keyword} onChange={(e) => { setKeyword(e.target.value); setPage(1); }} allowClear />
         <Select placeholder="会员类型" style={{ width: 120 }} value={memberType || undefined} onChange={(v) => { setMemberType(v || ''); setPage(1); }} allowClear
-          options={[{ value: 'free', label: '普通' }, { value: 'pro', label: '标准版' }, { value: 'flagship', label: '专业版' }]}
+          options={[{ value: 'free', label: '普通' }, { value: 'pro', label: '标准版' }]}
         />
         <Select
           placeholder="设备绑定"
@@ -248,6 +280,42 @@ export default function UserPage() {
           </Form.Item>
           <Form.Item name="password" label="密码" rules={[{ required: true, message: '请输入密码' }]}>
             <Input.Password placeholder="请输入密码" />
+          </Form.Item>
+        </Form>
+      </Modal>
+
+      <Modal
+        title="设置会员"
+        open={membershipModalOpen}
+        onOk={handleSetMembership}
+        onCancel={() => {
+          setMembershipModalOpen(false);
+          setEditingUser(null);
+          membershipForm.resetFields();
+        }}
+      >
+        <Form form={membershipForm} layout="vertical">
+          <Form.Item name="member_type" label="会员类型" rules={[{ required: true, message: '请选择会员类型' }]}>
+            <Select
+              options={[
+                { value: 'free', label: '普通用户' },
+                { value: 'pro', label: '标准版会员' },
+              ]}
+            />
+          </Form.Item>
+          <Form.Item noStyle shouldUpdate={(prev, cur) => prev.member_type !== cur.member_type}>
+            {({ getFieldValue }) =>
+              getFieldValue('member_type') === 'pro' ? (
+                <Form.Item
+                  name="expire_days"
+                  label="有效天数"
+                  initialValue={30}
+                  rules={[{ required: true, message: '请输入有效天数' }]}
+                >
+                  <InputNumber min={1} max={3650} style={{ width: '100%' }} placeholder="默认30天" />
+                </Form.Item>
+              ) : null
+            }
           </Form.Item>
         </Form>
       </Modal>
