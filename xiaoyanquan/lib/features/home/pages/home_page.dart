@@ -8,6 +8,7 @@ import '../../../app/styles.dart';
 import '../../../shared/network_video_thumbnail.dart';
 import '../models/material_model.dart';
 import '../providers/home_provider.dart';
+import '../providers/favorite_provider.dart';
 import '../widgets/category_sheet.dart';
 
 class HomePage extends ConsumerStatefulWidget {
@@ -499,14 +500,17 @@ class _SortPill extends StatelessWidget {
 
 // ==================== 素材卡片 ====================
 
-class _MaterialCard extends StatelessWidget {
+class _MaterialCard extends ConsumerWidget {
   final MaterialListItem item;
   final VoidCallback onTap;
 
   const _MaterialCard({required this.item, required this.onTap});
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
+    final favState = ref.watch(materialFavoriteProvider(item.id));
+    final favoriteCount = favState?.favoriteCount ?? item.favoriteCount;
+    final isFavorited = favState?.isFavorited ?? item.isFavorited;
     final coverUrl = item.safeThumbnailUrl;
     final videoCoverUrl = item.bestVideoUrl;
     return GestureDetector(
@@ -665,14 +669,17 @@ class _MaterialCard extends StatelessWidget {
                     const SizedBox(height: 4),
                     Row(
                       children: [
-                        const Icon(
+                        Icon(
                           Icons.star_rounded,
                           size: 12,
-                          color: AppColors.favoriteActive,
+                          color:
+                              isFavorited
+                                  ? AppColors.favoriteActive
+                                  : AppColors.textDisabled,
                         ),
                         const SizedBox(width: 3),
                         Text(
-                          _formatCount(item.favoriteCount),
+                          _formatCount(favoriteCount),
                           style: const TextStyle(
                             fontSize: 10,
                             color: AppColors.textHint,

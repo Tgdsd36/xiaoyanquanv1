@@ -42,13 +42,15 @@ class MomentItem {
   });
 
   factory MomentItem.fromJson(Map<String, dynamic> json) {
+    final rawType = (json['media_type'] ?? '').toString();
+    final normalizedType = rawType == 'live' ? 'live_photo' : rawType;
     return MomentItem(
       id: json['id'] ?? 0,
       nickname: json['nickname'] ?? '',
       avatarUrl: json['avatar_url'] ?? '',
       gender: json['gender'] ?? '',
       contentText: json['content_text'] ?? '',
-      mediaType: json['media_type'] ?? '',
+      mediaType: normalizedType,
       mediaUrls:
           (json['media_urls'] as List?)?.map((e) => e.toString()).toList() ??
           [],
@@ -65,7 +67,7 @@ class MomentsState {
   final bool isLoading;
   final bool hasMore;
   final int page;
-  final String mediaType; // '' = 综合, 'video', 'image', 'live'
+  final String mediaType; // '' = 综合, 'video', 'image', 'live_photo'
   final String gender; // '' = 不限, 'male', 'female'
 
   const MomentsState({
@@ -102,7 +104,11 @@ class MomentsNotifier extends StateNotifier<MomentsState> {
 
   Map<String, dynamic> get _filterParams {
     final params = <String, dynamic>{};
-    if (state.mediaType.isNotEmpty) params['type'] = state.mediaType;
+    if (state.mediaType.isNotEmpty) {
+      // 兼容历史值 live，统一转成后端素材类型 live_photo
+      params['type'] =
+          state.mediaType == 'live' ? 'live_photo' : state.mediaType;
+    }
     if (state.gender.isNotEmpty) params['gender'] = state.gender;
     return params;
   }
@@ -325,7 +331,9 @@ class _MomentsPageState extends ConsumerState<MomentsPage> {
     return true;
   }
 
-  Future<void> _showGalleryPermissionSettingsDialog(BuildContext context) async {
+  Future<void> _showGalleryPermissionSettingsDialog(
+    BuildContext context,
+  ) async {
     await showDialog<void>(
       context: context,
       builder: (ctx) {
@@ -626,7 +634,7 @@ class _FilterBarDelegate extends SliverPersistentHeaderDelegate {
     ('', '综合'),
     ('video', '视频'),
     ('image', '图片'),
-    ('live', 'Live'),
+    ('live_photo', 'Live'),
   ];
 
   @override
@@ -841,16 +849,14 @@ class _MomentCardState extends ConsumerState<_MomentCard> {
       materialId: moment.id,
       materialType: mediaType,
       fallbackUrls: moment.mediaUrls,
-      fallbackVideoUrl:
-          moment.mediaUrls.firstWhere(
-            (url) => UrlUtils.isVideoUrl(url),
-            orElse: () => '',
-          ),
-      fallbackLiveVideoUrl:
-          moment.mediaUrls.firstWhere(
-            (url) => UrlUtils.isVideoUrl(url),
-            orElse: () => '',
-          ),
+      fallbackVideoUrl: moment.mediaUrls.firstWhere(
+        (url) => UrlUtils.isVideoUrl(url),
+        orElse: () => '',
+      ),
+      fallbackLiveVideoUrl: moment.mediaUrls.firstWhere(
+        (url) => UrlUtils.isVideoUrl(url),
+        orElse: () => '',
+      ),
     );
   }
 

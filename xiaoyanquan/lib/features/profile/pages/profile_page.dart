@@ -13,6 +13,7 @@ import '../../../core/network/http_client.dart';
 import '../../../core/utils/url_utils.dart';
 import '../../home/models/favorite_group_model.dart';
 import '../../home/repositories/favorite_repository.dart';
+import '../providers/profile_refresh_provider.dart';
 import '../widgets/profile_tab_widgets.dart';
 
 // ==================== Provider ====================
@@ -276,7 +277,9 @@ class _ProfilePageState extends ConsumerState<ProfilePage>
     return true;
   }
 
-  Future<void> _showGalleryPermissionSettingsDialog(BuildContext context) async {
+  Future<void> _showGalleryPermissionSettingsDialog(
+    BuildContext context,
+  ) async {
     await showDialog<void>(
       context: context,
       builder: (ctx) {
@@ -303,6 +306,17 @@ class _ProfilePageState extends ConsumerState<ProfilePage>
 
   @override
   Widget build(BuildContext context) {
+    ref.listen<int>(profileQuestionRefreshProvider, (prev, next) {
+      if (prev == next) return;
+      _loadQuestions();
+      ref.invalidate(profileProvider);
+    });
+    ref.listen<int>(profileDownloadRefreshProvider, (prev, next) {
+      if (prev == next) return;
+      _loadDownloads();
+      ref.invalidate(profileProvider);
+    });
+
     final authState = ref.watch(authProvider);
 
     if (authState.status == AuthStatus.unauthenticated ||

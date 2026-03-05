@@ -4,6 +4,7 @@ import 'dart:io';
 import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter/services.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 import 'package:image_gallery_saver/image_gallery_saver.dart';
@@ -13,6 +14,7 @@ import 'package:permission_handler/permission_handler.dart';
 import '../core/network/http_client.dart';
 import '../core/utils/url_utils.dart';
 import '../features/home/repositories/material_repository.dart';
+import '../features/profile/providers/profile_refresh_provider.dart';
 import 'live_photo_view.dart';
 
 enum _DownloadKind { image, video, livePhoto }
@@ -74,6 +76,8 @@ class MaterialDownloadHelper {
         _showSnack(context, downloadData.message);
         return false;
       }
+      if (!context.mounted) return false;
+      _notifyProfileDownloadRefresh(context);
 
       final responseUrls = _parseDownloadUrls(downloadData.data);
       final mergedUrls = _normalizeDistinctUrls([
@@ -609,6 +613,15 @@ class MaterialDownloadHelper {
 
   static String _randomSuffix() {
     return DateTime.now().microsecond.toString().padLeft(6, '0');
+  }
+
+  static void _notifyProfileDownloadRefresh(BuildContext context) {
+    try {
+      final container = ProviderScope.containerOf(context, listen: false);
+      container.read(profileDownloadRefreshProvider.notifier).state++;
+    } catch (_) {
+      // ignore: non-riverpod context or unavailable scope
+    }
   }
 
   static String _buildProgressText(String prefix, int received, int total) {

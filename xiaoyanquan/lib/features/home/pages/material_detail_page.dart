@@ -12,6 +12,7 @@ import '../../../shared/network_video_thumbnail.dart';
 import '../../../shared/favorite_group_sheet.dart';
 import '../../../shared/material_download_helper.dart';
 import '../../../shared/share_helper.dart';
+import '../../profile/providers/profile_refresh_provider.dart';
 import '../models/material_model.dart';
 import '../providers/favorite_provider.dart';
 import '../repositories/material_repository.dart';
@@ -213,6 +214,9 @@ class _DetailContentState extends ConsumerState<_DetailContent> {
                             const SnackBar(content: Text('提问成功，等待回复')),
                           );
                           _loadQuestions();
+                          ref
+                              .read(profileQuestionRefreshProvider.notifier)
+                              .state++;
                         } else {
                           messenger.showSnackBar(
                             SnackBar(
