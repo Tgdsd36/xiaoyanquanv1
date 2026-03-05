@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import '../../../core/constants/api.dart';
 import '../../../core/network/http_client.dart';
 import '../models/favorite_group_model.dart';
@@ -9,21 +11,28 @@ class FavoriteRepository {
   Future<List<FavoriteGroup>> getGroups() async {
     final resp = await _http.get(Api.favoriteGroups);
     if (resp.isSuccess && resp.data is List) {
-      return (resp.data as List)
-          .map((e) => FavoriteGroup.fromJson(e))
-          .toList();
+      return (resp.data as List).map((e) => FavoriteGroup.fromJson(e)).toList();
     }
     return [];
   }
 
   /// 创建分组，返回新分组（null 表示失败）
-  Future<({FavoriteGroup? group, String? error})> createGroup(String name) async {
+  Future<({FavoriteGroup? group, String? error})> createGroup(
+    String name,
+  ) async {
     try {
-      final resp = await _http.post(Api.favoriteGroups, data: {'name': name});
+      final resp = await _http
+          .post(Api.favoriteGroups, data: {'name': name})
+          .timeout(const Duration(seconds: 20));
       if (resp.isSuccess && resp.data != null) {
         return (group: FavoriteGroup.fromJson(resp.data), error: null);
       }
-      return (group: null, error: resp.message.isNotEmpty ? resp.message : '创建失败');
+      return (
+        group: null,
+        error: resp.message.isNotEmpty ? resp.message : '创建失败',
+      );
+    } on TimeoutException {
+      return (group: null, error: '网络超时，请重试');
     } catch (_) {
       return (group: null, error: '创建失败');
     }
@@ -32,7 +41,10 @@ class FavoriteRepository {
   /// 修改分组名称
   Future<String?> updateGroup(int id, String name) async {
     try {
-      final resp = await _http.put(Api.favoriteGroupDetail(id), data: {'name': name});
+      final resp = await _http.put(
+        Api.favoriteGroupDetail(id),
+        data: {'name': name},
+      );
       if (resp.isSuccess) return null;
       return resp.message.isNotEmpty ? resp.message : '修改失败';
     } catch (_) {

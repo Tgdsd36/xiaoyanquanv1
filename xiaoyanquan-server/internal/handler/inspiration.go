@@ -29,7 +29,9 @@ func (h *InspirationHandler) Feed(c *gin.Context) {
 	// 类型筛选
 	materialType := c.Query("type")
 
-	query := h.DB.Model(&model.Material{}).Where("status = ?", "published")
+	query := h.DB.Model(&model.Material{}).
+		Where("status = ?", "published").
+		Where("show_inspiration = ?", true)
 
 	if materialType != "" {
 		query = query.Where("type = ?", materialType)

@@ -21,6 +21,7 @@ import (
 )
 
 func main() {
+	config.LoadEnvFiles()
 	cfg := config.Load()
 
 	// 数据库连接
@@ -143,6 +144,7 @@ func initRedis(cfg *config.Config) *redis.Client {
 func autoMigrate(db *gorm.DB) error {
 	return db.AutoMigrate(
 		&model.User{},
+		&model.UserDeviceBinding{},
 		&model.Material{},
 		&model.Category{},
 		&model.FavoriteGroup{},
@@ -154,6 +156,8 @@ func autoMigrate(db *gorm.DB) error {
 		&model.SystemConfig{},
 		&model.Admin{},
 		&model.Asset{},
+		&model.LiveAssetPack{},
+		&model.AssetFolder{},
 	)
 }
 
@@ -212,10 +216,10 @@ func seedData(db *gorm.DB) {
 
 	// 初始化系统配置
 	configs := []model.SystemConfig{
-		{Key: "pro_monthly_download_limit", Value: "5000", Description: "专业版每月下载次数"},
-		{Key: "flagship_monthly_download_limit", Value: "10000", Description: "旗舰版每月下载次数"},
-		{Key: "pro_monthly_price", Value: "299", Description: "专业版月费(元)"},
-		{Key: "flagship_monthly_price", Value: "499", Description: "旗舰版月费(元)"},
+		{Key: "pro_monthly_download_limit", Value: "5000", Description: "标准版每月下载次数"},
+		{Key: "flagship_monthly_download_limit", Value: "10000", Description: "专业版每月下载次数"},
+		{Key: "pro_monthly_price", Value: "299", Description: "标准版月费(元)"},
+		{Key: "flagship_monthly_price", Value: "499", Description: "专业版月费(元)"},
 		{Key: "sms_daily_limit", Value: "5", Description: "每日单号码短信上限"},
 		{Key: "sms_code_ttl_minutes", Value: "5", Description: "验证码有效期(分钟)"},
 	}

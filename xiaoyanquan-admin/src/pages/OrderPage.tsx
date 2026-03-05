@@ -1,6 +1,7 @@
 import { useEffect, useState, useCallback } from 'react';
 import { Table, Select, Space, Tag } from 'antd';
 import http from '../api/http';
+import { formatDateTime } from '../utils/time';
 
 const statusLabels: Record<string, { text: string; color: string }> = {
   pending: { text: '待支付', color: 'default' },
@@ -10,8 +11,8 @@ const statusLabels: Record<string, { text: string; color: string }> = {
 };
 
 const planLabels: Record<string, string> = {
-  pro_monthly: '专业版月卡',
-  flagship_monthly: '旗舰版月卡',
+  pro_monthly: '标准版月卡',
+  flagship_monthly: '专业版月卡',
 };
 
 export default function OrderPage() {
@@ -46,7 +47,7 @@ export default function OrderPage() {
       title: '状态', dataIndex: 'status', width: 90,
       render: (s: string) => { const m = statusLabels[s] || statusLabels.pending; return <Tag color={m.color}>{m.text}</Tag>; },
     },
-    { title: '创建时间', dataIndex: 'created_at', width: 170 },
+    { title: '创建时间', dataIndex: 'created_at', width: 170, render: (v: string) => formatDateTime(v) },
   ];
 
   return (

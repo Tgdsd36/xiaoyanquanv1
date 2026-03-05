@@ -1,10 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter/foundation.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:video_player/video_player.dart';
+import '../../../core/utils/url_utils.dart';
 import '../../../shared/live_photo_view.dart';
+import '../../../shared/material_download_helper.dart';
 import '../models/material_model.dart';
 import '../../../shared/favorite_group_sheet.dart';
 import '../providers/favorite_provider.dart';
@@ -52,7 +55,8 @@ class MaterialPreviewPage extends ConsumerStatefulWidget {
   });
 
   @override
-  ConsumerState<MaterialPreviewPage> createState() => _MaterialPreviewPageState();
+  ConsumerState<MaterialPreviewPage> createState() =>
+      _MaterialPreviewPageState();
 }
 
 class _MaterialPreviewPageState extends ConsumerState<MaterialPreviewPage> {
@@ -64,6 +68,7 @@ class _MaterialPreviewPageState extends ConsumerState<MaterialPreviewPage> {
   VideoPlayerController? _videoController;
   bool _videoInitialized = false;
   bool _videoFailed = false;
+  bool _liveEffectEnabled = false;
 
   late final PageController _pageController;
   int _currentIndex = 0;
@@ -77,11 +82,13 @@ class _MaterialPreviewPageState extends ConsumerState<MaterialPreviewPage> {
     _pageController = PageController(initialPage: _currentIndex);
 
     // 沉浸式状态栏
-    SystemChrome.setSystemUIOverlayStyle(const SystemUiOverlayStyle(
-      statusBarColor: Colors.transparent,
-      statusBarBrightness: Brightness.dark,
-      statusBarIconBrightness: Brightness.light,
-    ));
+    SystemChrome.setSystemUIOverlayStyle(
+      const SystemUiOverlayStyle(
+        statusBarColor: Colors.transparent,
+        statusBarBrightness: Brightness.dark,
+        statusBarIconBrightness: Brightness.light,
+      ),
+    );
 
     _loadDetail();
     _ensureVideoController();
@@ -105,10 +112,12 @@ class _MaterialPreviewPageState extends ConsumerState<MaterialPreviewPage> {
         _loadingDetail = false;
       });
       if (detail != null) {
-        ref.read(materialFavoriteProvider(widget.materialId).notifier).init(
-          isFavorited: detail.isFavorited,
-          favoriteCount: detail.favoriteCount,
-        );
+        ref
+            .read(materialFavoriteProvider(widget.materialId).notifier)
+            .init(
+              isFavorited: detail.isFavorited,
+              favoriteCount: detail.favoriteCount,
+            );
       }
       _ensureVideoController();
     } catch (_) {
@@ -122,6 +131,13 @@ class _MaterialPreviewPageState extends ConsumerState<MaterialPreviewPage> {
   bool get _isLivePhoto =>
       _detail?.isLivePhoto ?? widget.initialItem?.isLivePhoto ?? false;
 
+  bool get _hasLiveVideo => (_detail?.previewMovUrl ?? '').isNotEmpty;
+
+  bool get _supportsLiveMotionDevice =>
+      !kIsWeb &&
+      (defaultTargetPlatform == TargetPlatform.iOS ||
+          defaultTargetPlatform == TargetPlatform.macOS);
+
   String get _title =>
       widget.titleOverride ?? _detail?.title ?? widget.initialItem?.title ?? '';
 
@@ -129,13 +145,17 @@ class _MaterialPreviewPageState extends ConsumerState<MaterialPreviewPage> {
     // 优先用 detail 的 original_urls（接口已返回 full URL）
     final fromDetail = _detail?.originalUrls ?? const <String>[];
     if (fromDetail.isNotEmpty) {
-      return fromDetail.where((e) => e.isNotEmpty).toList();
+      return fromDetail
+          .where((e) => e.isNotEmpty && !UrlUtils.isVideoUrl(e))
+          .toList();
     }
 
     // 其次用路由参数传进来的原图列表（从详情九宫格进入）
     final fromWidget = widget.imageUrls ?? const <String>[];
     if (fromWidget.isNotEmpty) {
-      return fromWidget.where((e) => e.isNotEmpty).toList();
+      return fromWidget
+          .where((e) => e.isNotEmpty && !UrlUtils.isVideoUrl(e))
+          .toList();
     }
 
     // 最后兜底用封面/水印图（用于列表进入时的快速占位）
@@ -147,19 +167,12 @@ class _MaterialPreviewPageState extends ConsumerState<MaterialPreviewPage> {
   String get _fallbackImageUrl {
     final d = _detail;
     if (d != null) {
-      if (!d.isVideo) {
-        if (d.originalUrls.isNotEmpty && d.originalUrls.first.isNotEmpty) {
-          return d.originalUrls.first;
-        }
-        if (d.watermarkUrl.isNotEmpty) return d.watermarkUrl;
-      }
-      if (d.thumbnailUrl.isNotEmpty) return d.thumbnailUrl;
+      if (d.safeThumbnailUrl.isNotEmpty) return d.safeThumbnailUrl;
     }
 
     final i = widget.initialItem;
     if (i != null) {
-      if (!i.isVideo && i.watermarkUrl.isNotEmpty) return i.watermarkUrl;
-      if (i.thumbnailUrl.isNotEmpty) return i.thumbnailUrl;
+      if (i.safeThumbnailUrl.isNotEmpty) return i.safeThumbnailUrl;
     }
 
     return '';
@@ -167,15 +180,17 @@ class _MaterialPreviewPageState extends ConsumerState<MaterialPreviewPage> {
 
   String get _bestVideoUrl {
     final d = _detail;
-    if (d != null && d.watermarkUrl.isNotEmpty) return d.watermarkUrl;
+    if (d != null && d.bestVideoUrl.isNotEmpty) return d.bestVideoUrl;
     final i = widget.initialItem;
-    if (i != null && i.watermarkUrl.isNotEmpty) return i.watermarkUrl;
+    if (i != null && i.bestVideoUrl.isNotEmpty) return i.bestVideoUrl;
     return '';
   }
 
   String get _livePhotoImageUrl {
     final d = _detail;
-    if (d != null && d.originalUrls.isNotEmpty && d.originalUrls.first.isNotEmpty) {
+    if (d != null &&
+        d.originalUrls.isNotEmpty &&
+        d.originalUrls.first.isNotEmpty) {
       return d.originalUrls.first;
     }
     return _fallbackImageUrl;
@@ -203,15 +218,18 @@ class _MaterialPreviewPageState extends ConsumerState<MaterialPreviewPage> {
     final controller = VideoPlayerController.networkUrl(Uri.parse(url));
     _videoController = controller;
 
-    controller.initialize().then((_) {
-      if (!mounted) return;
-      setState(() => _videoInitialized = true);
-      controller.setLooping(true);
-      controller.play();
-    }).catchError((_) {
-      if (!mounted) return;
-      setState(() => _videoFailed = true);
-    });
+    controller
+        .initialize()
+        .then((_) {
+          if (!mounted) return;
+          setState(() => _videoInitialized = true);
+          controller.setLooping(true);
+          controller.play();
+        })
+        .catchError((_) {
+          if (!mounted) return;
+          setState(() => _videoFailed = true);
+        });
   }
 
   @override
@@ -223,7 +241,10 @@ class _MaterialPreviewPageState extends ConsumerState<MaterialPreviewPage> {
     final showPageIndicator = !_isVideo && !_isLivePhoto && imageCount > 1;
 
     // 图片列表更新时，确保下标不越界
-    if (!_isVideo && !_isLivePhoto && imageCount > 0 && _currentIndex >= imageCount) {
+    if (!_isVideo &&
+        !_isLivePhoto &&
+        imageCount > 0 &&
+        _currentIndex >= imageCount) {
       final newIndex = imageCount - 1;
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (!mounted) return;
@@ -252,10 +273,64 @@ class _MaterialPreviewPageState extends ConsumerState<MaterialPreviewPage> {
                   bottom: 0,
                   child: IconButton(
                     onPressed: () => context.pop(),
-                    icon: const Icon(Icons.arrow_back_ios_rounded,
-                        size: 20, color: Colors.white),
+                    icon: const Icon(
+                      Icons.arrow_back_ios_rounded,
+                      size: 20,
+                      color: Colors.white,
+                    ),
                   ),
                 ),
+                if (_isLivePhoto)
+                  Positioned(
+                    left: 48,
+                    top: 0,
+                    bottom: 0,
+                    child: Center(
+                      child: GestureDetector(
+                        onTap: _toggleLiveEffect,
+                        child: Container(
+                          height: 28,
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 10,
+                            vertical: 4,
+                          ),
+                          decoration: BoxDecoration(
+                            color: _liveEffectEnabled
+                                ? Colors.white
+                                : Colors.white.withValues(alpha: 0.2),
+                            borderRadius: BorderRadius.circular(14),
+                            border: Border.all(
+                              color: Colors.white.withValues(alpha: 0.55),
+                              width: 1,
+                            ),
+                          ),
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Icon(
+                                Icons.motion_photos_on,
+                                size: 15,
+                                color: _liveEffectEnabled
+                                    ? Colors.black
+                                    : Colors.white,
+                              ),
+                              const SizedBox(width: 4),
+                              Text(
+                                'LIVE',
+                                style: TextStyle(
+                                  fontSize: 11,
+                                  fontWeight: FontWeight.w700,
+                                  color: _liveEffectEnabled
+                                      ? Colors.black
+                                      : Colors.white,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
                 if (showPageIndicator)
                   Positioned(
                     right: 16,
@@ -264,7 +339,10 @@ class _MaterialPreviewPageState extends ConsumerState<MaterialPreviewPage> {
                     child: Center(
                       child: Text(
                         '${_currentIndex + 1} / $imageCount',
-                        style: const TextStyle(color: Colors.white, fontSize: 15),
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 15,
+                        ),
                       ),
                     ),
                   ),
@@ -273,9 +351,7 @@ class _MaterialPreviewPageState extends ConsumerState<MaterialPreviewPage> {
           ),
         ),
         // ========== 中间内容区 ==========
-        Expanded(
-          child: Center(child: _buildContent()),
-        ),
+        Expanded(child: Center(child: _buildContent())),
         // ========== 底部操作栏 ==========
         Container(
           color: Colors.black,
@@ -302,11 +378,12 @@ class _MaterialPreviewPageState extends ConsumerState<MaterialPreviewPage> {
               // 操作按钮行
               Row(
                 children: [
-              // ☆ 收藏
+                  // ☆ 收藏
                   _BottomAction(
-                    icon: isFavorited
-                        ? Icons.star_rounded
-                        : Icons.star_border_rounded,
+                    icon:
+                        isFavorited
+                            ? Icons.star_rounded
+                            : Icons.star_border_rounded,
                     label: isFavorited ? '已收藏' : '收藏',
                     color: isFavorited ? Colors.orange : null,
                     onTap: _handleFavorite,
@@ -316,11 +393,7 @@ class _MaterialPreviewPageState extends ConsumerState<MaterialPreviewPage> {
                   _BottomAction(
                     icon: Icons.file_download_outlined,
                     label: '下载',
-                    onTap: () {
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(content: Text('下载功能即将上线')),
-                      );
-                    },
+                    onTap: _handleDownload,
                   ),
                   const Spacer(),
                   // 详情 >
@@ -331,14 +404,14 @@ class _MaterialPreviewPageState extends ConsumerState<MaterialPreviewPage> {
                       children: [
                         Text(
                           '详情',
-                          style: TextStyle(
-                            color: Colors.white,
-                            fontSize: 14,
-                          ),
+                          style: TextStyle(color: Colors.white, fontSize: 14),
                         ),
                         SizedBox(width: 2),
-                        Icon(Icons.chevron_right_rounded,
-                            size: 20, color: Colors.white),
+                        Icon(
+                          Icons.chevron_right_rounded,
+                          size: 20,
+                          color: Colors.white,
+                        ),
                       ],
                     ),
                   ),
@@ -366,9 +439,9 @@ class _MaterialPreviewPageState extends ConsumerState<MaterialPreviewPage> {
           .read(materialFavoriteProvider(widget.materialId).notifier)
           .removeFavorite(widget.materialId);
       if (error != null && mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(error)),
-        );
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text(error)));
       }
     } else {
       // 未收藏 → 弹出分组选择
@@ -378,11 +451,34 @@ class _MaterialPreviewPageState extends ConsumerState<MaterialPreviewPage> {
           .read(materialFavoriteProvider(widget.materialId).notifier)
           .addToGroup(widget.materialId, groupId);
       if (error != null && mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(error)),
-        );
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text(error)));
       }
     }
+  }
+
+  Future<void> _handleDownload() async {
+    final detail = _detail;
+    final item = widget.initialItem;
+    final fallbackUrls = <String>[
+      if (detail != null) ...detail.originalUrls,
+      if (detail != null) detail.watermarkUrl,
+      if (detail != null) detail.thumbnailUrl,
+      if (detail != null) detail.previewMovUrl,
+      if (item != null) ...item.originalUrls,
+      if (item != null) item.watermarkUrl,
+      if (item != null) item.thumbnailUrl,
+    ];
+
+    await MaterialDownloadHelper.downloadToAlbum(
+      context,
+      materialId: widget.materialId,
+      materialType: detail?.type ?? item?.type ?? '',
+      fallbackUrls: fallbackUrls,
+      fallbackVideoUrl: _bestVideoUrl,
+      fallbackLiveVideoUrl: detail?.previewMovUrl ?? '',
+    );
   }
 
   Widget _wrapDismissIfNeeded(Widget child) {
@@ -400,6 +496,9 @@ class _MaterialPreviewPageState extends ConsumerState<MaterialPreviewPage> {
 
   Widget _buildContent() {
     if (_isLivePhoto) {
+      if (!_liveEffectEnabled) {
+        return _buildLivePhotoStaticCover();
+      }
       final d = _detail;
       if (d != null && d.previewMovUrl.isNotEmpty) {
         return LivePhotoView(
@@ -417,11 +516,72 @@ class _MaterialPreviewPageState extends ConsumerState<MaterialPreviewPage> {
     return _buildImagePager();
   }
 
+  Widget _buildLivePhotoStaticCover() {
+    final imageUrl = _livePhotoImageUrl;
+    if (imageUrl.isEmpty) return _buildImagePager();
+
+    return Stack(
+      alignment: Alignment.bottomCenter,
+      children: [
+        Center(
+          child: CachedNetworkImage(
+            imageUrl: imageUrl,
+            fit: BoxFit.contain,
+            placeholder: (_, __) => const CircularProgressIndicator(
+              strokeWidth: 2,
+              color: Colors.white24,
+            ),
+            errorWidget: (_, __, ___) =>
+                const Icon(Icons.broken_image, color: Colors.grey, size: 48),
+          ),
+        ),
+        Container(
+          margin: const EdgeInsets.only(bottom: 16),
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+          decoration: BoxDecoration(
+            color: Colors.black.withValues(alpha: 0.45),
+            borderRadius: BorderRadius.circular(14),
+          ),
+          child: const Text(
+            '点击左上角 LIVE 查看动态效果',
+            style: TextStyle(
+              color: Colors.white,
+              fontSize: 12,
+              fontWeight: FontWeight.w500,
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  void _toggleLiveEffect() {
+    if (!_isLivePhoto) return;
+    if (!_hasLiveVideo) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Live 动态资源未就绪，请稍后重试')),
+      );
+      return;
+    }
+
+    final next = !_liveEffectEnabled;
+    setState(() => _liveEffectEnabled = next);
+
+    if (next && !_supportsLiveMotionDevice) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('当前设备仅展示静态图，Live 动效要在 iPhone 或 Mac 上查看')),
+      );
+    }
+  }
+
   Widget _buildImagePager() {
     final urls = _imageUrls;
     if (urls.isEmpty) {
       return _loadingDetail
-          ? const CircularProgressIndicator(strokeWidth: 2, color: Colors.white54)
+          ? const CircularProgressIndicator(
+            strokeWidth: 2,
+            color: Colors.white54,
+          )
           : const Icon(Icons.broken_image, color: Colors.grey, size: 48);
     }
 
@@ -434,7 +594,8 @@ class _MaterialPreviewPageState extends ConsumerState<MaterialPreviewPage> {
 
         if (notification is OverscrollNotification) {
           final isAtStart =
-              notification.metrics.pixels <= notification.metrics.minScrollExtent + 0.5;
+              notification.metrics.pixels <=
+              notification.metrics.minScrollExtent + 0.5;
           // 只在第一页向右回弹时触发关闭
           if (isAtStart && _currentIndex == 0 && notification.overscroll < 0) {
             _overscrollAccum += notification.overscroll;
@@ -456,12 +617,17 @@ class _MaterialPreviewPageState extends ConsumerState<MaterialPreviewPage> {
             child: CachedNetworkImage(
               imageUrl: url,
               fit: BoxFit.contain,
-              placeholder: (_, __) => const CircularProgressIndicator(
-                strokeWidth: 2,
-                color: Colors.white24,
-              ),
-              errorWidget: (_, __, ___) =>
-                  const Icon(Icons.broken_image, color: Colors.grey, size: 48),
+              placeholder:
+                  (_, __) => const CircularProgressIndicator(
+                    strokeWidth: 2,
+                    color: Colors.white24,
+                  ),
+              errorWidget:
+                  (_, __, ___) => const Icon(
+                    Icons.broken_image,
+                    color: Colors.grey,
+                    size: 48,
+                  ),
             ),
           );
         },
@@ -494,7 +660,9 @@ class _MaterialPreviewPageState extends ConsumerState<MaterialPreviewPage> {
               fit: BoxFit.contain,
             ),
           const CircularProgressIndicator(
-              strokeWidth: 2, color: Colors.white54),
+            strokeWidth: 2,
+            color: Colors.white54,
+          ),
         ],
       );
     }
@@ -531,10 +699,7 @@ class _BottomAction extends StatelessWidget {
         children: [
           Icon(icon, size: 20, color: c),
           const SizedBox(width: 4),
-          Text(
-            label,
-            style: TextStyle(color: c, fontSize: 14),
-          ),
+          Text(label, style: TextStyle(color: c, fontSize: 14)),
         ],
       ),
     );

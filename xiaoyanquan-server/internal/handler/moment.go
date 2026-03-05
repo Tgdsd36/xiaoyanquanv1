@@ -40,7 +40,9 @@ func (h *MomentHandler) List(c *gin.Context) {
 		pageSize = 20
 	}
 
-	query := h.DB.Model(&model.Material{}).Where("status = ?", "published")
+	query := h.DB.Model(&model.Material{}).
+		Where("status = ?", "published").
+		Where("show_moments = ?", true)
 
 	// 类型过滤
 	if mediaType := c.Query("type"); mediaType != "" {

@@ -1,7 +1,11 @@
 import 'package:share_plus/share_plus.dart';
 
 class ShareHelper {
-  static const String _baseUrl = 'https://xiaoyanquan.com';
+  static const String _defaultShareBaseUrl = 'https://xyqapi.cfqfwl.cn/share';
+  static const String _baseUrl = String.fromEnvironment(
+    'SHARE_BASE_URL',
+    defaultValue: _defaultShareBaseUrl,
+  );
 
   /// 分享素材
   static Future<void> shareMaterial({

@@ -1,11 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:flutter_staggered_grid_view/flutter_staggered_grid_view.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:go_router/go_router.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 import '../../../app/colors.dart';
 import '../../../app/styles.dart';
+import '../../../shared/network_video_thumbnail.dart';
 import '../models/material_model.dart';
 import '../repositories/material_repository.dart';
 
@@ -135,7 +135,8 @@ class _SearchPageState extends ConsumerState<SearchPage> {
       final nextPage = _page + 1;
       final type = _selectedType.isNotEmpty ? _selectedType : null;
 
-      late final ({List<MaterialListItem> list, int total, bool hasMore}) result;
+      late final ({List<MaterialListItem> list, int total, bool hasMore})
+      result;
       if (_categoryId != null && _categoryId! > 0) {
         result = await _repo.getMaterials(
           page: nextPage,
@@ -190,22 +191,34 @@ class _SearchPageState extends ConsumerState<SearchPage> {
             style: const TextStyle(fontSize: 14),
             decoration: InputDecoration(
               hintText: '搜索素材',
-              hintStyle: const TextStyle(fontSize: 13, color: AppColors.textDisabled),
-              prefixIcon: const Icon(Icons.search_rounded, size: 18, color: AppColors.textDisabled),
+              hintStyle: const TextStyle(
+                fontSize: 13,
+                color: AppColors.textDisabled,
+              ),
+              prefixIcon: const Icon(
+                Icons.search_rounded,
+                size: 18,
+                color: AppColors.textDisabled,
+              ),
               prefixIconConstraints: const BoxConstraints(minWidth: 36),
-              suffixIcon: _controller.text.isNotEmpty
-                  ? GestureDetector(
-                      onTap: () {
-                        _controller.clear();
-                        setState(() {
-                          _results = [];
-                          _keyword = '';
-                          _categoryId = null;
-                        });
-                      },
-                      child: const Icon(Icons.close_rounded, size: 16, color: AppColors.textDisabled),
-                    )
-                  : null,
+              suffixIcon:
+                  _controller.text.isNotEmpty
+                      ? GestureDetector(
+                        onTap: () {
+                          _controller.clear();
+                          setState(() {
+                            _results = [];
+                            _keyword = '';
+                            _categoryId = null;
+                          });
+                        },
+                        child: const Icon(
+                          Icons.close_rounded,
+                          size: 16,
+                          color: AppColors.textDisabled,
+                        ),
+                      )
+                      : null,
               filled: true,
               fillColor: AppColors.surface,
               contentPadding: EdgeInsets.zero,
@@ -222,10 +235,7 @@ class _SearchPageState extends ConsumerState<SearchPage> {
         children: [
           // 类型筛选 Tab
           if (_keyword.isNotEmpty || _categoryId != null)
-            _TypeTabBar(
-              selectedType: _selectedType,
-              onChanged: _onTypeChanged,
-            ),
+            _TypeTabBar(selectedType: _selectedType, onChanged: _onTypeChanged),
           // 内容区
           Expanded(child: _buildBody(primary)),
         ],
@@ -236,14 +246,17 @@ class _SearchPageState extends ConsumerState<SearchPage> {
   Widget _buildBody(Color primary) {
     if (_keyword.isEmpty && _categoryId == null) {
       return const Center(
-        child: Text('输入关键词搜索素材',
-            style: TextStyle(color: AppColors.textDisabled, fontSize: 14)),
+        child: Text(
+          '输入关键词搜索素材',
+          style: TextStyle(color: AppColors.textDisabled, fontSize: 14),
+        ),
       );
     }
 
     if (_loading && _results.isEmpty) {
       return Center(
-          child: CircularProgressIndicator(strokeWidth: 2, color: primary));
+        child: CircularProgressIndicator(strokeWidth: 2, color: primary),
+      );
     }
 
     if (_results.isEmpty) {
@@ -251,21 +264,29 @@ class _SearchPageState extends ConsumerState<SearchPage> {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: const [
-            Icon(Icons.search_off_rounded,
-                size: 48, color: AppColors.textDisabled),
+            Icon(
+              Icons.search_off_rounded,
+              size: 48,
+              color: AppColors.textDisabled,
+            ),
             SizedBox(height: 8),
-            Text('没有找到相关素材',
-                style: TextStyle(color: AppColors.textHint, fontSize: 14)),
+            Text(
+              '没有找到相关素材',
+              style: TextStyle(color: AppColors.textHint, fontSize: 14),
+            ),
           ],
         ),
       );
     }
 
-    return MasonryGridView.count(
+    return GridView.builder(
       controller: _scrollController,
-      crossAxisCount: 2,
-      mainAxisSpacing: 6,
-      crossAxisSpacing: 6,
+      gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+        crossAxisCount: 2,
+        mainAxisSpacing: 6,
+        crossAxisSpacing: 6,
+        childAspectRatio: 0.68,
+      ),
       padding: const EdgeInsets.all(6),
       itemCount: _results.length + (_hasMore ? 1 : 0),
       itemBuilder: (context, index) {
@@ -277,7 +298,9 @@ class _SearchPageState extends ConsumerState<SearchPage> {
                 width: 20,
                 height: 20,
                 child: CircularProgressIndicator(
-                    strokeWidth: 2, color: primary),
+                  strokeWidth: 2,
+                  color: primary,
+                ),
               ),
             ),
           );
@@ -285,8 +308,8 @@ class _SearchPageState extends ConsumerState<SearchPage> {
         final item = _results[index];
         return _SearchResultCard(
           item: item,
-          onTap: () =>
-              context.push('/material/${item.id}/preview', extra: item),
+          onTap:
+              () => context.push('/material/${item.id}/preview', extra: item),
         );
       },
     );
@@ -299,10 +322,7 @@ class _TypeTabBar extends StatelessWidget {
   final String selectedType;
   final ValueChanged<String> onChanged;
 
-  const _TypeTabBar({
-    required this.selectedType,
-    required this.onChanged,
-  });
+  const _TypeTabBar({required this.selectedType, required this.onChanged});
 
   @override
   Widget build(BuildContext context) {
@@ -312,7 +332,9 @@ class _TypeTabBar extends StatelessWidget {
       height: 44,
       padding: const EdgeInsets.symmetric(horizontal: 12),
       decoration: const BoxDecoration(
-        border: Border(bottom: BorderSide(color: AppColors.divider, width: 0.5)),
+        border: Border(
+          bottom: BorderSide(color: AppColors.divider, width: 0.5),
+        ),
       ),
       child: Row(
         children: [
@@ -348,14 +370,14 @@ class _TypeTabBar extends StatelessWidget {
         duration: const Duration(milliseconds: 200),
         padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
         decoration: BoxDecoration(
-          color: isSelected
-              ? primary.withValues(alpha: 0.1)
-              : AppColors.surface,
+          color:
+              isSelected ? primary.withValues(alpha: 0.1) : AppColors.surface,
           borderRadius: BorderRadius.circular(20),
           border: Border.all(
-            color: isSelected
-                ? primary.withValues(alpha: 0.3)
-                : Colors.transparent,
+            color:
+                isSelected
+                    ? primary.withValues(alpha: 0.3)
+                    : Colors.transparent,
             width: 1,
           ),
         ),
@@ -394,6 +416,8 @@ class _SearchResultCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final coverUrl = item.safeThumbnailUrl;
+    final videoCoverUrl = item.bestVideoUrl;
     return GestureDetector(
       onTap: onTap,
       child: Container(
@@ -403,22 +427,65 @@ class _SearchResultCard extends StatelessWidget {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              AspectRatio(
-                aspectRatio: item.aspectRatio,
+              Expanded(
                 child: Stack(
                   fit: StackFit.expand,
                   children: [
-                    CachedNetworkImage(
-                      imageUrl: item.thumbnailUrl,
-                      fit: BoxFit.cover,
-                      placeholder: (_, __) => Container(color: AppColors.shimmer),
-                      errorWidget: (_, __, ___) => Container(
-                        color: AppColors.shimmer,
-                        child: const Center(
-                            child: Icon(Icons.broken_image_outlined,
-                                color: AppColors.textDisabled, size: 28)),
-                      ),
-                    ),
+                    coverUrl.isNotEmpty
+                        ? CachedNetworkImage(
+                          imageUrl: coverUrl,
+                          fit: BoxFit.cover,
+                          placeholder:
+                              (_, __) => Container(color: AppColors.shimmer),
+                          errorWidget:
+                              (_, __, ___) => Container(
+                                color: AppColors.shimmer,
+                                child: const Center(
+                                  child: Icon(
+                                    Icons.broken_image_outlined,
+                                    color: AppColors.textDisabled,
+                                    size: 28,
+                                  ),
+                                ),
+                              ),
+                        )
+                        : (item.isVideo && videoCoverUrl.isNotEmpty)
+                        ? NetworkVideoThumbnail(
+                          videoUrl: videoCoverUrl,
+                          fit: BoxFit.cover,
+                          placeholder: Container(
+                            color: AppColors.shimmer,
+                            child: const Center(
+                              child: Icon(
+                                Icons.play_circle_outline_rounded,
+                                color: AppColors.textDisabled,
+                                size: 30,
+                              ),
+                            ),
+                          ),
+                          errorWidget: Container(
+                            color: AppColors.shimmer,
+                            child: const Center(
+                              child: Icon(
+                                Icons.broken_image_outlined,
+                                color: AppColors.textDisabled,
+                                size: 28,
+                              ),
+                            ),
+                          ),
+                        )
+                        : Container(
+                          color: AppColors.shimmer,
+                          child: Center(
+                            child: Icon(
+                              item.isVideo
+                                  ? Icons.play_circle_outline_rounded
+                                  : Icons.image_outlined,
+                              color: AppColors.textDisabled,
+                              size: 30,
+                            ),
+                          ),
+                        ),
                     // 类型标签（左上角）
                     Positioned(
                       left: 6,
@@ -436,8 +503,11 @@ class _SearchResultCard extends StatelessWidget {
                         child: Row(
                           mainAxisSize: MainAxisSize.min,
                           children: [
-                            const Icon(Icons.play_circle_fill_rounded,
-                                size: 14, color: Colors.white),
+                            const Icon(
+                              Icons.play_circle_fill_rounded,
+                              size: 14,
+                              color: Colors.white,
+                            ),
                             const SizedBox(width: 3),
                             Text(
                               item.durationText,
@@ -454,35 +524,53 @@ class _SearchResultCard extends StatelessWidget {
                 ),
               ),
               Padding(
-                padding: const EdgeInsets.fromLTRB(10, 8, 10, 10),
+                padding: const EdgeInsets.fromLTRB(8, 6, 8, 8),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(
-                      item.title,
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(
-                          fontSize: 13,
+                    SizedBox(
+                      height: 30,
+                      child: Text(
+                        item.title,
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(
+                          fontSize: 12,
                           fontWeight: FontWeight.w500,
-                          height: 1.3),
+                          height: 1.3,
+                        ),
+                      ),
                     ),
-                    const SizedBox(height: 6),
+                    const SizedBox(height: 4),
                     Row(
                       children: [
-                        const Icon(Icons.star_rounded,
-                            size: 13, color: AppColors.favoriteActive),
+                        const Icon(
+                          Icons.star_rounded,
+                          size: 12,
+                          color: AppColors.favoriteActive,
+                        ),
                         const SizedBox(width: 3),
-                        Text('${item.favoriteCount}',
-                            style: const TextStyle(
-                                fontSize: 11, color: AppColors.textHint)),
-                        const SizedBox(width: 10),
-                        const Icon(Icons.file_download_outlined,
-                            size: 13, color: AppColors.textDisabled),
+                        Text(
+                          '${item.favoriteCount}',
+                          style: const TextStyle(
+                            fontSize: 10,
+                            color: AppColors.textHint,
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        const Icon(
+                          Icons.file_download_outlined,
+                          size: 12,
+                          color: AppColors.textDisabled,
+                        ),
                         const SizedBox(width: 2),
-                        Text('${item.downloadCount}',
-                            style: const TextStyle(
-                                fontSize: 11, color: AppColors.textHint)),
+                        Text(
+                          '${item.downloadCount}',
+                          style: const TextStyle(
+                            fontSize: 10,
+                            color: AppColors.textHint,
+                          ),
+                        ),
                       ],
                     ),
                   ],

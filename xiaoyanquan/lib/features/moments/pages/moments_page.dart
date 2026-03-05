@@ -1,14 +1,19 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:dio/dio.dart';
 import 'package:go_router/go_router.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:permission_handler/permission_handler.dart';
 import '../../../app/colors.dart';
 import '../../../core/auth/auth_provider.dart';
 import '../../../core/constants/api.dart';
 import '../../../core/network/http_client.dart';
+import '../../../core/utils/url_utils.dart';
+import '../../../shared/network_video_thumbnail.dart';
 import '../../../shared/favorite_group_sheet.dart';
+import '../../../shared/material_download_helper.dart';
 import '../../profile/pages/profile_page.dart';
 
 // ==================== 模型 ====================
@@ -44,9 +49,8 @@ class MomentItem {
       gender: json['gender'] ?? '',
       contentText: json['content_text'] ?? '',
       mediaType: json['media_type'] ?? '',
-      mediaUrls: (json['media_urls'] as List?)
-              ?.map((e) => e.toString())
-              .toList() ??
+      mediaUrls:
+          (json['media_urls'] as List?)?.map((e) => e.toString()).toList() ??
           [],
       isFavorited: json['is_favorited'] ?? false,
       createdAt: json['created_at'] ?? '',
@@ -106,13 +110,13 @@ class MomentsNotifier extends StateNotifier<MomentsState> {
   Future<void> refresh() async {
     state = state.copyWith(isLoading: true);
     try {
-      final resp = await _http.get(Api.moments, params: {
-        'page': 1,
-        'page_size': 20,
-        ..._filterParams,
-      });
+      final resp = await _http.get(
+        Api.moments,
+        params: {'page': 1, 'page_size': 20, ..._filterParams},
+      );
       if (resp.isSuccess && resp.data != null) {
-        final list = (resp.data['list'] as List?)
+        final list =
+            (resp.data['list'] as List?)
                 ?.map((e) => MomentItem.fromJson(e))
                 .toList() ??
             [];
@@ -135,13 +139,13 @@ class MomentsNotifier extends StateNotifier<MomentsState> {
     state = state.copyWith(isLoading: true);
     try {
       final next = state.page + 1;
-      final resp = await _http.get(Api.moments, params: {
-        'page': next,
-        'page_size': 20,
-        ..._filterParams,
-      });
+      final resp = await _http.get(
+        Api.moments,
+        params: {'page': next, 'page_size': 20, ..._filterParams},
+      );
       if (resp.isSuccess && resp.data != null) {
-        final list = (resp.data['list'] as List?)
+        final list =
+            (resp.data['list'] as List?)
                 ?.map((e) => MomentItem.fromJson(e))
                 .toList() ??
             [];
@@ -173,8 +177,9 @@ class MomentsNotifier extends StateNotifier<MomentsState> {
   }
 }
 
-final momentsProvider =
-    StateNotifierProvider<MomentsNotifier, MomentsState>((ref) {
+final momentsProvider = StateNotifierProvider<MomentsNotifier, MomentsState>((
+  ref,
+) {
   final n = MomentsNotifier();
   n.refresh();
   return n;
@@ -215,11 +220,14 @@ class _MomentsPageState extends ConsumerState<MomentsPage> {
   Future<void> _changeCover(BuildContext ctx) async {
     final authState = ref.read(authProvider);
     if (authState.status != AuthStatus.authenticated) {
-      ScaffoldMessenger.of(ctx).showSnackBar(
-        const SnackBar(content: Text('请先登录')),
-      );
+      ScaffoldMessenger.of(
+        ctx,
+      ).showSnackBar(const SnackBar(content: Text('请先登录')));
       return;
     }
+
+    final granted = await _ensureGalleryPermission(ctx);
+    if (!granted || !ctx.mounted) return;
 
     final messenger = ScaffoldMessenger.of(ctx);
 
@@ -229,20 +237,21 @@ class _MomentsPageState extends ConsumerState<MomentsPage> {
       maxWidth: 1920,
       imageQuality: 85,
     );
-    if (picked == null || !mounted) return;
-    messenger.showSnackBar(
-      const SnackBar(content: Text('正在上传...')),
-    );
+    if (picked == null || !ctx.mounted) return;
+    messenger.showSnackBar(const SnackBar(content: Text('正在上传...')));
 
     try {
       // 1. 上传图片
       final formData = FormData.fromMap({
-        'file': await MultipartFile.fromFile(picked.path,
-            filename: picked.name),
+        'file': await MultipartFile.fromFile(
+          picked.path,
+          filename: picked.name,
+        ),
       });
-      final uploadResp = await HttpClient()
-          .dio
-          .post(Api.userUpload, data: formData);
+      final uploadResp = await HttpClient().dio.post(
+        Api.userUpload,
+        data: formData,
+      );
       final uploadData = uploadResp.data;
       if (uploadData['code'] != 0) {
         messenger.hideCurrentSnackBar();
@@ -261,22 +270,84 @@ class _MomentsPageState extends ConsumerState<MomentsPage> {
       messenger.hideCurrentSnackBar();
       if (updateResp.isSuccess) {
         ref.invalidate(profileProvider);
-        messenger.showSnackBar(
-          const SnackBar(content: Text('封面已更换')),
-        );
+        messenger.showSnackBar(const SnackBar(content: Text('封面已更换')));
       } else {
         messenger.showSnackBar(
-          SnackBar(content: Text(updateResp.message.isNotEmpty
-              ? updateResp.message
-              : '更新失败')),
+          SnackBar(
+            content: Text(
+              updateResp.message.isNotEmpty ? updateResp.message : '更新失败',
+            ),
+          ),
         );
       }
     } catch (_) {
       messenger.hideCurrentSnackBar();
-      messenger.showSnackBar(
-        const SnackBar(content: Text('上传失败，请重试')),
-      );
+      messenger.showSnackBar(const SnackBar(content: Text('上传失败，请重试')));
     }
+  }
+
+  Future<bool> _ensureGalleryPermission(BuildContext context) async {
+    if (kIsWeb) return true;
+
+    if (defaultTargetPlatform == TargetPlatform.iOS ||
+        defaultTargetPlatform == TargetPlatform.macOS) {
+      final status = await Permission.photos.request();
+      final granted = status.isGranted || status.isLimited;
+      if (granted) return true;
+
+      if (!context.mounted) return false;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('请先允许相册权限后再选择封面')));
+      if (status.isPermanentlyDenied || status.isRestricted) {
+        await _showGalleryPermissionSettingsDialog(context);
+      }
+      return false;
+    }
+
+    if (defaultTargetPlatform == TargetPlatform.android) {
+      final statusMap =
+          await <Permission>[Permission.photos, Permission.storage].request();
+      final statuses = statusMap.values.toList();
+      final granted = statuses.any((s) => s.isGranted || s.isLimited);
+      if (granted) return true;
+
+      if (!context.mounted) return false;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('请先允许相册权限后再选择封面')));
+      if (statuses.any((s) => s.isPermanentlyDenied)) {
+        await _showGalleryPermissionSettingsDialog(context);
+      }
+      return false;
+    }
+
+    return true;
+  }
+
+  Future<void> _showGalleryPermissionSettingsDialog(BuildContext context) async {
+    await showDialog<void>(
+      context: context,
+      builder: (ctx) {
+        return AlertDialog(
+          title: const Text('需要相册权限'),
+          content: const Text('当前相册权限已被拒绝，请到系统设置中开启后再试。'),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(ctx).pop(),
+              child: const Text('取消'),
+            ),
+            FilledButton(
+              onPressed: () async {
+                Navigator.of(ctx).pop();
+                await openAppSettings();
+              },
+              child: const Text('去设置'),
+            ),
+          ],
+        );
+      },
+    );
   }
 
   @override
@@ -285,71 +356,76 @@ class _MomentsPageState extends ConsumerState<MomentsPage> {
     final profileAsync = ref.watch(profileProvider);
     final profile = profileAsync.valueOrNull;
 
-    final coverUrl = profile?['cover_url'] as String? ?? '';
+    final coverUrl = UrlUtils.absolute(profile?['cover_url']?.toString());
     final nickname = profile?['nickname'] as String? ?? '用户';
 
     return Scaffold(
       body: NestedScrollView(
         controller: _scrollController,
-        headerSliverBuilder: (context, innerBoxIsScrolled) => [
-          // ========== 封面区 ==========
-          SliverAppBar(
-            expandedHeight: 280,
-            pinned: false,
-            floating: false,
-            backgroundColor: AppColors.primary,
-            automaticallyImplyLeading: false,
-            flexibleSpace: FlexibleSpaceBar(
-              background: _CoverArea(
-                coverUrl: coverUrl,
-                nickname: nickname,
-                onSearchTap: () => context.push('/search'),
-                onCoverTap: () => _changeCover(context),
+        headerSliverBuilder:
+            (context, innerBoxIsScrolled) => [
+              // ========== 封面区 ==========
+              SliverAppBar(
+                expandedHeight: 280,
+                pinned: false,
+                floating: false,
+                backgroundColor: AppColors.primary,
+                automaticallyImplyLeading: false,
+                flexibleSpace: FlexibleSpaceBar(
+                  background: _CoverArea(
+                    coverUrl: coverUrl,
+                    nickname: nickname,
+                    onSearchTap: () => context.push('/search'),
+                    onCoverTap: () => _changeCover(context),
+                  ),
+                ),
               ),
-            ),
-          ),
-          // ========== 吸顶筛选栏 ==========
-          SliverPersistentHeader(
-            pinned: true,
-            delegate: _FilterBarDelegate(
-              mediaType: momentsState.mediaType,
-              gender: momentsState.gender,
-              onMediaTypeChanged: (t) =>
-                  ref.read(momentsProvider.notifier).setMediaType(t),
-              onGenderChanged: (g) =>
-                  ref.read(momentsProvider.notifier).setGender(g),
-            ),
-          ),
-        ],
+              // ========== 吸顶筛选栏 ==========
+              SliverPersistentHeader(
+                pinned: true,
+                delegate: _FilterBarDelegate(
+                  mediaType: momentsState.mediaType,
+                  gender: momentsState.gender,
+                  onMediaTypeChanged:
+                      (t) => ref.read(momentsProvider.notifier).setMediaType(t),
+                  onGenderChanged:
+                      (g) => ref.read(momentsProvider.notifier).setGender(g),
+                ),
+              ),
+            ],
         body: RefreshIndicator(
           onRefresh: () => ref.read(momentsProvider.notifier).refresh(),
-          child: momentsState.items.isEmpty && !momentsState.isLoading
-              ? ListView(
-                  children: const [
-                    SizedBox(height: 120),
-                    Center(
-                      child: Text('暂无动态',
-                          style: TextStyle(color: AppColors.textHint)),
-                    ),
-                  ],
-                )
-              : ListView.separated(
-                  padding: const EdgeInsets.fromLTRB(12, 12, 12, 24),
-                  itemCount: momentsState.items.length +
-                      (momentsState.hasMore ? 1 : 0),
-                  separatorBuilder: (_, __) => const SizedBox(height: 12),
-                  itemBuilder: (context, index) {
-                    if (index >= momentsState.items.length) {
-                      return const Padding(
-                        padding: EdgeInsets.all(16),
-                        child: Center(
-                          child: CircularProgressIndicator(strokeWidth: 2),
+          child:
+              momentsState.items.isEmpty && !momentsState.isLoading
+                  ? ListView(
+                    children: const [
+                      SizedBox(height: 120),
+                      Center(
+                        child: Text(
+                          '暂无动态',
+                          style: TextStyle(color: AppColors.textHint),
                         ),
-                      );
-                    }
-                    return _MomentCard(moment: momentsState.items[index]);
-                  },
-                ),
+                      ),
+                    ],
+                  )
+                  : ListView.separated(
+                    padding: const EdgeInsets.fromLTRB(12, 12, 12, 24),
+                    itemCount:
+                        momentsState.items.length +
+                        (momentsState.hasMore ? 1 : 0),
+                    separatorBuilder: (_, __) => const SizedBox(height: 12),
+                    itemBuilder: (context, index) {
+                      if (index >= momentsState.items.length) {
+                        return const Padding(
+                          padding: EdgeInsets.all(16),
+                          child: Center(
+                            child: CircularProgressIndicator(strokeWidth: 2),
+                          ),
+                        );
+                      }
+                      return _MomentCard(moment: momentsState.items[index]);
+                    },
+                  ),
         ),
       ),
     );
@@ -408,8 +484,7 @@ class _CoverArea extends StatelessWidget {
           child: GestureDetector(
             onTap: onSearchTap,
             child: Container(
-              padding:
-                  const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
               decoration: BoxDecoration(
                 color: Colors.black.withValues(alpha: 0.3),
                 borderRadius: BorderRadius.circular(16),
@@ -419,8 +494,10 @@ class _CoverArea extends StatelessWidget {
                 children: [
                   Icon(Icons.search, size: 16, color: Colors.white),
                   SizedBox(width: 4),
-                  Text('搜索',
-                      style: TextStyle(color: Colors.white, fontSize: 13)),
+                  Text(
+                    '搜索',
+                    style: TextStyle(color: Colors.white, fontSize: 13),
+                  ),
                 ],
               ),
             ),
@@ -433,8 +510,7 @@ class _CoverArea extends StatelessWidget {
           child: GestureDetector(
             onTap: onCoverTap,
             child: Container(
-              padding:
-                  const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
               decoration: BoxDecoration(
                 color: Colors.black.withValues(alpha: 0.3),
                 borderRadius: BorderRadius.circular(14),
@@ -442,12 +518,16 @@ class _CoverArea extends StatelessWidget {
               child: const Row(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  Icon(Icons.camera_alt_outlined,
-                      size: 14, color: Colors.white70),
+                  Icon(
+                    Icons.camera_alt_outlined,
+                    size: 14,
+                    color: Colors.white70,
+                  ),
                   SizedBox(width: 4),
-                  Text('更换封面',
-                      style:
-                          TextStyle(color: Colors.white70, fontSize: 12)),
+                  Text(
+                    '更换封面',
+                    style: TextStyle(color: Colors.white70, fontSize: 12),
+                  ),
                 ],
               ),
             ),
@@ -458,63 +538,71 @@ class _CoverArea extends StatelessWidget {
           right: 16,
           bottom: 16,
           child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Text(
-                  nickname,
-                  style: const TextStyle(
-                    color: Colors.white,
-                    fontSize: 15,
-                    fontWeight: FontWeight.w600,
-                    shadows: [Shadow(blurRadius: 6, color: Colors.black54)],
-                  ),
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(
+                nickname,
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontSize: 15,
+                  fontWeight: FontWeight.w600,
+                  shadows: [Shadow(blurRadius: 6, color: Colors.black54)],
                 ),
-                const SizedBox(width: 8),
-                Container(
-                  width: 44,
-                  height: 44,
-                  decoration: BoxDecoration(
-                    color: AppColors.primary,
-                    borderRadius: BorderRadius.circular(10),
-                    border: Border.all(color: Colors.white, width: 2),
-                    boxShadow: [
-                      BoxShadow(
-                        color: Colors.black.withValues(alpha: 0.2),
-                        blurRadius: 6,
-                      ),
-                    ],
-                  ),
-                  child: Center(
-                    child: Text(
-                      nickname.isNotEmpty ? nickname[0] : '?',
-                      style: const TextStyle(
-                        color: Colors.white,
-                        fontSize: 20,
-                        fontWeight: FontWeight.w700,
-                      ),
+              ),
+              const SizedBox(width: 8),
+              Container(
+                width: 44,
+                height: 44,
+                decoration: BoxDecoration(
+                  color: AppColors.primary,
+                  borderRadius: BorderRadius.circular(10),
+                  border: Border.all(color: Colors.white, width: 2),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withValues(alpha: 0.2),
+                      blurRadius: 6,
+                    ),
+                  ],
+                ),
+                child: Center(
+                  child: Text(
+                    nickname.isNotEmpty ? nickname[0] : '?',
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 20,
+                      fontWeight: FontWeight.w700,
                     ),
                   ),
                 ),
-              ],
-            ),
+              ),
+            ],
           ),
+        ),
       ],
     );
   }
 
   Widget _defaultCover() {
-    return Container(
-      decoration: const BoxDecoration(
-        gradient: LinearGradient(
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-          colors: [AppColors.primary, Color(0xFFFF8A9B)],
-        ),
-      ),
-      child: const Center(
-        child: Icon(Icons.photo_camera_outlined,
-            size: 48, color: Colors.white38),
-      ),
+    return Image.asset(
+      'assets/images/covers/default_moments_cover.png',
+      fit: BoxFit.cover,
+      errorBuilder:
+          (_, __, ___) => Container(
+            decoration: const BoxDecoration(
+              gradient: LinearGradient(
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+                colors: [AppColors.primary, Color(0xFFFF8A9B)],
+              ),
+            ),
+            child: const Center(
+              child: Icon(
+                Icons.photo_camera_outlined,
+                size: 48,
+                color: Colors.white38,
+              ),
+            ),
+          ),
     );
   }
 }
@@ -548,7 +636,10 @@ class _FilterBarDelegate extends SliverPersistentHeaderDelegate {
 
   @override
   Widget build(
-      BuildContext context, double shrinkOffset, bool overlapsContent) {
+    BuildContext context,
+    double shrinkOffset,
+    bool overlapsContent,
+  ) {
     return Container(
       height: 48,
       color: Colors.white,
@@ -561,8 +652,10 @@ class _FilterBarDelegate extends SliverPersistentHeaderDelegate {
             return GestureDetector(
               onTap: () => onMediaTypeChanged(tab.$1),
               child: Container(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 12,
+                  vertical: 6,
+                ),
                 child: Column(
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
@@ -572,9 +665,10 @@ class _FilterBarDelegate extends SliverPersistentHeaderDelegate {
                         fontSize: 14,
                         fontWeight:
                             isSelected ? FontWeight.w600 : FontWeight.normal,
-                        color: isSelected
-                            ? AppColors.textPrimary
-                            : AppColors.textHint,
+                        color:
+                            isSelected
+                                ? AppColors.textPrimary
+                                : AppColors.textHint,
                       ),
                     ),
                     const SizedBox(height: 2),
@@ -582,9 +676,8 @@ class _FilterBarDelegate extends SliverPersistentHeaderDelegate {
                       width: 16,
                       height: 2,
                       decoration: BoxDecoration(
-                        color: isSelected
-                            ? AppColors.primary
-                            : Colors.transparent,
+                        color:
+                            isSelected ? AppColors.primary : Colors.transparent,
                         borderRadius: BorderRadius.circular(1),
                       ),
                     ),
@@ -613,8 +706,7 @@ class _FilterBarDelegate extends SliverPersistentHeaderDelegate {
 
   @override
   bool shouldRebuild(covariant _FilterBarDelegate oldDelegate) {
-    return mediaType != oldDelegate.mediaType ||
-        gender != oldDelegate.gender;
+    return mediaType != oldDelegate.mediaType || gender != oldDelegate.gender;
   }
 }
 
@@ -691,11 +783,14 @@ class _MomentCardState extends ConsumerState<_MomentCard> {
       // 取消收藏
       setState(() => _isFavorited = false);
       try {
-        await HttpClient().post(Api.favoriteToggle, data: {
-          'target_type': 'material',
-          'target_id': moment.id,
-          'group_id': 0,
-        });
+        await HttpClient().post(
+          Api.favoriteToggle,
+          data: {
+            'target_type': 'material',
+            'target_id': moment.id,
+            'group_id': 0,
+          },
+        );
       } catch (_) {
         if (mounted) setState(() => _isFavorited = true);
       }
@@ -705,23 +800,58 @@ class _MomentCardState extends ConsumerState<_MomentCard> {
       if (groupId == null || !mounted) return;
       setState(() => _isFavorited = true);
       try {
-        final resp = await HttpClient().post(Api.favoriteToggle, data: {
-          'target_type': 'material',
-          'target_id': moment.id,
-          'group_id': groupId,
-        });
+        final resp = await HttpClient().post(
+          Api.favoriteToggle,
+          data: {
+            'target_type': 'material',
+            'target_id': moment.id,
+            'group_id': groupId,
+          },
+        );
         if (!resp.isSuccess && mounted) {
           setState(() => _isFavorited = false);
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
-                content: Text(
-                    resp.message.isNotEmpty ? resp.message : '收藏失败')),
+              content: Text(resp.message.isNotEmpty ? resp.message : '收藏失败'),
+            ),
           );
         }
       } catch (_) {
         if (mounted) setState(() => _isFavorited = false);
       }
     }
+  }
+
+  Future<void> _handleDownload() async {
+    final authState = ref.read(authProvider);
+    if (authState.status != AuthStatus.authenticated) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('请先登录并开通会员'),
+          backgroundColor: AppColors.warning,
+        ),
+      );
+      return;
+    }
+
+    final mediaType =
+        moment.mediaType == 'live' ? 'live_photo' : moment.mediaType;
+    await MaterialDownloadHelper.downloadToAlbum(
+      context,
+      materialId: moment.id,
+      materialType: mediaType,
+      fallbackUrls: moment.mediaUrls,
+      fallbackVideoUrl:
+          moment.mediaUrls.firstWhere(
+            (url) => UrlUtils.isVideoUrl(url),
+            orElse: () => '',
+          ),
+      fallbackLiveVideoUrl:
+          moment.mediaUrls.firstWhere(
+            (url) => UrlUtils.isVideoUrl(url),
+            orElse: () => '',
+          ),
+    );
   }
 
   @override
@@ -792,9 +922,10 @@ class _MomentCardState extends ConsumerState<_MomentCard> {
             mainAxisAlignment: MainAxisAlignment.spaceAround,
             children: [
               _ActionBtn(
-                icon: _isFavorited
-                    ? Icons.star_rounded
-                    : Icons.star_border_rounded,
+                icon:
+                    _isFavorited
+                        ? Icons.star_rounded
+                        : Icons.star_border_rounded,
                 label: _isFavorited ? '已收藏' : '收藏',
                 color: _isFavorited ? AppColors.favoriteActive : null,
                 onTap: _handleFavorite,
@@ -803,9 +934,9 @@ class _MomentCardState extends ConsumerState<_MomentCard> {
                 icon: Icons.sentiment_dissatisfied_outlined,
                 label: '不喜欢',
                 onTap: () {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(content: Text('已标记不喜欢')),
-                  );
+                  ScaffoldMessenger.of(
+                    context,
+                  ).showSnackBar(const SnackBar(content: Text('已标记不喜欢')));
                 },
               ),
               _ActionBtn(
@@ -816,11 +947,7 @@ class _MomentCardState extends ConsumerState<_MomentCard> {
               _ActionBtn(
                 icon: Icons.file_download_outlined,
                 label: '下载',
-                onTap: () {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(content: Text('下载功能即将上线')),
-                  );
-                },
+                onTap: _handleDownload,
               ),
             ],
           ),
@@ -847,6 +974,8 @@ class _MomentCardState extends ConsumerState<_MomentCard> {
 
     // 视频：缩略图 + 播放图标
     if (isVideo && urls.isNotEmpty) {
+      final coverUrl = urls.first;
+      final isVideoCover = UrlUtils.isVideoUrl(coverUrl);
       return GestureDetector(
         onTap: () => context.push('/material/${moment.id}/preview'),
         child: ClipRRect(
@@ -855,21 +984,58 @@ class _MomentCardState extends ConsumerState<_MomentCard> {
             children: [
               ConstrainedBox(
                 constraints: const BoxConstraints(maxHeight: 240),
-                child: CachedNetworkImage(
-                  imageUrl: urls[0],
-                  width: double.infinity,
-                  fit: BoxFit.cover,
-                  placeholder: (_, __) =>
-                      Container(height: 200, color: AppColors.shimmer),
-                  errorWidget: (_, __, ___) => Container(
-                    height: 200,
-                    color: AppColors.shimmer,
-                    child: const Center(
-                      child: Icon(Icons.broken_image_outlined,
-                          color: AppColors.textDisabled, size: 32),
-                    ),
-                  ),
-                ),
+                child:
+                    isVideoCover
+                        ? NetworkVideoThumbnail(
+                          videoUrl: coverUrl,
+                          fit: BoxFit.cover,
+                          placeholder: Container(
+                            height: 200,
+                            width: double.infinity,
+                            color: AppColors.shimmer,
+                            child: const Center(
+                              child: Icon(
+                                Icons.play_circle_outline_rounded,
+                                color: AppColors.textSecondary,
+                                size: 40,
+                              ),
+                            ),
+                          ),
+                          errorWidget: Container(
+                            height: 200,
+                            width: double.infinity,
+                            color: AppColors.shimmer,
+                            child: const Center(
+                              child: Icon(
+                                Icons.broken_image_outlined,
+                                color: AppColors.textDisabled,
+                                size: 32,
+                              ),
+                            ),
+                          ),
+                        )
+                        : CachedNetworkImage(
+                          imageUrl: coverUrl,
+                          width: double.infinity,
+                          fit: BoxFit.cover,
+                          placeholder:
+                              (_, __) => Container(
+                                height: 200,
+                                color: AppColors.shimmer,
+                              ),
+                          errorWidget:
+                              (_, __, ___) => Container(
+                                height: 200,
+                                color: AppColors.shimmer,
+                                child: const Center(
+                                  child: Icon(
+                                    Icons.broken_image_outlined,
+                                    color: AppColors.textDisabled,
+                                    size: 32,
+                                  ),
+                                ),
+                              ),
+                        ),
               ),
               Positioned.fill(
                 child: Center(
@@ -880,8 +1046,11 @@ class _MomentCardState extends ConsumerState<_MomentCard> {
                       color: Colors.black.withValues(alpha: 0.5),
                       shape: BoxShape.circle,
                     ),
-                    child: const Icon(Icons.play_arrow_rounded,
-                        color: Colors.white, size: 32),
+                    child: const Icon(
+                      Icons.play_arrow_rounded,
+                      color: Colors.white,
+                      size: 32,
+                    ),
                   ),
                 ),
               ),
@@ -903,16 +1072,20 @@ class _MomentCardState extends ConsumerState<_MomentCard> {
               imageUrl: urls[0],
               width: double.infinity,
               fit: BoxFit.cover,
-              placeholder: (_, __) =>
-                  Container(height: 180, color: AppColors.shimmer),
-              errorWidget: (_, __, ___) => Container(
-                height: 180,
-                color: AppColors.shimmer,
-                child: const Center(
-                  child: Icon(Icons.broken_image_outlined,
-                      color: AppColors.textDisabled, size: 32),
-                ),
-              ),
+              placeholder:
+                  (_, __) => Container(height: 180, color: AppColors.shimmer),
+              errorWidget:
+                  (_, __, ___) => Container(
+                    height: 180,
+                    color: AppColors.shimmer,
+                    child: const Center(
+                      child: Icon(
+                        Icons.broken_image_outlined,
+                        color: AppColors.textDisabled,
+                        size: 32,
+                      ),
+                    ),
+                  ),
             ),
           ),
         ),
@@ -943,11 +1116,15 @@ class _MomentCardState extends ConsumerState<_MomentCard> {
                 imageUrl: urls[i],
                 fit: BoxFit.cover,
                 placeholder: (_, __) => Container(color: AppColors.shimmer),
-                errorWidget: (_, __, ___) => Container(
-                  color: AppColors.shimmer,
-                  child: const Icon(Icons.broken_image_outlined,
-                      color: AppColors.textDisabled, size: 20),
-                ),
+                errorWidget:
+                    (_, __, ___) => Container(
+                      color: AppColors.shimmer,
+                      child: const Icon(
+                        Icons.broken_image_outlined,
+                        color: AppColors.textDisabled,
+                        size: 20,
+                      ),
+                    ),
               ),
             ),
           ),

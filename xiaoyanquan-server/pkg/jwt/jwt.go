@@ -1,6 +1,8 @@
 package jwt
 
 import (
+	"crypto/rand"
+	"encoding/hex"
 	"errors"
 	"time"
 
@@ -8,9 +10,11 @@ import (
 )
 
 type Claims struct {
-	UserID uint   `json:"user_id"`
-	Phone  string `json:"phone"`
-	Type   string `json:"type"` // "access" or "refresh"
+	UserID    uint   `json:"user_id"`
+	Phone     string `json:"phone"`
+	Type      string `json:"type"` // "access" or "refresh"
+	DeviceID  string `json:"device_id,omitempty"`
+	SessionID string `json:"sid,omitempty"`
 	jwtgo.RegisteredClaims
 }
 
@@ -26,14 +30,23 @@ var (
 )
 
 // GenerateTokenPair 生成 access + refresh token 对
-func GenerateTokenPair(secret string, userID uint, phone string, accessTTL, refreshTTL time.Duration) (*TokenPair, error) {
+func GenerateTokenPair(secret string, userID uint, phone, deviceID, sessionID string, accessTTL, refreshTTL time.Duration) (*TokenPair, error) {
 	now := time.Now()
+	if sessionID == "" {
+		var err error
+		sessionID, err = newSessionID()
+		if err != nil {
+			return nil, err
+		}
+	}
 
 	// Access Token
 	accessClaims := Claims{
-		UserID: userID,
-		Phone:  phone,
-		Type:   "access",
+		UserID:    userID,
+		Phone:     phone,
+		Type:      "access",
+		DeviceID:  deviceID,
+		SessionID: sessionID,
 		RegisteredClaims: jwtgo.RegisteredClaims{
 			ExpiresAt: jwtgo.NewNumericDate(now.Add(accessTTL)),
 			IssuedAt:  jwtgo.NewNumericDate(now),
@@ -48,9 +61,11 @@ func GenerateTokenPair(secret string, userID uint, phone string, accessTTL, refr
 
 	// Refresh Token
 	refreshClaims := Claims{
-		UserID: userID,
-		Phone:  phone,
-		Type:   "refresh",
+		UserID:    userID,
+		Phone:     phone,
+		Type:      "refresh",
+		DeviceID:  deviceID,
+		SessionID: sessionID,
 		RegisteredClaims: jwtgo.RegisteredClaims{
 			ExpiresAt: jwtgo.NewNumericDate(now.Add(refreshTTL)),
 			IssuedAt:  jwtgo.NewNumericDate(now),
@@ -104,4 +119,12 @@ func ParseToken(secret, tokenStr string) (*Claims, error) {
 		return nil, ErrTokenInvalid
 	}
 	return claims, nil
+}
+
+func newSessionID() (string, error) {
+	buf := make([]byte, 16)
+	if _, err := rand.Read(buf); err != nil {
+		return "", err
+	}
+	return hex.EncodeToString(buf), nil
 }

@@ -1,12 +1,13 @@
 import { useEffect, useState, useCallback } from 'react';
-import { Table, Input, Select, Space, Tag, Button, Modal, Form, Switch, Popconfirm, message } from 'antd';
+import { Table, Input, Select, Space, Tag, Button, Modal, Form, Switch, Popconfirm, Tooltip, message } from 'antd';
 import { SearchOutlined, PlusOutlined } from '@ant-design/icons';
 import http from '../api/http';
+import { formatDateTime } from '../utils/time';
 
 const memberLabels: Record<string, { text: string; color: string }> = {
   free: { text: '普通', color: 'default' },
-  pro: { text: '专业版', color: 'blue' },
-  flagship: { text: '旗舰版', color: 'gold' },
+  pro: { text: '标准版', color: 'blue' },
+  flagship: { text: '专业版', color: 'gold' },
 };
 
 export default function UserPage() {
@@ -16,6 +17,7 @@ export default function UserPage() {
   const [loading, setLoading] = useState(false);
   const [keyword, setKeyword] = useState('');
   const [memberType, setMemberType] = useState('');
+  const [deviceBound, setDeviceBound] = useState('');
   const [modalOpen, setModalOpen] = useState(false);
   const [selectedRowKeys, setSelectedRowKeys] = useState<React.Key[]>([]);
   const [form] = Form.useForm();
@@ -25,13 +27,14 @@ export default function UserPage() {
     const params: any = { page, page_size: 20 };
     if (keyword) params.keyword = keyword;
     if (memberType) params.member_type = memberType;
+    if (deviceBound) params.device_bound = deviceBound;
     const { data: resp } = await http.get('/users', { params });
     if (resp.code === 0) {
       setData(resp.data.list || []);
       setTotal(resp.data.total);
     }
     setLoading(false);
-  }, [page, keyword, memberType]);
+  }, [page, keyword, memberType, deviceBound]);
 
   useEffect(() => { fetchData(); }, [fetchData]);
 
@@ -81,10 +84,73 @@ export default function UserPage() {
     fetchData();
   };
 
+  const handleAdminUnbindDevice = async (id: number) => {
+    await http.post(`/users/${id}/device/unbind`);
+    message.success('设备解绑成功');
+    fetchData();
+  };
+
+  const shortDeviceId = (id?: string) => {
+    if (!id) return '';
+    if (id.length <= 14) return id;
+    return `${id.slice(0, 8)}...${id.slice(-6)}`;
+  };
+
+  const handleCopyDeviceId = async (deviceId?: string) => {
+    if (!deviceId) return;
+    try {
+      await navigator.clipboard.writeText(deviceId);
+      message.success('设备ID已复制');
+    } catch {
+      message.error('复制失败');
+    }
+  };
+
   const columns = [
     { title: 'ID', dataIndex: 'id', width: 60 },
     { title: '手机号', dataIndex: 'phone', width: 130 },
     { title: '昵称', dataIndex: 'nickname' },
+    {
+      title: '绑定设备',
+      dataIndex: 'device_name',
+      width: 230,
+      render: (_: string, row: any) => {
+        if (!row.device_bound) return <Tag>未绑定</Tag>;
+        return (
+          <div>
+            <div>{row.device_name || '当前设备'}</div>
+            <div style={{ color: '#8c8c8c', fontSize: 12, display: 'flex', alignItems: 'center', gap: 6 }}>
+              <span>{shortDeviceId(row.device_id)}</span>
+              <Tooltip title="复制设备ID">
+                <Button
+                  type="link"
+                  size="small"
+                  style={{ padding: 0, height: 'auto' }}
+                  onClick={() => handleCopyDeviceId(row.device_id)}
+                >
+                  复制
+                </Button>
+              </Tooltip>
+            </div>
+          </div>
+        );
+      },
+    },
+    {
+      title: '设备平台',
+      dataIndex: 'device_platform',
+      width: 90,
+      render: (v: string, row: any) => {
+        if (!row.device_bound) return <span style={{ color: '#bfbfbf' }}>-</span>;
+        return <Tag color="geekblue">{(v || 'unknown').toUpperCase()}</Tag>;
+      },
+    },
+    {
+      title: '绑定时间',
+      dataIndex: 'device_bound_at',
+      width: 170,
+      render: (v: string, row: any) => (row.device_bound ? formatDateTime(v) : '-'),
+    },
     {
       title: '会员类型', dataIndex: 'member_type', width: 100,
       render: (t: string) => {
@@ -98,9 +164,14 @@ export default function UserPage() {
         <Tag color={s === 'active' ? 'green' : 'red'}>{s === 'active' ? '正常' : '已禁用'}</Tag>
       ),
     },
-    { title: '注册时间', dataIndex: 'created_at', width: 170 },
     {
-      title: '操作', width: 180,
+      title: '注册时间',
+      dataIndex: 'created_at',
+      width: 170,
+      render: (v: string) => formatDateTime(v),
+    },
+    {
+      title: '操作', width: 260,
       render: (_: any, row: any) => (
         <Space>
           <Switch
@@ -109,6 +180,13 @@ export default function UserPage() {
             unCheckedChildren="禁用"
             onChange={() => handleToggleStatus(row.id, row.status || 'active')}
           />
+          <Popconfirm
+            title="确认解绑该用户设备？"
+            onConfirm={() => handleAdminUnbindDevice(row.id)}
+            disabled={!row.device_bound}
+          >
+            <Button size="small" disabled={!row.device_bound}>解绑设备</Button>
+          </Popconfirm>
           <Popconfirm title="确认删除该用户？此操作不可恢复" onConfirm={() => handleDelete(row.id)}>
             <Button size="small" danger>删除</Button>
           </Popconfirm>
@@ -122,7 +200,15 @@ export default function UserPage() {
       <Space style={{ marginBottom: 16 }} wrap>
         <Input placeholder="搜索手机/昵称" prefix={<SearchOutlined />} value={keyword} onChange={(e) => { setKeyword(e.target.value); setPage(1); }} allowClear />
         <Select placeholder="会员类型" style={{ width: 120 }} value={memberType || undefined} onChange={(v) => { setMemberType(v || ''); setPage(1); }} allowClear
-          options={[{ value: 'free', label: '普通' }, { value: 'pro', label: '专业版' }, { value: 'flagship', label: '旗舰版' }]}
+          options={[{ value: 'free', label: '普通' }, { value: 'pro', label: '标准版' }, { value: 'flagship', label: '专业版' }]}
+        />
+        <Select
+          placeholder="设备绑定"
+          style={{ width: 120 }}
+          value={deviceBound || undefined}
+          onChange={(v) => { setDeviceBound(v || ''); setPage(1); }}
+          allowClear
+          options={[{ value: '1', label: '已绑定' }, { value: '0', label: '未绑定' }]}
         />
         <Button type="primary" icon={<PlusOutlined />} onClick={() => { form.resetFields(); setModalOpen(true); }}>添加用户</Button>
         {selectedRowKeys.length > 0 && (
@@ -139,6 +225,17 @@ export default function UserPage() {
       <Table rowKey="id" columns={columns} dataSource={data} loading={loading}
         rowSelection={{ selectedRowKeys, onChange: (keys) => setSelectedRowKeys(keys) }}
         pagination={{ current: page, total, pageSize: 20, onChange: setPage }}
+        expandable={{
+          rowExpandable: (record: any) => !!record.device_bound,
+          expandedRowRender: (record: any) => (
+            <div style={{ lineHeight: 1.9 }}>
+              <div><strong>完整设备ID：</strong>{record.device_id || '-'}</div>
+              <div><strong>设备名称：</strong>{record.device_name || '-'}</div>
+              <div><strong>设备平台：</strong>{record.device_platform || '-'}</div>
+              <div><strong>绑定时间：</strong>{formatDateTime(record.device_bound_at)}</div>
+            </div>
+          ),
+        }}
       />
 
       <Modal title="添加用户" open={modalOpen} onOk={handleCreate} onCancel={() => setModalOpen(false)}>

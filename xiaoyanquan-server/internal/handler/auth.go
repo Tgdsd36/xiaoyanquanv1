@@ -4,12 +4,15 @@ import (
 	"context"
 	"fmt"
 	"math/rand"
+	"net/http"
+	"strings"
 	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/redis/go-redis/v9"
 	"golang.org/x/crypto/bcrypt"
 	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 
 	"github.com/xiaoyanquan/server/internal/config"
 	"github.com/xiaoyanquan/server/internal/model"
@@ -18,9 +21,9 @@ import (
 )
 
 type AuthHandler struct {
-	DB    *gorm.DB
-	RDB   *redis.Client
-	Cfg   *config.Config
+	DB  *gorm.DB
+	RDB *redis.Client
+	Cfg *config.Config
 }
 
 // ==================== 请求结构 ====================
@@ -67,6 +70,20 @@ type UserResponse struct {
 	MemberType     string     `json:"member_type"`
 	MemberExpireAt *time.Time `json:"member_expire_at"`
 	IsNewUser      bool       `json:"is_new_user,omitempty"`
+}
+
+type DeviceBindingResponse struct {
+	Bound      bool   `json:"bound"`
+	DeviceID   string `json:"device_id,omitempty"`
+	DeviceName string `json:"device_name,omitempty"`
+	Platform   string `json:"platform,omitempty"`
+	BoundAt    string `json:"bound_at,omitempty"`
+}
+
+type DeviceRequestInfo struct {
+	DeviceID   string
+	DeviceName string
+	Platform   string
 }
 
 // ==================== 发送验证码 ====================
@@ -119,6 +136,11 @@ func (h *AuthHandler) SMSLogin(c *gin.Context) {
 		return
 	}
 
+	device, ok := h.parseDeviceInfo(c)
+	if !ok {
+		return
+	}
+
 	// 查找或创建用户
 	var user model.User
 	isNewUser := false
@@ -140,7 +162,11 @@ func (h *AuthHandler) SMSLogin(c *gin.Context) {
 		return
 	}
 
-	h.respondWithToken(c, &user, isNewUser)
+	if !h.ensureDeviceBinding(c, user.ID, device) {
+		return
+	}
+
+	h.respondWithToken(c, &user, isNewUser, device.DeviceID)
 }
 
 // ==================== 密码登录 ====================
@@ -168,7 +194,15 @@ func (h *AuthHandler) Login(c *gin.Context) {
 		return
 	}
 
-	h.respondWithToken(c, &user, false)
+	device, ok := h.parseDeviceInfo(c)
+	if !ok {
+		return
+	}
+	if !h.ensureDeviceBinding(c, user.ID, device) {
+		return
+	}
+
+	h.respondWithToken(c, &user, false, device.DeviceID)
 }
 
 // ==================== 注册 ====================
@@ -177,6 +211,11 @@ func (h *AuthHandler) Register(c *gin.Context) {
 	var req RegisterReq
 	if err := c.ShouldBindJSON(&req); err != nil {
 		response.BadRequest(c, 400, "参数错误")
+		return
+	}
+
+	device, ok := h.parseDeviceInfo(c)
+	if !ok {
 		return
 	}
 
@@ -217,7 +256,11 @@ func (h *AuthHandler) Register(c *gin.Context) {
 		return
 	}
 
-	h.respondWithToken(c, &user, true)
+	if !h.ensureDeviceBinding(c, user.ID, device) {
+		return
+	}
+
+	h.respondWithToken(c, &user, true, device.DeviceID)
 }
 
 // ==================== 刷新 Token ====================
@@ -238,10 +281,33 @@ func (h *AuthHandler) Refresh(c *gin.Context) {
 		response.Unauthorized(c, "无效的 Token")
 		return
 	}
+	if claims.DeviceID == "" {
+		response.Error(c, http.StatusUnauthorized, response.ErrCodeDeviceMismatch, "设备校验失败，请重新登录")
+		return
+	}
+
+	device, ok := h.parseDeviceInfo(c)
+	if !ok {
+		return
+	}
+	if device.DeviceID != claims.DeviceID {
+		response.Error(c, http.StatusUnauthorized, response.ErrCodeDeviceMismatch, "设备校验失败，请重新登录")
+		return
+	}
+
+	var binding model.UserDeviceBinding
+	if err := h.DB.Where("user_id = ?", claims.UserID).First(&binding).Error; err != nil {
+		response.Error(c, http.StatusUnauthorized, response.ErrCodeDeviceMismatch, "设备校验失败，请重新登录")
+		return
+	}
+	if binding.DeviceID != device.DeviceID {
+		response.Error(c, http.StatusUnauthorized, response.ErrCodeDeviceMismatch, "账号已在其他设备绑定，请重新登录")
+		return
+	}
 
 	// 生成新的 token pair
 	tokenPair, err := myjwt.GenerateTokenPair(
-		h.Cfg.JWT.Secret, claims.UserID, claims.Phone,
+		h.Cfg.JWT.Secret, claims.UserID, claims.Phone, device.DeviceID, claims.SessionID,
 		h.Cfg.JWT.AccessTokenTTL, h.Cfg.JWT.RefreshTokenTTL,
 	)
 	if err != nil {
@@ -265,7 +331,119 @@ func (h *AuthHandler) DeleteAccount(c *gin.Context) {
 	response.SuccessMessage(c, "账号已注销")
 }
 
+// ==================== 设备绑定 ====================
+
+// DeviceInfo 查询当前账号的设备绑定信息
+func (h *AuthHandler) DeviceInfo(c *gin.Context) {
+	userID, ok := getCurrentUserID(c)
+	if !ok {
+		response.Unauthorized(c, "请先登录")
+		return
+	}
+
+	var binding model.UserDeviceBinding
+	if err := h.DB.Where("user_id = ?", userID).First(&binding).Error; err != nil {
+		if err == gorm.ErrRecordNotFound {
+			response.Success(c, DeviceBindingResponse{Bound: false})
+			return
+		}
+		response.ServerError(c, "系统错误")
+		return
+	}
+
+	response.Success(c, DeviceBindingResponse{
+		Bound:      true,
+		DeviceID:   binding.DeviceID,
+		DeviceName: binding.DeviceName,
+		Platform:   binding.Platform,
+		BoundAt:    binding.BoundAt.Format("2006-01-02 15:04:05"),
+	})
+}
+
+// UnbindDevice 解绑当前账号的设备绑定
+func (h *AuthHandler) UnbindDevice(c *gin.Context) {
+	userID, ok := getCurrentUserID(c)
+	if !ok {
+		response.Unauthorized(c, "请先登录")
+		return
+	}
+
+	if err := h.DB.Where("user_id = ?", userID).Delete(&model.UserDeviceBinding{}).Error; err != nil {
+		response.ServerError(c, "解绑失败，请稍后重试")
+		return
+	}
+
+	response.SuccessMessage(c, "设备解绑成功")
+}
+
 // ==================== 内部方法 ====================
+
+func (h *AuthHandler) parseDeviceInfo(c *gin.Context) (DeviceRequestInfo, bool) {
+	deviceID := strings.TrimSpace(c.GetHeader("X-Device-Id"))
+	if deviceID == "" {
+		response.BadRequest(c, response.ErrCodeDeviceIDRequired, "缺少设备标识，请升级客户端后重试")
+		return DeviceRequestInfo{}, false
+	}
+
+	info := DeviceRequestInfo{
+		DeviceID:   deviceID,
+		DeviceName: strings.TrimSpace(c.GetHeader("X-Device-Name")),
+		Platform:   strings.TrimSpace(c.GetHeader("X-Platform")),
+	}
+	if info.DeviceName == "" {
+		info.DeviceName = "当前设备"
+	}
+	if info.Platform == "" {
+		info.Platform = "unknown"
+	}
+	return info, true
+}
+
+func (h *AuthHandler) ensureDeviceBinding(c *gin.Context, userID uint, info DeviceRequestInfo) bool {
+	newBinding := model.UserDeviceBinding{
+		UserID:     userID,
+		DeviceID:   info.DeviceID,
+		DeviceName: info.DeviceName,
+		Platform:   info.Platform,
+		BoundAt:    time.Now(),
+		UpdatedAt:  time.Now(),
+	}
+	if err := h.DB.Clauses(clause.OnConflict{
+		Columns:   []clause.Column{{Name: "user_id"}},
+		DoNothing: true,
+	}).Create(&newBinding).Error; err != nil {
+		response.ServerError(c, "系统错误")
+		return false
+	}
+
+	var binding model.UserDeviceBinding
+	if err := h.DB.Where("user_id = ?", userID).First(&binding).Error; err != nil {
+		response.ServerError(c, "系统错误")
+		return false
+	}
+
+	if binding.DeviceID != info.DeviceID {
+		msg := "该账号已绑定其他设备，请先在原设备解绑"
+		if binding.DeviceName != "" {
+			msg = fmt.Sprintf("该账号已绑定设备「%s」，请先在原设备解绑", binding.DeviceName)
+		}
+		response.Error(c, http.StatusConflict, response.ErrCodeDeviceBoundOther, msg)
+		return false
+	}
+
+	updates := map[string]interface{}{}
+	if binding.DeviceName != info.DeviceName {
+		updates["device_name"] = info.DeviceName
+	}
+	if binding.Platform != info.Platform {
+		updates["platform"] = info.Platform
+	}
+	if len(updates) > 0 {
+		updates["updated_at"] = time.Now()
+		_ = h.DB.Model(&model.UserDeviceBinding{}).Where("id = ?", binding.ID).Updates(updates).Error
+	}
+	return true
+}
 
 func (h *AuthHandler) verifyCode(phone, code string) bool {
 	ctx := context.Background()
@@ -284,9 +462,29 @@ func (h *AuthHandler) verifyCode(phone, code string) bool {
 	return true
 }
 
-func (h *AuthHandler) respondWithToken(c *gin.Context, user *model.User, isNewUser bool) {
+func getCurrentUserID(c *gin.Context) (uint, bool) {
+	raw, exists := c.Get("user_id")
+	if !exists {
+		return 0, false
+	}
+	switch v := raw.(type) {
+	case uint:
+		return v, true
+	case int:
+		if v > 0 {
+			return uint(v), true
+		}
+	case int64:
+		if v > 0 {
+			return uint(v), true
+		}
+	}
+	return 0, false
+}
+
+func (h *AuthHandler) respondWithToken(c *gin.Context, user *model.User, isNewUser bool, deviceID string) {
 	tokenPair, err := myjwt.GenerateTokenPair(
-		h.Cfg.JWT.Secret, user.ID, user.Phone,
+		h.Cfg.JWT.Secret, user.ID, user.Phone, deviceID, "",
 		h.Cfg.JWT.AccessTokenTTL, h.Cfg.JWT.RefreshTokenTTL,
 	)
 	if err != nil {

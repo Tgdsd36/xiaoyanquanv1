@@ -84,13 +84,16 @@ func ServerError(c *gin.Context, msg string) {
 
 // 业务错误码
 const (
-	ErrCodeSMSCodeInvalid  = 10001
-	ErrCodeSMSCodeExpired  = 10002
-	ErrCodePasswordWrong   = 10003
-	ErrCodePhoneRegistered = 10004
-	ErrCodePhoneNotFound   = 10005
-	ErrCodeDownloadLimit   = 20001
+	ErrCodeSMSCodeInvalid   = 10001
+	ErrCodeSMSCodeExpired   = 10002
+	ErrCodePasswordWrong    = 10003
+	ErrCodePhoneRegistered  = 10004
+	ErrCodePhoneNotFound    = 10005
+	ErrCodeDeviceIDRequired = 10006
+	ErrCodeDeviceBoundOther = 10007
+	ErrCodeDeviceMismatch   = 10008
+	ErrCodeDownloadLimit    = 20001
 	ErrCodeMaterialNotFound = 20002
-	ErrCodePaymentFailed   = 30001
-	ErrCodeOrderNotFound   = 30002
+	ErrCodePaymentFailed    = 30001
+	ErrCodeOrderNotFound    = 30002
 )

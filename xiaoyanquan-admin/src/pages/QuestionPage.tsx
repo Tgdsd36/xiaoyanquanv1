@@ -1,6 +1,7 @@
 import { useEffect, useState, useCallback } from 'react';
 import { Table, Button, Select, Space, Tag, Modal, Input, message } from 'antd';
 import http from '../api/http';
+import { formatDateTime } from '../utils/time';
 
 export default function QuestionPage() {
   const [data, setData] = useState<any[]>([]);
@@ -47,7 +48,7 @@ export default function QuestionPage() {
       title: '状态', dataIndex: 'status', width: 80,
       render: (s: string) => <Tag color={s === 'replied' ? 'green' : 'orange'}>{s === 'replied' ? '已回复' : '待回复'}</Tag>,
     },
-    { title: '时间', dataIndex: 'created_at', width: 170 },
+    { title: '时间', dataIndex: 'created_at', width: 170, render: (v: string) => formatDateTime(v) },
     {
       title: '操作', width: 80,
       render: (_: any, row: any) => (

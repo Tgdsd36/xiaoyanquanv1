@@ -4,6 +4,8 @@ import 'package:go_router/go_router.dart';
 import '../../../app/colors.dart';
 import '../../../core/constants/api.dart';
 import '../../../core/network/http_client.dart';
+import '../../../core/utils/url_utils.dart';
+import '../../../shared/network_video_thumbnail.dart';
 import '../../home/repositories/favorite_repository.dart';
 
 /// 收藏分组详情页：展示某个分组内的收藏列表
@@ -51,10 +53,10 @@ class _FavoriteGroupDetailPageState extends State<FavoriteGroupDetailPage> {
   Future<void> _load() async {
     setState(() => _isLoading = true);
     try {
-      final resp = await _http.get(Api.favorites, params: {
-        'page': 1,
-        'group_id': widget.groupId,
-      });
+      final resp = await _http.get(
+        Api.favorites,
+        params: {'page': 1, 'group_id': widget.groupId},
+      );
       if (resp.isSuccess && resp.data != null) {
         setState(() {
           _items = List<Map<String, dynamic>>.from(resp.data['list'] ?? []);
@@ -74,14 +76,15 @@ class _FavoriteGroupDetailPageState extends State<FavoriteGroupDetailPage> {
     if (_loadingMore || !_hasMore) return;
     _loadingMore = true;
     try {
-      final resp = await _http.get(Api.favorites, params: {
-        'page': _page + 1,
-        'group_id': widget.groupId,
-      });
+      final resp = await _http.get(
+        Api.favorites,
+        params: {'page': _page + 1, 'group_id': widget.groupId},
+      );
       if (resp.isSuccess && resp.data != null) {
         setState(() {
           _items.addAll(
-              List<Map<String, dynamic>>.from(resp.data['list'] ?? []));
+            List<Map<String, dynamic>>.from(resp.data['list'] ?? []),
+          );
           _hasMore = resp.data['has_more'] ?? false;
           _page++;
         });
@@ -101,30 +104,31 @@ class _FavoriteGroupDetailPageState extends State<FavoriteGroupDetailPage> {
     if (error == null) {
       setState(() => _isEditing = false);
     } else {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(error)),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(error)));
     }
   }
 
   Future<void> _deleteGroup() async {
     final confirmed = await showDialog<bool>(
       context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('删除分组'),
-        content: const Text('删除分组后，组内收藏将一并删除，确定删除吗？'),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context, false),
-            child: const Text('取消'),
+      builder:
+          (context) => AlertDialog(
+            title: const Text('删除分组'),
+            content: const Text('删除分组后，组内收藏将一并删除，确定删除吗？'),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(context, false),
+                child: const Text('取消'),
+              ),
+              TextButton(
+                onPressed: () => Navigator.pop(context, true),
+                style: TextButton.styleFrom(foregroundColor: AppColors.error),
+                child: const Text('删除'),
+              ),
+            ],
           ),
-          TextButton(
-            onPressed: () => Navigator.pop(context, true),
-            style: TextButton.styleFrom(foregroundColor: AppColors.error),
-            child: const Text('删除'),
-          ),
-        ],
-      ),
     );
     if (confirmed != true || !mounted) return;
 
@@ -133,9 +137,9 @@ class _FavoriteGroupDetailPageState extends State<FavoriteGroupDetailPage> {
     if (error == null) {
       context.pop(true); // 返回 true 表示已删除，需要刷新
     } else {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(error)),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(error)));
     }
   }
 
@@ -143,18 +147,19 @@ class _FavoriteGroupDetailPageState extends State<FavoriteGroupDetailPage> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: _isEditing
-            ? TextField(
-                controller: _nameController,
-                autofocus: true,
-                style: const TextStyle(fontSize: 17),
-                decoration: const InputDecoration(
-                  border: InputBorder.none,
-                  hintText: '分组名称',
-                ),
-                onSubmitted: (_) => _renameGroup(),
-              )
-            : Text(_nameController.text),
+        title:
+            _isEditing
+                ? TextField(
+                  controller: _nameController,
+                  autofocus: true,
+                  style: const TextStyle(fontSize: 17),
+                  decoration: const InputDecoration(
+                    border: InputBorder.none,
+                    hintText: '分组名称',
+                  ),
+                  onSubmitted: (_) => _renameGroup(),
+                )
+                : Text(_nameController.text),
         centerTitle: true,
         actions: [
           PopupMenuButton<String>(
@@ -165,63 +170,71 @@ class _FavoriteGroupDetailPageState extends State<FavoriteGroupDetailPage> {
                 _deleteGroup();
               }
             },
-            itemBuilder: (context) => [
-              const PopupMenuItem(
-                value: 'rename',
-                child: Row(
-                  children: [
-                    Icon(Icons.edit_outlined, size: 18,
-                        color: AppColors.textSecondary),
-                    SizedBox(width: 8),
-                    Text('重命名'),
-                  ],
-                ),
-              ),
-              const PopupMenuItem(
-                value: 'delete',
-                child: Row(
-                  children: [
-                    Icon(Icons.delete_outline, size: 18,
-                        color: AppColors.error),
-                    SizedBox(width: 8),
-                    Text('删除分组',
-                        style: TextStyle(color: AppColors.error)),
-                  ],
-                ),
-              ),
-            ],
+            itemBuilder:
+                (context) => [
+                  const PopupMenuItem(
+                    value: 'rename',
+                    child: Row(
+                      children: [
+                        Icon(
+                          Icons.edit_outlined,
+                          size: 18,
+                          color: AppColors.textSecondary,
+                        ),
+                        SizedBox(width: 8),
+                        Text('重命名'),
+                      ],
+                    ),
+                  ),
+                  const PopupMenuItem(
+                    value: 'delete',
+                    child: Row(
+                      children: [
+                        Icon(
+                          Icons.delete_outline,
+                          size: 18,
+                          color: AppColors.error,
+                        ),
+                        SizedBox(width: 8),
+                        Text('删除分组', style: TextStyle(color: AppColors.error)),
+                      ],
+                    ),
+                  ),
+                ],
           ),
         ],
       ),
-      body: _isLoading
-          ? const Center(
-              child: CircularProgressIndicator(strokeWidth: 2))
-          : _items.isEmpty
+      body:
+          _isLoading
+              ? const Center(child: CircularProgressIndicator(strokeWidth: 2))
+              : _items.isEmpty
               ? const Center(
-                  child: Text('暂无收藏',
-                      style: TextStyle(color: AppColors.textHint)))
+                child: Text(
+                  '暂无收藏',
+                  style: TextStyle(color: AppColors.textHint),
+                ),
+              )
               : NotificationListener<ScrollNotification>(
-                  onNotification: (notification) {
-                    if (notification.metrics.pixels >=
-                        notification.metrics.maxScrollExtent - 200) {
-                      _loadMore();
-                    }
-                    return false;
-                  },
-                  child: RefreshIndicator(
-                    onRefresh: _load,
-                    child: ListView.separated(
-                      padding: const EdgeInsets.all(12),
-                      itemCount: _items.length,
-                      separatorBuilder: (_, __) =>
-                          const SizedBox(height: 8),
-                      itemBuilder: (context, index) {
-                        final item = _items[index];
-                        return _FavoriteItemTile(item: item);
-                      },
-                    ),
+                onNotification: (notification) {
+                  if (notification.metrics.pixels >=
+                      notification.metrics.maxScrollExtent - 200) {
+                    _loadMore();
+                  }
+                  return false;
+                },
+                child: RefreshIndicator(
+                  onRefresh: _load,
+                  child: ListView.separated(
+                    padding: const EdgeInsets.all(12),
+                    itemCount: _items.length,
+                    separatorBuilder: (_, __) => const SizedBox(height: 8),
+                    itemBuilder: (context, index) {
+                      final item = _items[index];
+                      return _FavoriteItemTile(item: item);
+                    },
                   ),
                 ),
+              ),
     );
   }
 }
@@ -232,31 +245,71 @@ class _FavoriteItemTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final thumbnailUrl = UrlUtils.absolute(
+      (item['thumbnail_url'] ?? item['thumbnail'])?.toString(),
+    );
+    final canShowImage =
+        thumbnailUrl.isNotEmpty && !UrlUtils.isVideoUrl(thumbnailUrl);
+    final createdAt =
+        (item['created_at'] ?? item['favorited_at'])?.toString() ?? '';
+
     return ListTile(
       leading: ClipRRect(
         borderRadius: BorderRadius.circular(6),
         child: SizedBox(
           width: 50,
           height: 50,
-          child: item['thumbnail'] != null &&
-                  (item['thumbnail'] as String).isNotEmpty
-              ? CachedNetworkImage(
-                  imageUrl: item['thumbnail'],
-                  fit: BoxFit.cover,
-                )
-              : Container(
-                  color: AppColors.shimmer,
-                  child: const Icon(Icons.image,
-                      color: AppColors.textDisabled)),
+          child:
+              canShowImage
+                  ? CachedNetworkImage(
+                    imageUrl: thumbnailUrl,
+                    fit: BoxFit.cover,
+                  )
+                  : (thumbnailUrl.isNotEmpty &&
+                      UrlUtils.isVideoUrl(thumbnailUrl))
+                  ? NetworkVideoThumbnail(
+                    videoUrl: thumbnailUrl,
+                    fit: BoxFit.cover,
+                    placeholder: Container(
+                      color: AppColors.shimmer,
+                      child: const Icon(
+                        Icons.play_circle_outline_rounded,
+                        color: AppColors.textDisabled,
+                      ),
+                    ),
+                    errorWidget: Container(
+                      color: AppColors.shimmer,
+                      child: const Icon(
+                        Icons.broken_image_outlined,
+                        color: AppColors.textDisabled,
+                      ),
+                    ),
+                  )
+                  : Container(
+                    color: AppColors.shimmer,
+                    child: Icon(
+                      thumbnailUrl.isNotEmpty
+                          ? Icons.play_circle_outline_rounded
+                          : Icons.image,
+                      color: AppColors.textDisabled,
+                    ),
+                  ),
         ),
       ),
-      title: Text(item['title'] ?? '未知素材', maxLines: 1,
-          overflow: TextOverflow.ellipsis),
-      subtitle: Text(item['created_at'] ?? '',
-          style:
-              const TextStyle(fontSize: 12, color: AppColors.textHint)),
-      trailing:
-          const Icon(Icons.chevron_right, size: 18, color: AppColors.textHint),
+      title: Text(
+        item['title'] ?? '未知素材',
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
+      ),
+      subtitle: Text(
+        createdAt,
+        style: const TextStyle(fontSize: 12, color: AppColors.textHint),
+      ),
+      trailing: const Icon(
+        Icons.chevron_right,
+        size: 18,
+        color: AppColors.textHint,
+      ),
       onTap: () {
         final targetId = item['target_id'];
         if (targetId != null) {
@@ -264,8 +317,7 @@ class _FavoriteItemTile extends StatelessWidget {
         }
       },
       tileColor: Theme.of(context).cardColor,
-      shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(8)),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
     );
   }
 }

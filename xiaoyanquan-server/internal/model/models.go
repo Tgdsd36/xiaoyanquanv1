@@ -19,7 +19,7 @@ type User struct {
 	Nickname             string         `gorm:"size:50" json:"nickname"`
 	AvatarURL            string         `gorm:"size:500" json:"avatar_url"`
 	CoverURL             string         `gorm:"size:500" json:"cover_url"`
-	Status               string         `gorm:"size:20;default:active" json:"status"` // active, disabled
+	Status               string         `gorm:"size:20;default:active" json:"status"`    // active, disabled
 	MemberType           string         `gorm:"size:20;default:free" json:"member_type"` // free, pro, flagship
 	MemberExpireAt       *time.Time     `json:"member_expire_at"`
 	MonthlyDownloadCount int            `gorm:"default:0" json:"monthly_download_count"`
@@ -28,6 +28,20 @@ type User struct {
 	UpdatedAt            time.Time      `json:"updated_at"`
 	DeletedAt            gorm.DeletedAt `gorm:"index" json:"-"`
 }
+
+// ==================== 用户设备绑定 ====================
+
+type UserDeviceBinding struct {
+	ID         uint      `gorm:"primaryKey" json:"id"`
+	UserID     uint      `gorm:"uniqueIndex;not null" json:"user_id"`
+	DeviceID   string    `gorm:"size:128;not null;index" json:"device_id"`
+	DeviceName string    `gorm:"size:120" json:"device_name"`
+	Platform   string    `gorm:"size:40" json:"platform"`
+	BoundAt    time.Time `json:"bound_at"`
+	UpdatedAt  time.Time `json:"updated_at"`
+}
+
+func (UserDeviceBinding) TableName() string { return "user_device_bindings" }
 
 func (u *User) IsMember() bool {
 	if u.MemberType == "free" || u.MemberType == "" {
@@ -49,29 +63,31 @@ func (u *User) MaskedPhone() string {
 // ==================== 素材 ====================
 
 type Material struct {
-	ID            uint           `gorm:"primaryKey" json:"id"`
-	Title         string         `gorm:"size:200;not null" json:"title"`
-	Description   string         `gorm:"type:text" json:"description"`
-	Type          string         `gorm:"size:20;not null;index" json:"type"` // image, video, live_photo
-	CategoryID         *uint     `gorm:"index" json:"category_id"`
-	Category           *Category `gorm:"foreignKey:CategoryID" json:"category,omitempty"`
-	Gender             string    `gorm:"size:10;default:''" json:"gender"` // male, female, ""(不限)
-	Tags          pq.StringArray `gorm:"type:text[]" json:"tags"`
-	Width         int            `json:"width"`
-	Height        int            `json:"height"`
-	Duration      float64        `json:"duration"` // 秒，仅视频
-	FileSize      int64          `json:"file_size"`
-	OriginalURLs  JSON           `gorm:"type:jsonb" json:"original_urls"`
-	ThumbnailURL  string         `gorm:"size:500" json:"thumbnail_url"`
-	WatermarkURL  string         `gorm:"size:500" json:"watermark_url"`
-	PreviewMovURL string         `gorm:"size:500" json:"preview_mov_url"` // Live Photo
-	HotScore      float64        `gorm:"index;default:0" json:"hot_score"`
-	DownloadCount int            `gorm:"default:0" json:"download_count"`
-	FavoriteCount int            `gorm:"default:0" json:"favorite_count"`
-	ViewCount     int            `gorm:"default:0" json:"view_count"`
-	Status        string         `gorm:"size:20;default:draft;index" json:"status"` // draft, published, offline
-	CreatedAt     time.Time      `gorm:"index" json:"created_at"`
-	UpdatedAt     time.Time      `json:"updated_at"`
+	ID              uint           `gorm:"primaryKey" json:"id"`
+	Title           string         `gorm:"size:200;not null" json:"title"`
+	Description     string         `gorm:"type:text" json:"description"`
+	Type            string         `gorm:"size:20;not null;index" json:"type"` // image, video, live_photo
+	CategoryID      *uint          `gorm:"index" json:"category_id"`
+	Category        *Category      `gorm:"foreignKey:CategoryID" json:"category,omitempty"`
+	Gender          string         `gorm:"size:10;default:''" json:"gender"` // male, female, ""(不限)
+	Tags            pq.StringArray `gorm:"type:text[]" json:"tags"`
+	Width           int            `json:"width"`
+	Height          int            `json:"height"`
+	Duration        float64        `json:"duration"` // 秒，仅视频
+	FileSize        int64          `json:"file_size"`
+	OriginalURLs    JSON           `gorm:"type:jsonb" json:"original_urls"`
+	ThumbnailURL    string         `gorm:"size:500" json:"thumbnail_url"`
+	WatermarkURL    string         `gorm:"size:500" json:"watermark_url"`
+	PreviewMovURL   string         `gorm:"size:500" json:"preview_mov_url"`             // Live Photo
+	ShowInspiration bool           `gorm:"default:false;index" json:"show_inspiration"` // 是否投放到找灵感
+	ShowMoments     bool           `gorm:"default:false;index" json:"show_moments"`     // 是否投放到朋友圈
+	HotScore        float64        `gorm:"index;default:0" json:"hot_score"`
+	DownloadCount   int            `gorm:"default:0" json:"download_count"`
+	FavoriteCount   int            `gorm:"default:0" json:"favorite_count"`
+	ViewCount       int            `gorm:"default:0" json:"view_count"`
+	Status          string         `gorm:"size:20;default:draft;index" json:"status"` // draft, published, offline
+	CreatedAt       time.Time      `gorm:"index" json:"created_at"`
+	UpdatedAt       time.Time      `json:"updated_at"`
 }
 
 func (m *Material) FileSizeText() string {
@@ -91,15 +107,15 @@ func (m *Material) FileSizeText() string {
 // ==================== 分类 ====================
 
 type Category struct {
-	ID        uint        `gorm:"primaryKey" json:"id"`
-	ParentID  *uint       `gorm:"index" json:"parent_id"`
-	Parent    *Category   `gorm:"foreignKey:ParentID" json:"-"`
-	Children  []Category  `gorm:"foreignKey:ParentID" json:"children,omitempty"`
-	Name      string      `gorm:"size:50;not null" json:"name"`
-	Slug      string      `gorm:"size:50;uniqueIndex" json:"slug"`
-	SortOrder int         `gorm:"default:0" json:"sort_order"`
-	IsVisible bool        `gorm:"default:true" json:"is_visible"`
-	CreatedAt time.Time   `json:"created_at"`
+	ID        uint       `gorm:"primaryKey" json:"id"`
+	ParentID  *uint      `gorm:"index" json:"parent_id"`
+	Parent    *Category  `gorm:"foreignKey:ParentID" json:"-"`
+	Children  []Category `gorm:"foreignKey:ParentID" json:"children,omitempty"`
+	Name      string     `gorm:"size:50;not null" json:"name"`
+	Slug      string     `gorm:"size:50;uniqueIndex" json:"slug"`
+	SortOrder int        `gorm:"default:0" json:"sort_order"`
+	IsVisible bool       `gorm:"default:true" json:"is_visible"`
+	CreatedAt time.Time  `json:"created_at"`
 }
 
 // ==================== 收藏分组 ====================
@@ -203,13 +219,35 @@ type Asset struct {
 	Filename     string    `gorm:"size:255;not null" json:"filename"`
 	OriginalName string    `gorm:"size:255" json:"original_name"`
 	URL          string    `gorm:"size:500;not null" json:"url"`
+	PreviewURL   string    `gorm:"size:500" json:"preview_url"`             // 预览图（如 HEIC 转 JPG）
 	FileType     string    `gorm:"size:20;not null;index" json:"file_type"` // image, video
-	Folder       string    `gorm:"size:100;index;default:''" json:"folder"`  // 分类文件夹
+	Folder       string    `gorm:"size:100;index;default:''" json:"folder"` // 分类文件夹
 	FileSize     int64     `json:"file_size"`
 	Width        int       `json:"width"`
 	Height       int       `json:"height"`
 	CreatedAt    time.Time `gorm:"index" json:"created_at"`
 }
+
+type LiveAssetPack struct {
+	ID           uint      `gorm:"primaryKey" json:"id"`
+	Folder       string    `gorm:"size:100;index;default:''" json:"folder"`
+	BaseName     string    `gorm:"size:255;index;not null" json:"base_name"`
+	ImageAssetID *uint     `gorm:"index" json:"image_asset_id"`
+	VideoAssetID *uint     `gorm:"index" json:"video_asset_id"`
+	Status       string    `gorm:"size:20;index;default:incomplete" json:"status"` // complete, incomplete
+	CreatedAt    time.Time `gorm:"index" json:"created_at"`
+	UpdatedAt    time.Time `json:"updated_at"`
+}
+
+func (LiveAssetPack) TableName() string { return "live_asset_packs" }
+
+type AssetFolder struct {
+	ID        uint      `gorm:"primaryKey" json:"id"`
+	Name      string    `gorm:"size:100;uniqueIndex;not null" json:"name"`
+	CreatedAt time.Time `gorm:"index" json:"created_at"`
+}
+
+func (AssetFolder) TableName() string { return "asset_folders" }
 
 // ==================== JSONB 类型支持 ====================
 

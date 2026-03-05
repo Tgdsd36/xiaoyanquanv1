@@ -1,11 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:flutter_staggered_grid_view/flutter_staggered_grid_view.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:go_router/go_router.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 import '../../../app/colors.dart';
 import '../../../app/styles.dart';
+import '../../../shared/network_video_thumbnail.dart';
 import '../models/material_model.dart';
 import '../providers/home_provider.dart';
 import '../widgets/category_sheet.dart';
@@ -62,11 +62,7 @@ class _HomePageState extends ConsumerState<HomePage> {
           children: [
             GestureDetector(
               onTap: () => _showCategorySheet(context),
-              child: Icon(
-                Icons.grid_view_rounded,
-                size: 26,
-                color: primary,
-              ),
+              child: Icon(Icons.grid_view_rounded, size: 26, color: primary),
             ),
             const SizedBox(width: 14),
             Expanded(
@@ -81,11 +77,18 @@ class _HomePageState extends ConsumerState<HomePage> {
                   ),
                   child: const Row(
                     children: [
-                      Icon(Icons.search_rounded, size: 18, color: AppColors.textDisabled),
+                      Icon(
+                        Icons.search_rounded,
+                        size: 18,
+                        color: AppColors.textDisabled,
+                      ),
                       SizedBox(width: 6),
                       Text(
                         '搜索素材',
-                        style: TextStyle(fontSize: 13, color: AppColors.textDisabled),
+                        style: TextStyle(
+                          fontSize: 13,
+                          color: AppColors.textDisabled,
+                        ),
                       ),
                     ],
                   ),
@@ -131,7 +134,8 @@ class _HomePageState extends ConsumerState<HomePage> {
                             child: ListView.separated(
                               scrollDirection: Axis.horizontal,
                               itemCount: typeOptions.length,
-                              separatorBuilder: (_, __) => const SizedBox(width: 4),
+                              separatorBuilder:
+                                  (_, __) => const SizedBox(width: 4),
                               itemBuilder: (context, index) {
                                 final opt = typeOptions[index];
                                 final isSelected = opt['value'] == selectedType;
@@ -140,8 +144,9 @@ class _HomePageState extends ConsumerState<HomePage> {
                                   label: opt['label']!,
                                   isSelected: isSelected,
                                   onTap: () {
-                                    ref.read(selectedTypeProvider.notifier).state =
-                                        opt['value']!;
+                                    ref
+                                        .read(selectedTypeProvider.notifier)
+                                        .state = opt['value']!;
                                     ref
                                         .read(materialListProvider.notifier)
                                         .updateFilters(type: opt['value']);
@@ -151,37 +156,56 @@ class _HomePageState extends ConsumerState<HomePage> {
                             ),
                           ),
                           // 右侧：性别筛选
-                            Padding(
-                              padding: const EdgeInsets.symmetric(horizontal: 4),
-                              child: Container(
-                                width: 1, height: 18,
-                                color: AppColors.divider,
-                              ),
+                          Padding(
+                            padding: const EdgeInsets.symmetric(horizontal: 4),
+                            child: Container(
+                              width: 1,
+                              height: 18,
+                              color: AppColors.divider,
                             ),
+                          ),
                           ...genderOptions.map((opt) {
-                            final isGenderSelected = opt['value'] == selectedGender;
+                            final isGenderSelected =
+                                opt['value'] == selectedGender;
                             return Padding(
                               padding: const EdgeInsets.only(right: 4),
-                              child: opt['icon']!.isNotEmpty
-                                  ? _FilterChip(
-                                      iconName: opt['icon']!,
-                                      label: opt['label']!,
-                                      isSelected: isGenderSelected,
-                                      onTap: () {
-                                        ref.read(selectedGenderProvider.notifier).state = opt['value']!;
-                                        ref.read(materialListProvider.notifier)
-                                            .updateFilters(gender: opt['value']);
-                                      },
-                                    )
-                                  : _TextChip(
-                                      label: opt['label']!,
-                                      isSelected: isGenderSelected,
-                                      onTap: () {
-                                        ref.read(selectedGenderProvider.notifier).state = '';
-                                        ref.read(materialListProvider.notifier)
-                                            .updateFilters(gender: '');
-                                      },
-                                    ),
+                              child:
+                                  opt['icon']!.isNotEmpty
+                                      ? _FilterChip(
+                                        iconName: opt['icon']!,
+                                        label: opt['label']!,
+                                        isSelected: isGenderSelected,
+                                        onTap: () {
+                                          ref
+                                              .read(
+                                                selectedGenderProvider.notifier,
+                                              )
+                                              .state = opt['value']!;
+                                          ref
+                                              .read(
+                                                materialListProvider.notifier,
+                                              )
+                                              .updateFilters(
+                                                gender: opt['value'],
+                                              );
+                                        },
+                                      )
+                                      : _TextChip(
+                                        label: opt['label']!,
+                                        isSelected: isGenderSelected,
+                                        onTap: () {
+                                          ref
+                                              .read(
+                                                selectedGenderProvider.notifier,
+                                              )
+                                              .state = '';
+                                          ref
+                                              .read(
+                                                materialListProvider.notifier,
+                                              )
+                                              .updateFilters(gender: '');
+                                        },
+                                      ),
                             );
                           }),
                         ],
@@ -195,11 +219,20 @@ class _HomePageState extends ConsumerState<HomePage> {
                         const SizedBox(width: 12),
                         _SortPill('ic_clock', '最新', 'latest', sortType, ref),
                         const SizedBox(width: 12),
-                        _SortPill('ic_download', '最多下载', 'downloads', sortType, ref),
+                        _SortPill(
+                          'ic_download',
+                          '最多下载',
+                          'downloads',
+                          sortType,
+                          ref,
+                        ),
                         const Spacer(),
                         Text(
                           '${materialState.items.length} 个素材',
-                          style: const TextStyle(fontSize: 11, color: AppColors.textDisabled),
+                          style: const TextStyle(
+                            fontSize: 11,
+                            color: AppColors.textDisabled,
+                          ),
                         ),
                       ],
                     ),
@@ -218,62 +251,84 @@ class _HomePageState extends ConsumerState<HomePage> {
               edgeOffset: 0,
               strokeWidth: 2,
               color: primary,
-              onRefresh: () =>
-                  ref.read(materialListProvider.notifier).refresh(),
-              child: materialState.items.isEmpty && !materialState.isLoading
-                  ? ListView(
-                      children: [
-                        SizedBox(
-                          height: MediaQuery.of(context).size.height * 0.4,
-                          child: Column(
-                            mainAxisAlignment: MainAxisAlignment.center,
-                            children: [
-                              const Icon(Icons.photo_library_outlined,
-                                  size: 64, color: AppColors.textDisabled),
-                              const SizedBox(height: 12),
-                              const Text('还没有素材哦～',
+              onRefresh:
+                  () => ref.read(materialListProvider.notifier).refresh(),
+              child:
+                  materialState.items.isEmpty && !materialState.isLoading
+                      ? ListView(
+                        children: [
+                          SizedBox(
+                            height: MediaQuery.of(context).size.height * 0.4,
+                            child: Column(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                const Icon(
+                                  Icons.photo_library_outlined,
+                                  size: 64,
+                                  color: AppColors.textDisabled,
+                                ),
+                                const SizedBox(height: 12),
+                                const Text(
+                                  '还没有素材哦～',
                                   style: TextStyle(
-                                      fontSize: 15, color: AppColors.textHint)),
-                              const SizedBox(height: 4),
-                              const Text('下拉刷新试试',
+                                    fontSize: 15,
+                                    color: AppColors.textHint,
+                                  ),
+                                ),
+                                const SizedBox(height: 4),
+                                const Text(
+                                  '下拉刷新试试',
                                   style: TextStyle(
-                                      fontSize: 12, color: AppColors.textDisabled)),
-                            ],
-                          ),
-                        ),
-                      ],
-                    )
-                  : MasonryGridView.count(
-                      controller: _scrollController,
-                      crossAxisCount: 2,
-                      mainAxisSpacing: 6,
-                      crossAxisSpacing: 6,
-                      padding: const EdgeInsets.all(6),
-                      itemCount: materialState.items.length +
-                          (materialState.hasMore ? 1 : 0),
-                      itemBuilder: (context, index) {
-                        if (index >= materialState.items.length) {
-                          return Padding(
-                            padding: const EdgeInsets.all(20),
-                            child: Center(
-                              child: SizedBox(
-                                width: 20,
-                                height: 20,
-                                child: CircularProgressIndicator(
-                                  strokeWidth: 2, color: primary),
-                              ),
+                                    fontSize: 12,
+                                    color: AppColors.textDisabled,
+                                  ),
+                                ),
+                              ],
                             ),
+                          ),
+                        ],
+                      )
+                      : GridView.builder(
+                        controller: _scrollController,
+                        gridDelegate:
+                            const SliverGridDelegateWithFixedCrossAxisCount(
+                              crossAxisCount: 2,
+                              mainAxisSpacing: 6,
+                              crossAxisSpacing: 6,
+                              // 固定卡片比例，保证网格等高显示
+                              childAspectRatio: 0.68,
+                            ),
+                        padding: const EdgeInsets.all(6),
+                        itemCount:
+                            materialState.items.length +
+                            (materialState.hasMore ? 1 : 0),
+                        itemBuilder: (context, index) {
+                          if (index >= materialState.items.length) {
+                            return Padding(
+                              padding: const EdgeInsets.all(20),
+                              child: Center(
+                                child: SizedBox(
+                                  width: 20,
+                                  height: 20,
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 2,
+                                    color: primary,
+                                  ),
+                                ),
+                              ),
+                            );
+                          }
+                          final item = materialState.items[index];
+                          return _MaterialCard(
+                            item: item,
+                            onTap:
+                                () => context.push(
+                                  '/material/${item.id}/preview',
+                                  extra: item,
+                                ),
                           );
-                        }
-                        final item = materialState.items[index];
-                        return _MaterialCard(
-                          item: item,
-                          onTap: () => context.push(
-                              '/material/${item.id}/preview',
-                              extra: item),
-                        );
-                      },
-                    ),
+                        },
+                      ),
             ),
           ),
         ],
@@ -308,13 +363,14 @@ class _FilterChip extends StatelessWidget {
         constraints: const BoxConstraints(minHeight: 32),
         padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
         decoration: BoxDecoration(
-          color: isSelected
-              ? primary.withValues(alpha: 0.1)
-              : AppColors.surface,
+          color:
+              isSelected ? primary.withValues(alpha: 0.1) : AppColors.surface,
           borderRadius: BorderRadius.circular(20),
           border: Border.all(
             color:
-                isSelected ? primary.withValues(alpha: 0.3) : Colors.transparent,
+                isSelected
+                    ? primary.withValues(alpha: 0.3)
+                    : Colors.transparent,
             width: 1,
           ),
         ),
@@ -366,12 +422,14 @@ class _TextChip extends StatelessWidget {
         constraints: const BoxConstraints(minHeight: 32),
         padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
         decoration: BoxDecoration(
-          color: isSelected
-              ? primary.withValues(alpha: 0.1)
-              : AppColors.surface,
+          color:
+              isSelected ? primary.withValues(alpha: 0.1) : AppColors.surface,
           borderRadius: BorderRadius.circular(20),
           border: Border.all(
-            color: isSelected ? primary.withValues(alpha: 0.3) : Colors.transparent,
+            color:
+                isSelected
+                    ? primary.withValues(alpha: 0.3)
+                    : Colors.transparent,
             width: 1,
           ),
         ),
@@ -397,14 +455,19 @@ class _SortPill extends StatelessWidget {
   final String current;
   final WidgetRef ref;
 
-  const _SortPill(this.iconName, this.label, this.value, this.current, this.ref);
+  const _SortPill(
+    this.iconName,
+    this.label,
+    this.value,
+    this.current,
+    this.ref,
+  );
 
   @override
   Widget build(BuildContext context) {
     final isSelected = value == current;
-    final color = isSelected
-        ? Theme.of(context).colorScheme.primary
-        : AppColors.textHint;
+    final color =
+        isSelected ? Theme.of(context).colorScheme.primary : AppColors.textHint;
     return GestureDetector(
       onTap: () {
         ref.read(sortTypeProvider.notifier).state = value;
@@ -444,6 +507,8 @@ class _MaterialCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final coverUrl = item.safeThumbnailUrl;
+    final videoCoverUrl = item.bestVideoUrl;
     return GestureDetector(
       onTap: onTap,
       child: Container(
@@ -454,32 +519,80 @@ class _MaterialCard extends StatelessWidget {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               // 缩略图区域
-              AspectRatio(
-                aspectRatio: item.aspectRatio,
+              Expanded(
                 child: Stack(
                   fit: StackFit.expand,
                   children: [
-                    CachedNetworkImage(
-                      imageUrl: item.thumbnailUrl,
-                      fit: BoxFit.cover,
-                      placeholder: (_, __) => Container(
-                        color: AppColors.shimmer,
-                        child: const Center(
-                          child: Icon(Icons.image_outlined,
-                              color: AppColors.textDisabled, size: 28),
+                    coverUrl.isNotEmpty
+                        ? CachedNetworkImage(
+                          imageUrl: coverUrl,
+                          fit: BoxFit.cover,
+                          placeholder:
+                              (_, __) => Container(
+                                color: AppColors.shimmer,
+                                child: const Center(
+                                  child: Icon(
+                                    Icons.image_outlined,
+                                    color: AppColors.textDisabled,
+                                    size: 28,
+                                  ),
+                                ),
+                              ),
+                          errorWidget:
+                              (_, __, ___) => Container(
+                                color: AppColors.shimmer,
+                                child: const Center(
+                                  child: Icon(
+                                    Icons.broken_image_outlined,
+                                    color: AppColors.textDisabled,
+                                    size: 28,
+                                  ),
+                                ),
+                              ),
+                        )
+                        : (item.isVideo && videoCoverUrl.isNotEmpty)
+                        ? NetworkVideoThumbnail(
+                          videoUrl: videoCoverUrl,
+                          fit: BoxFit.cover,
+                          placeholder: Container(
+                            color: AppColors.shimmer,
+                            child: const Center(
+                              child: Icon(
+                                Icons.play_circle_outline_rounded,
+                                color: AppColors.textDisabled,
+                                size: 30,
+                              ),
+                            ),
+                          ),
+                          errorWidget: Container(
+                            color: AppColors.shimmer,
+                            child: const Center(
+                              child: Icon(
+                                Icons.broken_image_outlined,
+                                color: AppColors.textDisabled,
+                                size: 28,
+                              ),
+                            ),
+                          ),
+                        )
+                        : Container(
+                          color: AppColors.shimmer,
+                          child: Center(
+                            child: Icon(
+                              item.isVideo
+                                  ? Icons.play_circle_outline_rounded
+                                  : Icons.image_outlined,
+                              color: AppColors.textDisabled,
+                              size: 30,
+                            ),
+                          ),
                         ),
-                      ),
-                      errorWidget: (_, __, ___) => Container(
-                        color: AppColors.shimmer,
-                        child: const Center(
-                          child: Icon(Icons.broken_image_outlined,
-                              color: AppColors.textDisabled, size: 28),
-                        ),
-                      ),
-                    ),
                     // 底部渐变遮罩
                     Positioned(
-                      bottom: 0, left: 0, right: 0, height: 40,
+                      bottom: 0,
+                      left: 0,
+                      right: 0,
+                      height: 28,
                       child: Container(
                         decoration: BoxDecoration(
                           gradient: LinearGradient(
@@ -495,7 +608,8 @@ class _MaterialCard extends StatelessWidget {
                     ),
                     // 类型标签（左上角）
                     Positioned(
-                      left: 6, top: 6,
+                      left: 6,
+                      top: 6,
                       child: AppStyles.typeBadge(
                         isVideo: item.isVideo,
                         isLivePhoto: item.isLivePhoto,
@@ -504,12 +618,16 @@ class _MaterialCard extends StatelessWidget {
                     // 视频时长（右下角）
                     if (item.isVideo && item.durationText.isNotEmpty)
                       Positioned(
-                        right: 6, bottom: 6,
+                        right: 6,
+                        bottom: 6,
                         child: Row(
                           mainAxisSize: MainAxisSize.min,
                           children: [
-                            const Icon(Icons.play_circle_fill_rounded,
-                                size: 14, color: Colors.white),
+                            const Icon(
+                              Icons.play_circle_fill_rounded,
+                              size: 14,
+                              color: Colors.white,
+                            ),
                             const SizedBox(width: 3),
                             Text(
                               item.durationText,
@@ -527,36 +645,53 @@ class _MaterialCard extends StatelessWidget {
               ),
               // 底部信息
               Padding(
-                padding: const EdgeInsets.fromLTRB(10, 8, 10, 10),
+                padding: const EdgeInsets.fromLTRB(8, 6, 8, 8),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(
-                      item.title,
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(
-                        fontSize: 13,
-                        fontWeight: FontWeight.w500,
-                        height: 1.3,
+                    SizedBox(
+                      height: 30,
+                      child: Text(
+                        item.title,
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.w500,
+                          height: 1.3,
+                        ),
                       ),
                     ),
-                    const SizedBox(height: 6),
+                    const SizedBox(height: 4),
                     Row(
                       children: [
-                        const Icon(Icons.star_rounded,
-                            size: 13, color: AppColors.favoriteActive),
+                        const Icon(
+                          Icons.star_rounded,
+                          size: 12,
+                          color: AppColors.favoriteActive,
+                        ),
                         const SizedBox(width: 3),
-                        Text(_formatCount(item.favoriteCount),
-                            style: const TextStyle(
-                                fontSize: 11, color: AppColors.textHint)),
-                        const SizedBox(width: 10),
-                        const Icon(Icons.file_download_outlined,
-                            size: 13, color: AppColors.textDisabled),
+                        Text(
+                          _formatCount(item.favoriteCount),
+                          style: const TextStyle(
+                            fontSize: 10,
+                            color: AppColors.textHint,
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        const Icon(
+                          Icons.file_download_outlined,
+                          size: 12,
+                          color: AppColors.textDisabled,
+                        ),
                         const SizedBox(width: 2),
-                        Text(_formatCount(item.downloadCount),
-                            style: const TextStyle(
-                                fontSize: 11, color: AppColors.textHint)),
+                        Text(
+                          _formatCount(item.downloadCount),
+                          style: const TextStyle(
+                            fontSize: 10,
+                            color: AppColors.textHint,
+                          ),
+                        ),
                       ],
                     ),
                   ],

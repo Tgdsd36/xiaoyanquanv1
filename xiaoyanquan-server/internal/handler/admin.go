@@ -4,7 +4,10 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"os/exec"
+	"path"
 	"path/filepath"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -68,6 +71,11 @@ func (h *AdminHandler) Login(c *gin.Context) {
 
 // InitAdmin 开发环境自动创建默认管理员（GET /api/admin/init）
 func (h *AdminHandler) InitAdmin(c *gin.Context) {
+	if h.Cfg == nil || h.Cfg.Server.Mode != "debug" {
+		response.Forbidden(c, "生产环境已禁用初始化接口")
+		return
+	}
+
 	var count int64
 	h.DB.Model(&model.Admin{}).Count(&count)
 	if count > 0 {
@@ -149,41 +157,84 @@ func (h *AdminHandler) MaterialList(c *gin.Context) {
 
 func (h *AdminHandler) MaterialCreate(c *gin.Context) {
 	var req struct {
-		Title         string   `json:"title" binding:"required"`
-		Description   string   `json:"description"`
-		Type             string   `json:"type" binding:"required"`
-		CategoryID        uint     `json:"category_id"`
-		Gender            string   `json:"gender"`
-		Tags             []string `json:"tags"`
-		Width         int      `json:"width"`
-		Height        int      `json:"height"`
-		Duration      float64  `json:"duration"`
-		FileSize      int64    `json:"file_size"`
-		OriginalURLs  []string `json:"original_urls"`
-		ThumbnailURL  string   `json:"thumbnail_url"`
-		WatermarkURL  string   `json:"watermark_url"`
-		PreviewMovURL string   `json:"preview_mov_url"`
-		Status        string   `json:"status"`
+		Title           string   `json:"title" binding:"required"`
+		Description     string   `json:"description"`
+		Type            string   `json:"type" binding:"required"`
+		CategoryID      uint     `json:"category_id"`
+		Gender          string   `json:"gender"`
+		Tags            []string `json:"tags"`
+		Width           int      `json:"width"`
+		Height          int      `json:"height"`
+		Duration        float64  `json:"duration"`
+		FileSize        int64    `json:"file_size"`
+		OriginalURLs    []string `json:"original_urls"`
+		ThumbnailURL    string   `json:"thumbnail_url"`
+		WatermarkURL    string   `json:"watermark_url"`
+		PreviewMovURL   string   `json:"preview_mov_url"`
+		ShowInspiration bool     `json:"show_inspiration"`
+		ShowMoments     bool     `json:"show_moments"`
+		Status          string   `json:"status"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
 		response.BadRequest(c, 400, "参数错误")
 		return
 	}
 
+	filteredOriginals := make([]string, 0, len(req.OriginalURLs))
+	for _, u := range req.OriginalURLs {
+		if strings.TrimSpace(u) != "" {
+			filteredOriginals = append(filteredOriginals, u)
+		}
+	}
+	req.OriginalURLs = filteredOriginals
+
+	switch req.Type {
+	case "image":
+		if req.ThumbnailURL == "" && len(req.OriginalURLs) > 0 {
+			req.ThumbnailURL = req.OriginalURLs[0]
+		}
+	case "video":
+		if len(req.OriginalURLs) == 0 {
+			response.BadRequest(c, 400, "视频素材必须上传视频文件")
+			return
+		}
+		if req.ThumbnailURL == "" {
+			req.ThumbnailURL = req.OriginalURLs[0]
+		}
+	case "live_photo":
+		if len(req.OriginalURLs) == 0 {
+			response.BadRequest(c, 400, "Live Photo 必须上传静态图")
+			return
+		}
+		if strings.TrimSpace(req.PreviewMovURL) == "" {
+			response.BadRequest(c, 400, "Live Photo 必须上传动态视频")
+			return
+		}
+		req.OriginalURLs = req.OriginalURLs[:1]
+		if req.ThumbnailURL == "" {
+			req.ThumbnailURL = req.OriginalURLs[0]
+		}
+	default:
+		response.BadRequest(c, 400, "不支持的素材类型")
+		return
+	}
+
 	material := model.Material{
-		Title:         req.Title,
-		Description:   req.Description,
-		Type:          req.Type,
-		Tags:          req.Tags,
-		Width:         req.Width,
-		Height:        req.Height,
-		Duration:      req.Duration,
-		FileSize:      req.FileSize,
-		OriginalURLs:  func() model.JSON { b, _ := json.Marshal(req.OriginalURLs); return model.JSON(b) }(),
-		ThumbnailURL:  req.ThumbnailURL,
-		WatermarkURL:  req.WatermarkURL,
-		PreviewMovURL: req.PreviewMovURL,
-		Status:        req.Status,
+		Title:           req.Title,
+		Description:     req.Description,
+		Type:            req.Type,
+		Tags:            req.Tags,
+		Width:           req.Width,
+		Height:          req.Height,
+		Duration:        req.Duration,
+		FileSize:        req.FileSize,
+		OriginalURLs:    func() model.JSON { b, _ := json.Marshal(req.OriginalURLs); return model.JSON(b) }(),
+		ThumbnailURL:    req.ThumbnailURL,
+		WatermarkURL:    req.WatermarkURL,
+		PreviewMovURL:   req.PreviewMovURL,
+		ShowInspiration: req.ShowInspiration,
+		ShowMoments:     req.ShowMoments,
+		Status:          req.Status,
 	}
 	if req.CategoryID > 0 {
 		material.CategoryID = &req.CategoryID
@@ -303,6 +354,36 @@ func (h *AdminHandler) MaterialBatchStatus(c *gin.Context) {
 	}
 	h.DB.Model(&model.Material{}).Where("id IN ?", req.IDs).Update("status", req.Status)
 	response.SuccessMessage(c, "批量更新成功")
+}
+
+func (h *AdminHandler) MaterialBatchChannel(c *gin.Context) {
+	var req struct {
+		IDs     []uint `json:"ids" binding:"required"`
+		Channel string `json:"channel" binding:"required,oneof=inspiration moments"`
+		Enabled bool   `json:"enabled"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.BadRequest(c, 400, "参数错误")
+		return
+	}
+
+	field := "show_inspiration"
+	channelName := "找灵感"
+	if req.Channel == "moments" {
+		field = "show_moments"
+		channelName = "朋友圈"
+	}
+
+	if err := h.DB.Model(&model.Material{}).Where("id IN ?", req.IDs).Update(field, req.Enabled).Error; err != nil {
+		response.ServerError(c, "批量更新失败")
+		return
+	}
+
+	if req.Enabled {
+		response.SuccessMessage(c, "批量投放到"+channelName+"成功")
+		return
+	}
+	response.SuccessMessage(c, "批量从"+channelName+"移除成功")
 }
 
 func (h *AdminHandler) MaterialBatchDelete(c *gin.Context) {
@@ -616,11 +697,27 @@ func (h *AdminHandler) UserToggleStatus(c *gin.Context) {
 	response.Success(c, gin.H{"id": user.ID, "status": req.Status})
 }
 
+func (h *AdminHandler) UserDeviceUnbind(c *gin.Context) {
+	id, _ := strconv.Atoi(c.Param("id"))
+	if id <= 0 {
+		response.BadRequest(c, 400, "用户ID无效")
+		return
+	}
+
+	if err := h.DB.Where("user_id = ?", id).Delete(&model.UserDeviceBinding{}).Error; err != nil {
+		response.ServerError(c, "解绑失败")
+		return
+	}
+
+	response.SuccessMessage(c, "设备解绑成功")
+}
+
 func (h *AdminHandler) UserList(c *gin.Context) {
 	page, _ := strconv.Atoi(c.DefaultQuery("page", "1"))
 	pageSize, _ := strconv.Atoi(c.DefaultQuery("page_size", "20"))
 	keyword := c.Query("keyword")
 	memberType := c.Query("member_type")
+	deviceBound := c.Query("device_bound") // 1:已绑定 0:未绑定
 
 	query := h.DB.Model(&model.User{})
 	if keyword != "" {
@@ -628,6 +725,11 @@ func (h *AdminHandler) UserList(c *gin.Context) {
 	}
 	if memberType != "" {
 		query = query.Where("member_type = ?", memberType)
+	}
+	if deviceBound == "1" {
+		query = query.Where("EXISTS (SELECT 1 FROM user_device_bindings udb WHERE udb.user_id = users.id)")
+	} else if deviceBound == "0" {
+		query = query.Where("NOT EXISTS (SELECT 1 FROM user_device_bindings udb WHERE udb.user_id = users.id)")
 	}
 
 	var total int64
@@ -638,7 +740,47 @@ func (h *AdminHandler) UserList(c *gin.Context) {
 		Offset((page - 1) * pageSize).Limit(pageSize).
 		Find(&users)
 
-	response.SuccessPage(c, users, total, page, pageSize)
+	type userListItem struct {
+		model.User
+		DeviceBound    bool       `json:"device_bound"`
+		DeviceID       string     `json:"device_id,omitempty"`
+		DeviceName     string     `json:"device_name,omitempty"`
+		DevicePlatform string     `json:"device_platform,omitempty"`
+		DeviceBoundAt  *time.Time `json:"device_bound_at,omitempty"`
+	}
+
+	items := make([]userListItem, 0, len(users))
+	if len(users) == 0 {
+		response.SuccessPage(c, items, total, page, pageSize)
+		return
+	}
+
+	userIDs := make([]uint, 0, len(users))
+	for _, u := range users {
+		userIDs = append(userIDs, u.ID)
+	}
+
+	var bindings []model.UserDeviceBinding
+	h.DB.Where("user_id IN ?", userIDs).Find(&bindings)
+
+	bindingMap := make(map[uint]model.UserDeviceBinding, len(bindings))
+	for _, b := range bindings {
+		bindingMap[b.UserID] = b
+	}
+
+	for _, u := range users {
+		item := userListItem{User: u}
+		if b, ok := bindingMap[u.ID]; ok {
+			item.DeviceBound = true
+			item.DeviceID = b.DeviceID
+			item.DeviceName = b.DeviceName
+			item.DevicePlatform = b.Platform
+			item.DeviceBoundAt = &b.BoundAt
+		}
+		items = append(items, item)
+	}
+
+	response.SuccessPage(c, items, total, page, pageSize)
 }
 
 func (h *AdminHandler) UserDetail(c *gin.Context) {
@@ -655,8 +797,21 @@ func (h *AdminHandler) UserDetail(c *gin.Context) {
 	h.DB.Model(&model.Favorite{}).Where("user_id = ?", id).Count(&favoriteCount)
 	h.DB.Model(&model.Question{}).Where("user_id = ?", id).Count(&questionCount)
 
+	var binding model.UserDeviceBinding
+	device := gin.H{"bound": false}
+	if err := h.DB.Where("user_id = ?", id).First(&binding).Error; err == nil {
+		device = gin.H{
+			"bound":           true,
+			"device_id":       binding.DeviceID,
+			"device_name":     binding.DeviceName,
+			"device_platform": binding.Platform,
+			"bound_at":        binding.BoundAt,
+		}
+	}
+
 	response.Success(c, gin.H{
 		"user":           user,
+		"device":         device,
 		"download_count": downloadCount,
 		"favorite_count": favoriteCount,
 		"question_count": questionCount,
@@ -703,13 +858,13 @@ func (h *AdminHandler) AssetUpload(c *gin.Context) {
 		return
 	}
 
-	folder := c.PostForm("folder") // 分类文件夹
+	folder := strings.TrimSpace(c.PostForm("folder")) // 分类文件夹
 
 	// 检查文件类型
 	ext := strings.ToLower(filepath.Ext(file.Filename))
 	fileType := "image"
 	switch ext {
-	case ".jpg", ".jpeg", ".png", ".gif", ".webp", ".bmp":
+	case ".jpg", ".jpeg", ".png", ".gif", ".webp", ".bmp", ".heic", ".heif":
 		fileType = "image"
 	case ".mp4", ".mov", ".avi", ".mkv":
 		fileType = "video"
@@ -732,11 +887,18 @@ func (h *AdminHandler) AssetUpload(c *gin.Context) {
 
 	// 构建 URL
 	url := fmt.Sprintf("/static/uploads/%s/%s", dateDir, newFilename)
+	previewURL := ""
+	if isHEICExt(ext) {
+		if generated, err := ensureHEICPreview(url); err == nil {
+			previewURL = generated
+		}
+	}
 
 	asset := model.Asset{
 		Filename:     newFilename,
 		OriginalName: file.Filename,
 		URL:          url,
+		PreviewURL:   previewURL,
 		FileType:     fileType,
 		Folder:       folder,
 		FileSize:     file.Size,
@@ -744,6 +906,12 @@ func (h *AdminHandler) AssetUpload(c *gin.Context) {
 	if err := h.DB.Create(&asset).Error; err != nil {
 		response.ServerError(c, "保存记录失败")
 		return
+	}
+	if liveRole := resolveLiveRole(c.PostForm("live_role"), ext); liveRole != "" {
+		_, _ = h.attachAssetToLivePack(asset, liveRole)
+	}
+	if folder != "" {
+		_ = h.DB.FirstOrCreate(&model.AssetFolder{}, model.AssetFolder{Name: folder}).Error
 	}
 	response.Success(c, asset)
 }
@@ -757,7 +925,34 @@ func (h *AdminHandler) AssetList(c *gin.Context) {
 
 	query := h.DB.Model(&model.Asset{})
 	if fileType != "" {
-		query = query.Where("file_type = ?", fileType)
+		switch strings.ToLower(strings.TrimSpace(fileType)) {
+		case "image":
+			// 兼容历史数据：file_type 可能被存成 heic/jpg 等具体扩展名
+			query = query.Where(`
+				lower(coalesce(file_type, '')) IN ('image', 'heic', 'heif', 'jpg', 'jpeg', 'png', 'gif', 'webp', 'bmp')
+				OR lower(coalesce(url, '')) LIKE '%.heic'
+				OR lower(coalesce(url, '')) LIKE '%.heif'
+				OR lower(coalesce(url, '')) LIKE '%.jpg'
+				OR lower(coalesce(url, '')) LIKE '%.jpeg'
+				OR lower(coalesce(url, '')) LIKE '%.png'
+				OR lower(coalesce(url, '')) LIKE '%.gif'
+				OR lower(coalesce(url, '')) LIKE '%.webp'
+				OR lower(coalesce(url, '')) LIKE '%.bmp'
+			`)
+		case "video":
+			// 兼容历史数据：file_type 可能被存成 mov/mp4 等具体扩展名
+			query = query.Where(`
+				lower(coalesce(file_type, '')) IN ('video', 'mov', 'mp4', 'm4v', 'avi', 'mkv', 'webm')
+				OR lower(coalesce(url, '')) LIKE '%.mov'
+				OR lower(coalesce(url, '')) LIKE '%.mp4'
+				OR lower(coalesce(url, '')) LIKE '%.m4v'
+				OR lower(coalesce(url, '')) LIKE '%.avi'
+				OR lower(coalesce(url, '')) LIKE '%.mkv'
+				OR lower(coalesce(url, '')) LIKE '%.webm'
+			`)
+		default:
+			query = query.Where("lower(file_type) = ?", strings.ToLower(strings.TrimSpace(fileType)))
+		}
 	}
 	if folder != "" {
 		query = query.Where("folder = ?", folder)
@@ -773,21 +968,207 @@ func (h *AdminHandler) AssetList(c *gin.Context) {
 	query.Order("created_at DESC").
 		Offset((page - 1) * pageSize).Limit(pageSize).
 		Find(&assets)
+	for i := range assets {
+		if assets[i].PreviewURL != "" {
+			continue
+		}
+		if assets[i].FileType != "image" {
+			continue
+		}
+		if !isHEICURL(assets[i].URL) {
+			continue
+		}
+		if generated, err := ensureHEICPreview(assets[i].URL); err == nil && generated != "" {
+			assets[i].PreviewURL = generated
+			h.DB.Model(&model.Asset{}).
+				Where("id = ?", assets[i].ID).
+				Update("preview_url", generated)
+		}
+	}
 
 	response.SuccessPage(c, assets, total, page, pageSize)
 }
 
+// AssetLivePackList Live 套件列表（HEIC + MOV 组合）
+func (h *AdminHandler) AssetLivePackList(c *gin.Context) {
+	page, _ := strconv.Atoi(c.DefaultQuery("page", "1"))
+	pageSize, _ := strconv.Atoi(c.DefaultQuery("page_size", "20"))
+	folder := strings.TrimSpace(c.Query("folder"))
+	keyword := strings.TrimSpace(c.Query("keyword"))
+	status := strings.TrimSpace(c.Query("status"))
+
+	if page <= 0 {
+		page = 1
+	}
+	if pageSize <= 0 {
+		pageSize = 20
+	}
+
+	_ = h.ensureLegacyLivePacks()
+
+	query := h.DB.Model(&model.LiveAssetPack{})
+	if folder != "" {
+		query = query.Where("folder = ?", folder)
+	}
+	if keyword != "" {
+		query = query.Where("base_name ILIKE ?", "%"+keyword+"%")
+	}
+	if status == "complete" || status == "incomplete" {
+		query = query.Where("status = ?", status)
+	}
+
+	var total int64
+	query.Count(&total)
+
+	var packs []model.LiveAssetPack
+	query.Order("created_at DESC, id DESC").
+		Offset((page - 1) * pageSize).
+		Limit(pageSize).
+		Find(&packs)
+
+	type packItem struct {
+		ID              uint     `json:"id"`
+		Folder          string   `json:"folder"`
+		BaseName        string   `json:"base_name"`
+		Status          string   `json:"status"`
+		Missing         []string `json:"missing"`
+		ImageAssetID    uint     `json:"image_asset_id,omitempty"`
+		ImageURL        string   `json:"image_url,omitempty"`
+		ImagePreviewURL string   `json:"image_preview_url,omitempty"`
+		ImageName       string   `json:"image_name,omitempty"`
+		VideoAssetID    uint     `json:"video_asset_id,omitempty"`
+		VideoURL        string   `json:"video_url,omitempty"`
+		VideoName       string   `json:"video_name,omitempty"`
+		CreatedAt       string   `json:"created_at"`
+	}
+
+	assetIDs := make([]uint, 0, len(packs)*2)
+	for _, p := range packs {
+		if p.ImageAssetID != nil {
+			assetIDs = append(assetIDs, *p.ImageAssetID)
+		}
+		if p.VideoAssetID != nil {
+			assetIDs = append(assetIDs, *p.VideoAssetID)
+		}
+	}
+
+	assetMap := map[uint]model.Asset{}
+	if len(assetIDs) > 0 {
+		var assets []model.Asset
+		h.DB.Where("id IN ?", assetIDs).Find(&assets)
+		for _, a := range assets {
+			assetMap[a.ID] = a
+		}
+	}
+
+	list := make([]packItem, 0, len(packs))
+	for _, p := range packs {
+		item := packItem{
+			ID:        p.ID,
+			Folder:    p.Folder,
+			BaseName:  p.BaseName,
+			Status:    p.Status,
+			CreatedAt: p.CreatedAt.Format("2006-01-02 15:04:05"),
+		}
+		if p.ImageAssetID != nil {
+			item.ImageAssetID = *p.ImageAssetID
+			if a, ok := assetMap[*p.ImageAssetID]; ok {
+				item.ImageURL = a.URL
+				item.ImageName = a.OriginalName
+				if a.PreviewURL != "" {
+					item.ImagePreviewURL = a.PreviewURL
+				} else if isHEICURL(a.URL) {
+					if generated, err := ensureHEICPreview(a.URL); err == nil && generated != "" {
+						item.ImagePreviewURL = generated
+						h.DB.Model(&model.Asset{}).
+							Where("id = ?", a.ID).
+							Update("preview_url", generated)
+					}
+				}
+			}
+		}
+		if p.VideoAssetID != nil {
+			item.VideoAssetID = *p.VideoAssetID
+			if a, ok := assetMap[*p.VideoAssetID]; ok {
+				item.VideoURL = a.URL
+				item.VideoName = a.OriginalName
+			}
+		}
+
+		missing := make([]string, 0, 2)
+		if p.ImageAssetID == nil {
+			missing = append(missing, "静态图")
+		}
+		if p.VideoAssetID == nil {
+			missing = append(missing, "MOV视频")
+		}
+		item.Missing = missing
+		if len(missing) > 0 {
+			item.Status = "incomplete"
+		} else {
+			item.Status = "complete"
+		}
+
+		list = append(list, item)
+	}
+
+	response.SuccessPage(c, list, total, page, pageSize)
+}
+
 // AssetFolders 获取所有分类列表
 func (h *AdminHandler) AssetFolders(c *gin.Context) {
-	var folders []struct {
+	var assetFolders []struct {
 		Folder string `json:"folder"`
 		Count  int64  `json:"count"`
 	}
 	h.DB.Model(&model.Asset{}).
 		Select("folder, count(*) as count").
 		Group("folder").
-		Order("folder ASC").
-		Scan(&folders)
+		Scan(&assetFolders)
+
+	var folderDefs []model.AssetFolder
+	h.DB.Order("name ASC").Find(&folderDefs)
+
+	folderCountMap := map[string]int64{}
+	for _, item := range assetFolders {
+		name := strings.TrimSpace(item.Folder)
+		folderCountMap[name] += item.Count
+	}
+	for _, folder := range folderDefs {
+		name := strings.TrimSpace(folder.Name)
+		if name == "" {
+			continue
+		}
+		if _, exists := folderCountMap[name]; !exists {
+			folderCountMap[name] = 0
+		}
+	}
+
+	uncategorizedCount, hasUncategorized := folderCountMap[""]
+	delete(folderCountMap, "")
+
+	names := make([]string, 0, len(folderCountMap))
+	for name := range folderCountMap {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+
+	folders := make([]struct {
+		Folder string `json:"folder"`
+		Count  int64  `json:"count"`
+	}, 0, len(names)+1)
+	if hasUncategorized {
+		folders = append(folders, struct {
+			Folder string `json:"folder"`
+			Count  int64  `json:"count"`
+		}{Folder: "", Count: uncategorizedCount})
+	}
+	for _, name := range names {
+		folders = append(folders, struct {
+			Folder string `json:"folder"`
+			Count  int64  `json:"count"`
+		}{Folder: name, Count: folderCountMap[name]})
+	}
 
 	// 总数
 	var total int64
@@ -796,6 +1177,33 @@ func (h *AdminHandler) AssetFolders(c *gin.Context) {
 	response.Success(c, gin.H{
 		"folders": folders,
 		"total":   total,
+	})
+}
+
+// AssetFolderCreate 新建分类（允许空分类，无需先上传文件）
+func (h *AdminHandler) AssetFolderCreate(c *gin.Context) {
+	var req struct {
+		Name string `json:"name" binding:"required"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.BadRequest(c, 400, "参数错误")
+		return
+	}
+
+	name := strings.TrimSpace(req.Name)
+	if name == "" {
+		response.BadRequest(c, 400, "分类名称不能为空")
+		return
+	}
+
+	if err := h.DB.FirstOrCreate(&model.AssetFolder{}, model.AssetFolder{Name: name}).Error; err != nil {
+		response.ServerError(c, "创建分类失败")
+		return
+	}
+
+	response.Success(c, gin.H{
+		"folder": name,
+		"count":  0,
 	})
 }
 
@@ -809,7 +1217,37 @@ func (h *AdminHandler) AssetFolderRename(c *gin.Context) {
 		response.BadRequest(c, 400, "参数错误")
 		return
 	}
-	h.DB.Model(&model.Asset{}).Where("folder = ?", req.OldName).Update("folder", req.NewName)
+
+	oldName := strings.TrimSpace(req.OldName)
+	newName := strings.TrimSpace(req.NewName)
+	if oldName == "" || newName == "" {
+		response.BadRequest(c, 400, "分类名称不能为空")
+		return
+	}
+	if oldName == newName {
+		response.SuccessMessage(c, "重命名成功")
+		return
+	}
+
+	if err := h.DB.Transaction(func(tx *gorm.DB) error {
+		if err := tx.Model(&model.Asset{}).Where("folder = ?", oldName).Update("folder", newName).Error; err != nil {
+			return err
+		}
+		if err := tx.Model(&model.LiveAssetPack{}).Where("folder = ?", oldName).Update("folder", newName).Error; err != nil {
+			return err
+		}
+		if err := tx.FirstOrCreate(&model.AssetFolder{}, model.AssetFolder{Name: newName}).Error; err != nil {
+			return err
+		}
+		if err := tx.Where("name = ?", oldName).Delete(&model.AssetFolder{}).Error; err != nil {
+			return err
+		}
+		return nil
+	}); err != nil {
+		response.ServerError(c, "重命名失败")
+		return
+	}
+
 	response.SuccessMessage(c, "重命名成功")
 }
 
@@ -822,8 +1260,139 @@ func (h *AdminHandler) AssetFolderDelete(c *gin.Context) {
 		response.BadRequest(c, 400, "参数错误")
 		return
 	}
-	h.DB.Model(&model.Asset{}).Where("folder = ?", req.Folder).Update("folder", "")
+
+	folder := strings.TrimSpace(req.Folder)
+	if folder == "" {
+		response.BadRequest(c, 400, "分类名称不能为空")
+		return
+	}
+
+	if err := h.DB.Transaction(func(tx *gorm.DB) error {
+		if err := tx.Model(&model.Asset{}).Where("folder = ?", folder).Update("folder", "").Error; err != nil {
+			return err
+		}
+		if err := tx.Model(&model.LiveAssetPack{}).Where("folder = ?", folder).Update("folder", "").Error; err != nil {
+			return err
+		}
+		if err := tx.Where("name = ?", folder).Delete(&model.AssetFolder{}).Error; err != nil {
+			return err
+		}
+		return nil
+	}); err != nil {
+		response.ServerError(c, "删除分类失败")
+		return
+	}
+
 	response.SuccessMessage(c, "分类已删除")
+}
+
+// AssetFolderBatchUpdate 批量修改素材/Live套件分类
+func (h *AdminHandler) AssetFolderBatchUpdate(c *gin.Context) {
+	var req struct {
+		AssetIDs    []uint `json:"asset_ids"`
+		LivePackIDs []uint `json:"live_pack_ids"`
+		Folder      string `json:"folder"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.BadRequest(c, 400, "参数错误")
+		return
+	}
+
+	assetIDSet := make(map[uint]struct{}, len(req.AssetIDs))
+	assetIDs := make([]uint, 0, len(req.AssetIDs))
+	for _, id := range req.AssetIDs {
+		if id == 0 {
+			continue
+		}
+		if _, exists := assetIDSet[id]; exists {
+			continue
+		}
+		assetIDSet[id] = struct{}{}
+		assetIDs = append(assetIDs, id)
+	}
+
+	livePackIDSet := make(map[uint]struct{}, len(req.LivePackIDs))
+	livePackIDs := make([]uint, 0, len(req.LivePackIDs))
+	for _, id := range req.LivePackIDs {
+		if id == 0 {
+			continue
+		}
+		if _, exists := livePackIDSet[id]; exists {
+			continue
+		}
+		livePackIDSet[id] = struct{}{}
+		livePackIDs = append(livePackIDs, id)
+	}
+
+	if len(assetIDs) == 0 && len(livePackIDs) == 0 {
+		response.BadRequest(c, 400, "请至少选择一个素材或套件")
+		return
+	}
+
+	folder := strings.TrimSpace(req.Folder)
+
+	if err := h.DB.Transaction(func(tx *gorm.DB) error {
+		// 先处理素材
+		if len(assetIDs) > 0 {
+			if err := tx.Model(&model.Asset{}).Where("id IN ?", assetIDs).Update("folder", folder).Error; err != nil {
+				return err
+			}
+			if err := tx.Model(&model.LiveAssetPack{}).
+				Where("image_asset_id IN ? OR video_asset_id IN ?", assetIDs, assetIDs).
+				Update("folder", folder).Error; err != nil {
+				return err
+			}
+		}
+
+		// 再处理 Live 套件
+		if len(livePackIDs) > 0 {
+			if err := tx.Model(&model.LiveAssetPack{}).Where("id IN ?", livePackIDs).Update("folder", folder).Error; err != nil {
+				return err
+			}
+
+			var packs []model.LiveAssetPack
+			if err := tx.Select("id, image_asset_id, video_asset_id").
+				Where("id IN ?", livePackIDs).
+				Find(&packs).Error; err != nil {
+				return err
+			}
+
+			relatedAssetSet := map[uint]struct{}{}
+			for _, p := range packs {
+				if p.ImageAssetID != nil && *p.ImageAssetID > 0 {
+					relatedAssetSet[*p.ImageAssetID] = struct{}{}
+				}
+				if p.VideoAssetID != nil && *p.VideoAssetID > 0 {
+					relatedAssetSet[*p.VideoAssetID] = struct{}{}
+				}
+			}
+			if len(relatedAssetSet) > 0 {
+				relatedAssetIDs := make([]uint, 0, len(relatedAssetSet))
+				for id := range relatedAssetSet {
+					relatedAssetIDs = append(relatedAssetIDs, id)
+				}
+				if err := tx.Model(&model.Asset{}).Where("id IN ?", relatedAssetIDs).Update("folder", folder).Error; err != nil {
+					return err
+				}
+			}
+		}
+
+		if folder != "" {
+			if err := tx.FirstOrCreate(&model.AssetFolder{}, model.AssetFolder{Name: folder}).Error; err != nil {
+				return err
+			}
+		}
+		return nil
+	}); err != nil {
+		response.ServerError(c, "批量修改分类失败")
+		return
+	}
+
+	response.Success(c, gin.H{
+		"folder":         folder,
+		"asset_count":    len(assetIDs),
+		"live_pack_count": len(livePackIDs),
+	})
 }
 
 func (h *AdminHandler) AssetDelete(c *gin.Context) {
@@ -835,10 +1404,278 @@ func (h *AdminHandler) AssetDelete(c *gin.Context) {
 	}
 
 	// 删除本地文件
-	os.Remove(filepath.Join(".", asset.URL))
+	os.Remove(filepath.Join(".", strings.TrimPrefix(asset.URL, "/")))
+	if strings.TrimSpace(asset.PreviewURL) != "" {
+		os.Remove(filepath.Join(".", strings.TrimPrefix(asset.PreviewURL, "/")))
+	}
 
-	h.DB.Delete(&asset)
+	if err := h.DB.Transaction(func(tx *gorm.DB) error {
+		if err := tx.Model(&model.LiveAssetPack{}).
+			Where("image_asset_id = ?", asset.ID).
+			Updates(map[string]interface{}{
+				"image_asset_id": nil,
+				"status":         "incomplete",
+			}).Error; err != nil {
+			return err
+		}
+		if err := tx.Model(&model.LiveAssetPack{}).
+			Where("video_asset_id = ?", asset.ID).
+			Updates(map[string]interface{}{
+				"video_asset_id": nil,
+				"status":         "incomplete",
+			}).Error; err != nil {
+			return err
+		}
+		if err := tx.Where("image_asset_id IS NULL AND video_asset_id IS NULL").
+			Delete(&model.LiveAssetPack{}).Error; err != nil {
+			return err
+		}
+		if err := tx.Delete(&asset).Error; err != nil {
+			return err
+		}
+		return nil
+	}); err != nil {
+		response.ServerError(c, "删除失败")
+		return
+	}
+
 	response.SuccessMessage(c, "删除成功")
+}
+
+func resolveLiveRole(rawRole, ext string) string {
+	role := strings.ToLower(strings.TrimSpace(rawRole))
+	normalizedExt := strings.ToLower(strings.TrimSpace(ext))
+	if role != "" {
+		switch role {
+		case "image", "static", "photo":
+			if isHEICExt(normalizedExt) {
+				return "image"
+			}
+			return ""
+		case "video", "mov", "motion":
+			if normalizedExt == ".mov" {
+				return "video"
+			}
+			return ""
+		default:
+			return ""
+		}
+	}
+	if isHEICExt(normalizedExt) {
+		return "image"
+	}
+	if normalizedExt == ".mov" {
+		return "video"
+	}
+	return ""
+}
+
+func liveRoleFromAssetURL(url string) string {
+	cleanURL := url
+	if idx := strings.Index(cleanURL, "?"); idx >= 0 {
+		cleanURL = cleanURL[:idx]
+	}
+	return resolveLiveRole("", filepath.Ext(cleanURL))
+}
+
+func livePackStatus(imageAssetID, videoAssetID *uint) string {
+	if imageAssetID != nil && videoAssetID != nil {
+		return "complete"
+	}
+	return "incomplete"
+}
+
+func liveBaseNameFromAsset(asset model.Asset) string {
+	name := strings.TrimSpace(asset.OriginalName)
+	if name == "" {
+		name = strings.TrimSpace(asset.Filename)
+	}
+	if name == "" {
+		cleanURL := asset.URL
+		if idx := strings.Index(cleanURL, "?"); idx >= 0 {
+			cleanURL = cleanURL[:idx]
+		}
+		name = path.Base(cleanURL)
+	}
+	name = strings.TrimSpace(name)
+	if name == "" {
+		return ""
+	}
+	ext := filepath.Ext(name)
+	if ext != "" {
+		name = strings.TrimSuffix(name, ext)
+	}
+	return strings.TrimSpace(name)
+}
+
+func (h *AdminHandler) attachAssetToLivePack(asset model.Asset, liveRole string) (*model.LiveAssetPack, error) {
+	baseName := liveBaseNameFromAsset(asset)
+	if baseName == "" {
+		return nil, fmt.Errorf("empty live base name")
+	}
+	folder := strings.TrimSpace(asset.Folder)
+	var pack model.LiveAssetPack
+
+	if err := h.DB.Transaction(func(tx *gorm.DB) error {
+		var exists model.LiveAssetPack
+		if err := tx.Where("image_asset_id = ? OR video_asset_id = ?", asset.ID, asset.ID).First(&exists).Error; err == nil {
+			pack = exists
+			return nil
+		}
+
+		query := tx.Where("folder = ? AND base_name = ? AND status = ?", folder, baseName, "incomplete")
+		if liveRole == "image" {
+			query = query.Where("image_asset_id IS NULL")
+		} else {
+			query = query.Where("video_asset_id IS NULL")
+		}
+
+		if err := query.Order("created_at ASC, id ASC").First(&pack).Error; err != nil {
+			if err != gorm.ErrRecordNotFound {
+				return err
+			}
+			newPack := model.LiveAssetPack{
+				Folder:   folder,
+				BaseName: baseName,
+				Status:   "incomplete",
+			}
+			if liveRole == "image" {
+				id := asset.ID
+				newPack.ImageAssetID = &id
+			} else {
+				id := asset.ID
+				newPack.VideoAssetID = &id
+			}
+			newPack.Status = livePackStatus(newPack.ImageAssetID, newPack.VideoAssetID)
+			if err := tx.Create(&newPack).Error; err != nil {
+				return err
+			}
+			pack = newPack
+			return nil
+		}
+
+		updates := map[string]interface{}{}
+		imageAssetID := pack.ImageAssetID
+		videoAssetID := pack.VideoAssetID
+
+		if liveRole == "image" {
+			updates["image_asset_id"] = asset.ID
+			id := asset.ID
+			imageAssetID = &id
+		} else {
+			updates["video_asset_id"] = asset.ID
+			id := asset.ID
+			videoAssetID = &id
+		}
+		updates["status"] = livePackStatus(imageAssetID, videoAssetID)
+
+		if err := tx.Model(&model.LiveAssetPack{}).Where("id = ?", pack.ID).Updates(updates).Error; err != nil {
+			return err
+		}
+
+		pack.ImageAssetID = imageAssetID
+		pack.VideoAssetID = videoAssetID
+		pack.Status = updates["status"].(string)
+		return nil
+	}); err != nil {
+		return nil, err
+	}
+
+	return &pack, nil
+}
+
+func (h *AdminHandler) ensureLegacyLivePacks() error {
+	var packs []model.LiveAssetPack
+	if err := h.DB.Select("id, image_asset_id, video_asset_id").Find(&packs).Error; err != nil {
+		return err
+	}
+
+	linked := make(map[uint]struct{}, len(packs)*2)
+	for _, p := range packs {
+		if p.ImageAssetID != nil {
+			linked[*p.ImageAssetID] = struct{}{}
+		}
+		if p.VideoAssetID != nil {
+			linked[*p.VideoAssetID] = struct{}{}
+		}
+	}
+
+	var assets []model.Asset
+	if err := h.DB.Where(`
+		lower(coalesce(url, '')) LIKE '%.heic' OR
+		lower(coalesce(url, '')) LIKE '%.heif' OR
+		lower(coalesce(url, '')) LIKE '%.mov'
+	`).Order("created_at ASC, id ASC").Find(&assets).Error; err != nil {
+		return err
+	}
+
+	for _, asset := range assets {
+		if _, exists := linked[asset.ID]; exists {
+			continue
+		}
+		liveRole := liveRoleFromAssetURL(asset.URL)
+		if liveRole == "" {
+			continue
+		}
+		if _, err := h.attachAssetToLivePack(asset, liveRole); err == nil {
+			linked[asset.ID] = struct{}{}
+		}
+	}
+	return nil
+}
+
+func isHEICExt(ext string) bool {
+	ext = strings.ToLower(strings.TrimSpace(ext))
+	return ext == ".heic" || ext == ".heif"
+}
+
+func isHEICURL(url string) bool {
+	cleanURL := url
+	if idx := strings.Index(cleanURL, "?"); idx >= 0 {
+		cleanURL = cleanURL[:idx]
+	}
+	ext := strings.ToLower(filepath.Ext(cleanURL))
+	return isHEICExt(ext)
+}
+
+// ensureHEICPreview 为 HEIC 文件生成 JPG 预览图，返回预览 URL。
+func ensureHEICPreview(sourceURL string) (string, error) {
+	if !isHEICURL(sourceURL) {
+		return "", fmt.Errorf("not heic")
+	}
+
+	sourcePath := filepath.Join(".", strings.TrimPrefix(sourceURL, "/"))
+	if _, err := os.Stat(sourcePath); err != nil {
+		return "", err
+	}
+
+	sourceExt := filepath.Ext(sourcePath)
+	baseName := strings.TrimSuffix(filepath.Base(sourcePath), sourceExt)
+	previewFilename := baseName + "_preview.jpg"
+	previewPath := filepath.Join(filepath.Dir(sourcePath), previewFilename)
+	previewURL := path.Join(path.Dir(sourceURL), previewFilename)
+
+	if _, err := os.Stat(previewPath); err == nil {
+		return previewURL, nil
+	}
+
+	// 优先使用 macOS 原生 sips
+	if _, err := exec.LookPath("sips"); err == nil {
+		cmd := exec.Command("sips", "-s", "format", "jpeg", sourcePath, "--out", previewPath)
+		if err := cmd.Run(); err == nil {
+			return previewURL, nil
+		}
+	}
+
+	// 兜底：尝试 ffmpeg
+	if _, err := exec.LookPath("ffmpeg"); err == nil {
+		cmd := exec.Command("ffmpeg", "-y", "-i", sourcePath, "-frames:v", "1", previewPath)
+		if err := cmd.Run(); err == nil {
+			return previewURL, nil
+		}
+	}
+
+	return "", fmt.Errorf("generate heic preview failed")
 }
 
 func (h *AdminHandler) ConfigUpdate(c *gin.Context) {

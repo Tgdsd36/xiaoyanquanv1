@@ -44,6 +44,13 @@ start_app() {
     echo -e "${GREEN}[✓] Flutter 窗口已打开${NC}"
 }
 
+# 启动 Flutter（线上 API）
+start_app_online() {
+    echo -e "${GREEN}[✓] 正在新窗口启动 Flutter 客户端（线上 API）...${NC}"
+    open_new_terminal "小颜圈-客户端(线上)" "cd $APP_DIR && echo '📱 启动 Flutter 客户端 (macOS, 线上API)...' && $FLUTTER run -d macos --dart-define=API_BASE_URL=https://xyqapi.cfqfwl.cn/api/v1 --dart-define=SHARE_BASE_URL=https://xyqapi.cfqfwl.cn/share"
+    echo -e "${GREEN}[✓] Flutter 窗口已打开（线上 API）${NC}"
+}
+
 # 启动管理后台
 start_admin() {
     echo -e "${GREEN}[✓] 正在新窗口启动 React 管理后台...${NC}"
@@ -71,8 +78,9 @@ show_menu() {
     echo -e "${CYAN}║${NC}                                  ${CYAN}║${NC}"
     echo -e "${CYAN}║${NC}  ${GREEN}1${NC} - 启动 Go 后端       :8080   ${CYAN}║${NC}"
     echo -e "${CYAN}║${NC}  ${GREEN}2${NC} - 启动 Flutter 客户端        ${CYAN}║${NC}"
-    echo -e "${CYAN}║${NC}  ${GREEN}3${NC} - 启动 React 管理后台 :5173  ${CYAN}║${NC}"
-    echo -e "${CYAN}║${NC}  ${GREEN}4${NC} - 全部启动                   ${CYAN}║${NC}"
+    echo -e "${CYAN}║${NC}  ${GREEN}3${NC} - 启动 Flutter(线上 API)     ${CYAN}║${NC}"
+    echo -e "${CYAN}║${NC}  ${GREEN}4${NC} - 启动 React 管理后台 :5173  ${CYAN}║${NC}"
+    echo -e "${CYAN}║${NC}  ${GREEN}5${NC} - 全部启动(本地)             ${CYAN}║${NC}"
     echo -e "${CYAN}║${NC}                                  ${CYAN}║${NC}"
     echo -e "${CYAN}║${NC}  ${RED}0${NC} - 退出                       ${CYAN}║${NC}"
     echo -e "${CYAN}║${NC}                                  ${CYAN}║${NC}"
@@ -91,14 +99,15 @@ while true; do
     case "$choice" in
         1) start_server ;;
         2) start_app ;;
-        3) start_admin ;;
-        4) start_all ;;
+        3) start_app_online ;;
+        4) start_admin ;;
+        5) start_all ;;
         0)
             echo -e "${CYAN}再见！${NC}"
             exit 0
             ;;
         *)
-            echo -e "${RED}无效选项，请输入 0-4${NC}"
+            echo -e "${RED}无效选项，请输入 0-5${NC}"
             ;;
     esac
 

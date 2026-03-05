@@ -1,6 +1,7 @@
 import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart';
 import '../constants/api.dart';
+import '../storage/device_storage.dart';
 import '../storage/token_storage.dart';
 
 class HttpClient {
@@ -11,12 +12,14 @@ class HttpClient {
   final TokenStorage _tokenStorage = TokenStorage();
 
   HttpClient._internal() {
-    dio = Dio(BaseOptions(
-      baseUrl: Api.baseUrl,
-      connectTimeout: const Duration(seconds: 10),
-      receiveTimeout: const Duration(seconds: 15),
-      headers: {'Content-Type': 'application/json'},
-    ));
+    dio = Dio(
+      BaseOptions(
+        baseUrl: Api.baseUrl,
+        connectTimeout: const Duration(seconds: 10),
+        receiveTimeout: const Duration(seconds: 15),
+        headers: {'Content-Type': 'application/json'},
+      ),
+    );
 
     dio.interceptors.addAll([
       _AuthInterceptor(dio, _tokenStorage),
@@ -99,15 +102,24 @@ class _RetryInterceptor extends Interceptor {
 class _AuthInterceptor extends Interceptor {
   final Dio _dio;
   final TokenStorage _tokenStorage;
+  final DeviceStorage _deviceStorage = DeviceStorage();
   bool _isRefreshing = false;
   final List<RequestOptions> _pendingRequests = [];
 
   _AuthInterceptor(this._dio, this._tokenStorage);
 
   @override
-  void onRequest(RequestOptions options, RequestInterceptorHandler handler) {
+  void onRequest(
+    RequestOptions options,
+    RequestInterceptorHandler handler,
+  ) async {
+    final deviceId = await _deviceStorage.getOrCreateDeviceId();
+    options.headers['X-Device-Id'] = deviceId;
+    options.headers['X-Platform'] = _deviceStorage.platformLabel;
+    options.headers['X-Device-Name'] = _deviceStorage.deviceName;
+
     final token = _tokenStorage.accessToken;
-    if (token != null && token.isNotEmpty) {
+    if (options.path != Api.refreshToken && token != null && token.isNotEmpty) {
       options.headers['Authorization'] = 'Bearer $token';
     }
     handler.next(options);
@@ -115,6 +127,12 @@ class _AuthInterceptor extends Interceptor {
 
   @override
   void onError(DioException err, ErrorInterceptorHandler handler) async {
+    if (err.requestOptions.path == Api.refreshToken) {
+      await _tokenStorage.clear();
+      handler.next(err);
+      return;
+    }
+
     if (err.response?.statusCode == 401 && _tokenStorage.refreshToken != null) {
       if (!_isRefreshing) {
         _isRefreshing = true;

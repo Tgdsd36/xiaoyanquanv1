@@ -46,7 +46,7 @@ export default function AdminLayout() {
       <Sider trigger={null} collapsible collapsed={collapsed}>
         <div style={{ height: 48, margin: 16, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
           <span style={{ color: '#fff', fontSize: collapsed ? 14 : 18, fontWeight: 'bold', whiteSpace: 'nowrap' }}>
-            {collapsed ? '小颜' : '小颜圈管理后台'}
+            {collapsed ? '小颜' : '小颜圈后台管理系统'}
           </span>
         </div>
         <Menu

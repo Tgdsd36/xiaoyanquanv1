@@ -1,3 +1,5 @@
+import '../../../core/utils/url_utils.dart';
+
 class FavoriteGroup {
   final int id;
   final String name;
@@ -19,7 +21,7 @@ class FavoriteGroup {
       name: json['name'] ?? '',
       isDefault: json['is_default'] ?? false,
       itemCount: json['item_count'] ?? 0,
-      coverUrl: json['cover_url'] ?? '',
+      coverUrl: UrlUtils.absolute(json['cover_url']?.toString()),
     );
   }
 }

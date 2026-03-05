@@ -8,10 +8,10 @@ const CONFIG_GROUPS = [
   {
     title: '📦 会员配置',
     items: [
-      { key: 'pro_monthly_price', label: '专业版月费（元）' },
-      { key: 'flagship_monthly_price', label: '旗舰版月费（元）' },
-      { key: 'pro_monthly_download_limit', label: '专业版每月下载次数' },
-      { key: 'flagship_monthly_download_limit', label: '旗舰版每月下载次数' },
+      { key: 'pro_monthly_price', label: '标准版月费（元）' },
+      { key: 'flagship_monthly_price', label: '专业版月费（元）' },
+      { key: 'pro_monthly_download_limit', label: '标准版每月下载次数' },
+      { key: 'flagship_monthly_download_limit', label: '专业版每月下载次数' },
     ],
   },
   {

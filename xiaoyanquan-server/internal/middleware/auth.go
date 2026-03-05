@@ -1,27 +1,35 @@
 package middleware
 
 import (
+	"net/http"
 	"strings"
 
 	"github.com/gin-gonic/gin"
 	"github.com/xiaoyanquan/server/internal/config"
+	"github.com/xiaoyanquan/server/internal/model"
 	myjwt "github.com/xiaoyanquan/server/pkg/jwt"
 	"github.com/xiaoyanquan/server/pkg/response"
+	"gorm.io/gorm"
 )
 
 const (
-	ContextUserID   = "user_id"
-	ContextPhone    = "phone"
-	ContextAdminID  = "admin_id"
+	ContextUserID    = "user_id"
+	ContextPhone     = "phone"
+	ContextAdminID   = "admin_id"
 	ContextAdminRole = "admin_role"
 )
 
 // AuthRequired 强制登录
-func AuthRequired(cfg *config.JWTConfig) gin.HandlerFunc {
+func AuthRequired(cfg *config.JWTConfig, db *gorm.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		claims, err := extractClaims(c, cfg)
 		if err != nil {
 			response.Unauthorized(c, "请先登录")
+			c.Abort()
+			return
+		}
+		if err := validateDeviceBinding(c, db, claims); err != nil {
+			handleDeviceValidationError(c, err)
 			c.Abort()
 			return
 		}
@@ -32,12 +40,14 @@ func AuthRequired(cfg *config.JWTConfig) gin.HandlerFunc {
 }
 
 // AuthOptional 可选登录（游客也能访问，但登录用户会注入 user_id）
-func AuthOptional(cfg *config.JWTConfig) gin.HandlerFunc {
+func AuthOptional(cfg *config.JWTConfig, db *gorm.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		claims, err := extractClaims(c, cfg)
 		if err == nil {
-			c.Set(ContextUserID, claims.UserID)
-			c.Set(ContextPhone, claims.Phone)
+			if validateDeviceBinding(c, db, claims) == nil {
+				c.Set(ContextUserID, claims.UserID)
+				c.Set(ContextPhone, claims.Phone)
+			}
 		}
 		c.Next()
 	}
@@ -83,6 +93,36 @@ func extractClaimsWithType(c *gin.Context, cfg *config.JWTConfig, expectedType s
 	}
 
 	return claims, nil
+}
+
+func validateDeviceBinding(c *gin.Context, db *gorm.DB, claims *myjwt.Claims) error {
+	requestDeviceID := strings.TrimSpace(c.GetHeader("X-Device-Id"))
+	if requestDeviceID == "" {
+		return gorm.ErrInvalidData
+	}
+	if claims.DeviceID == "" || claims.DeviceID != requestDeviceID {
+		return gorm.ErrRecordNotFound
+	}
+	if db == nil {
+		return nil
+	}
+
+	var binding model.UserDeviceBinding
+	if err := db.Where("user_id = ?", claims.UserID).First(&binding).Error; err != nil {
+		return gorm.ErrRecordNotFound
+	}
+	if binding.DeviceID != requestDeviceID {
+		return gorm.ErrRecordNotFound
+	}
+	return nil
+}
+
+func handleDeviceValidationError(c *gin.Context, err error) {
+	if err == gorm.ErrInvalidData {
+		response.BadRequest(c, response.ErrCodeDeviceIDRequired, "缺少设备标识，请升级客户端后重试")
+		return
+	}
+	response.Error(c, http.StatusUnauthorized, response.ErrCodeDeviceMismatch, "设备校验失败，请重新登录")
 }
 
 // AdminRequired 管理员认证

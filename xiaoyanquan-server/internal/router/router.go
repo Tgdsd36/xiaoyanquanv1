@@ -16,7 +16,7 @@ func Setup(cfg *config.Config, db *gorm.DB, rdb *redis.Client) *gin.Engine {
 	}
 
 	r := gin.Default()
-	r.Use(middleware.CORS())
+	r.Use(middleware.CORS(cfg))
 
 	// 初始化 handlers
 	authHandler := &handler.AuthHandler{DB: db, RDB: rdb, Cfg: cfg}
@@ -45,9 +45,11 @@ func Setup(cfg *config.Config, db *gorm.DB, rdb *redis.Client) *gin.Engine {
 
 		// 认证（需登录）
 		authRequired := v1.Group("/auth")
-		authRequired.Use(middleware.AuthRequired(&cfg.JWT))
+		authRequired.Use(middleware.AuthRequired(&cfg.JWT, db))
 		{
 			authRequired.DELETE("/account", authHandler.DeleteAccount)
+			authRequired.GET("/device", authHandler.DeviceInfo)
+			authRequired.POST("/device/unbind", authHandler.UnbindDevice)
 		}
 
 		// 分类（游客可访问）
@@ -55,7 +57,7 @@ func Setup(cfg *config.Config, db *gorm.DB, rdb *redis.Client) *gin.Engine {
 
 		// 素材（游客可浏览，登录用户有 is_favorited 状态）
 		materials := v1.Group("/materials")
-		materials.Use(middleware.AuthOptional(&cfg.JWT))
+		materials.Use(middleware.AuthOptional(&cfg.JWT, db))
 		{
 			materials.GET("", materialHandler.List)
 			materials.GET("/:id", materialHandler.Detail)
@@ -64,29 +66,29 @@ func Setup(cfg *config.Config, db *gorm.DB, rdb *redis.Client) *gin.Engine {
 
 		// 素材下载（需会员）
 		materialsAuth := v1.Group("/materials")
-		materialsAuth.Use(middleware.AuthRequired(&cfg.JWT))
+		materialsAuth.Use(middleware.AuthRequired(&cfg.JWT, db))
 		{
 			materialsAuth.GET("/:id/download", materialHandler.Download)
 		}
 
 		// 找灵感（游客可浏览）
 		inspiration := v1.Group("/inspiration")
-		inspiration.Use(middleware.AuthOptional(&cfg.JWT))
+		inspiration.Use(middleware.AuthOptional(&cfg.JWT, db))
 		{
 			inspiration.GET("/feed", inspirationHandler.Feed)
 		}
-		v1.POST("/inspiration/dislike", middleware.AuthRequired(&cfg.JWT), inspirationHandler.Dislike)
+		v1.POST("/inspiration/dislike", middleware.AuthRequired(&cfg.JWT, db), inspirationHandler.Dislike)
 
 		// 朋友圈（游客可浏览，数据源为素材表）
 		moments := v1.Group("/moments")
-		moments.Use(middleware.AuthOptional(&cfg.JWT))
+		moments.Use(middleware.AuthOptional(&cfg.JWT, db))
 		{
 			moments.GET("", momentHandler.List)
 		}
 
 		// 收藏分组（需登录）
 		favoriteGroups := v1.Group("/favorite-groups")
-		favoriteGroups.Use(middleware.AuthRequired(&cfg.JWT))
+		favoriteGroups.Use(middleware.AuthRequired(&cfg.JWT, db))
 		{
 			favoriteGroups.GET("", favoriteGroupHandler.List)
 			favoriteGroups.POST("", favoriteGroupHandler.Create)
@@ -96,7 +98,7 @@ func Setup(cfg *config.Config, db *gorm.DB, rdb *redis.Client) *gin.Engine {
 
 		// 收藏（需会员）
 		favorites := v1.Group("/favorites")
-		favorites.Use(middleware.AuthRequired(&cfg.JWT))
+		favorites.Use(middleware.AuthRequired(&cfg.JWT, db))
 		{
 			favorites.POST("", favoriteHandler.Create)
 			favorites.POST("/toggle", favoriteHandler.Toggle)
@@ -106,7 +108,7 @@ func Setup(cfg *config.Config, db *gorm.DB, rdb *redis.Client) *gin.Engine {
 
 		// 提问（需会员）
 		questions := v1.Group("/questions")
-		questions.Use(middleware.AuthRequired(&cfg.JWT))
+		questions.Use(middleware.AuthRequired(&cfg.JWT, db))
 		{
 			questions.POST("", questionHandler.Create)
 			questions.GET("", questionHandler.MyList)
@@ -116,9 +118,9 @@ func Setup(cfg *config.Config, db *gorm.DB, rdb *redis.Client) *gin.Engine {
 
 		// 用户（需登录）
 		user := v1.Group("/user")
-		user.Use(middleware.AuthRequired(&cfg.JWT))
+		user.Use(middleware.AuthRequired(&cfg.JWT, db))
 		{
-		user.GET("/profile", userHandler.Profile)
+			user.GET("/profile", userHandler.Profile)
 			user.PUT("/profile", userHandler.UpdateProfile)
 			user.POST("/upload", userHandler.UploadImage)
 			user.GET("/downloads", userHandler.Downloads)
@@ -127,7 +129,7 @@ func Setup(cfg *config.Config, db *gorm.DB, rdb *redis.Client) *gin.Engine {
 
 		// 会员（需登录）
 		membership := v1.Group("/membership")
-		membership.Use(middleware.AuthRequired(&cfg.JWT))
+		membership.Use(middleware.AuthRequired(&cfg.JWT, db))
 		{
 			membership.GET("/status", membershipHandler.Status)
 			membership.POST("/purchase", membershipHandler.Purchase)
@@ -139,6 +141,19 @@ func Setup(cfg *config.Config, db *gorm.DB, rdb *redis.Client) *gin.Engine {
 
 	adminGroup := r.Group("/api/admin")
 	{
+		adminIndex := func(c *gin.Context) {
+			c.JSON(200, gin.H{
+				"code":    0,
+				"message": "ok",
+				"data": gin.H{
+					"service":   "小颜圈后台API",
+					"admin_url": cfg.Server.AdminBaseURL,
+				},
+			})
+		}
+		adminGroup.GET("", adminIndex)
+		adminGroup.GET("/", adminIndex)
+
 		// 无需认证
 		adminGroup.POST("/login", adminHandler.Login)
 		adminGroup.GET("/init", adminHandler.InitAdmin) // 开发环境初始化
@@ -156,6 +171,7 @@ func Setup(cfg *config.Config, db *gorm.DB, rdb *redis.Client) *gin.Engine {
 			adminAuth.PUT("/materials/:id", adminHandler.MaterialUpdate)
 			adminAuth.DELETE("/materials/:id", adminHandler.MaterialDelete)
 			adminAuth.POST("/materials/batch-status", adminHandler.MaterialBatchStatus)
+			adminAuth.POST("/materials/batch-channel", adminHandler.MaterialBatchChannel)
 			adminAuth.POST("/materials/batch-delete", adminHandler.MaterialBatchDelete)
 
 			// 分类管理
@@ -178,14 +194,18 @@ func Setup(cfg *config.Config, db *gorm.DB, rdb *redis.Client) *gin.Engine {
 			adminAuth.POST("/users/batch-delete", adminHandler.UserBatchDelete)
 			adminAuth.POST("/users/batch-status", adminHandler.UserBatchStatus)
 			adminAuth.PUT("/users/:id/status", adminHandler.UserToggleStatus)
+			adminAuth.POST("/users/:id/device/unbind", adminHandler.UserDeviceUnbind)
 
 			// 素材库(文件管理)
 			adminAuth.POST("/assets/upload", adminHandler.AssetUpload)
 			adminAuth.GET("/assets", adminHandler.AssetList)
+			adminAuth.GET("/assets/live-packs", adminHandler.AssetLivePackList)
 			adminAuth.DELETE("/assets/:id", adminHandler.AssetDelete)
 			adminAuth.GET("/assets/folders", adminHandler.AssetFolders)
+			adminAuth.POST("/assets/folders/create", adminHandler.AssetFolderCreate)
 			adminAuth.PUT("/assets/folders/rename", adminHandler.AssetFolderRename)
 			adminAuth.POST("/assets/folders/delete", adminHandler.AssetFolderDelete)
+			adminAuth.POST("/assets/folders/batch-update", adminHandler.AssetFolderBatchUpdate)
 
 			// 订单管理
 			adminAuth.GET("/orders", adminHandler.OrderList)

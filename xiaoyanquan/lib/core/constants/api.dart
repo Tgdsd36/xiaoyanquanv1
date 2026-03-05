@@ -1,5 +1,11 @@
 class Api {
-  static const String baseUrl = 'http://localhost:8080/api/v1';
+  static const String _devBaseUrl = 'http://localhost:8080/api/v1';
+  static const String _prodBaseUrl = 'https://xyqapi.cfqfwl.cn/api/v1';
+  static const bool _isRelease = bool.fromEnvironment('dart.vm.product');
+  static const String baseUrl = String.fromEnvironment(
+    'API_BASE_URL',
+    defaultValue: _isRelease ? _prodBaseUrl : _devBaseUrl,
+  );
 
   // 认证
   static const String smsSend = '/auth/sms/send';
@@ -8,6 +14,8 @@ class Api {
   static const String register = '/auth/register';
   static const String refreshToken = '/auth/refresh';
   static const String deleteAccount = '/auth/account';
+  static const String authDevice = '/auth/device';
+  static const String authDeviceUnbind = '/auth/device/unbind';
 
   // 分类
   static const String categories = '/categories';

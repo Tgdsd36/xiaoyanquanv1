@@ -1,9 +1,12 @@
+import '../../../core/utils/url_utils.dart';
+
 class MaterialListItem {
   final int id;
   final String title;
   final String type;
   final String thumbnailUrl;
   final String watermarkUrl;
+  final List<String> originalUrls;
   final int width;
   final int height;
   final double duration;
@@ -19,6 +22,7 @@ class MaterialListItem {
     required this.type,
     required this.thumbnailUrl,
     this.watermarkUrl = '',
+    this.originalUrls = const [],
     this.width = 0,
     this.height = 0,
     this.duration = 0,
@@ -36,6 +40,12 @@ class MaterialListItem {
       type: json['type'] ?? '',
       thumbnailUrl: json['thumbnail_url'] ?? '',
       watermarkUrl: json['watermark_url'] ?? '',
+      originalUrls: _parseUrlList(
+        json['original_urls'] ??
+            json['original_url'] ??
+            json['image_urls'] ??
+            json['images'],
+      ),
       width: json['width'] ?? 0,
       height: json['height'] ?? 0,
       duration: (json['duration'] ?? 0).toDouble(),
@@ -45,6 +55,18 @@ class MaterialListItem {
       tags: (json['tags'] as List?)?.map((e) => e.toString()).toList() ?? [],
       isFavorited: json['is_favorited'] ?? false,
     );
+  }
+
+  static List<String> _parseUrlList(dynamic raw) {
+    if (raw is List) {
+      return raw
+          .map((e) => e.toString().trim())
+          .where((e) => e.isNotEmpty)
+          .toList();
+    }
+    final single = raw?.toString().trim() ?? '';
+    if (single.isNotEmpty) return [single];
+    return const [];
   }
 
   double get aspectRatio => (width > 0 && height > 0) ? width / height : 0.75;
@@ -57,6 +79,14 @@ class MaterialListItem {
     final s = (duration % 60).toInt();
     return '${m.toString().padLeft(2, '0')}:${s.toString().padLeft(2, '0')}';
   }
+
+  /// 可安全用于图片组件的封面图地址（自动避开视频文件 URL）
+  String get safeThumbnailUrl =>
+      UrlUtils.firstImageUrl([thumbnailUrl, watermarkUrl, ...originalUrls]);
+
+  /// 最优视频地址（优先 watermark，再 original，再 thumbnail）
+  String get bestVideoUrl =>
+      UrlUtils.firstVideoUrl([watermarkUrl, ...originalUrls, thumbnailUrl]);
 }
 
 class MaterialDetail {
@@ -125,7 +155,9 @@ class MaterialDetail {
       thumbnailUrl: json['thumbnail_url'] ?? '',
       watermarkUrl: json['watermark_url'] ?? '',
       previewMovUrl: json['preview_mov_url'] ?? '',
-      originalUrls: (json['original_urls'] as List?)?.map((e) => e.toString()).toList() ?? [],
+      originalUrls:
+          (json['original_urls'] as List?)?.map((e) => e.toString()).toList() ??
+          [],
       hotScore: (json['hot_score'] ?? 0).toDouble(),
       downloadCount: json['download_count'] ?? 0,
       favoriteCount: json['favorite_count'] ?? 0,
@@ -137,4 +169,12 @@ class MaterialDetail {
 
   bool get isVideo => type == 'video';
   bool get isLivePhoto => type == 'live_photo';
+
+  /// 可安全用于图片组件的封面图地址（自动避开视频文件 URL）
+  String get safeThumbnailUrl =>
+      UrlUtils.firstImageUrl([thumbnailUrl, watermarkUrl, ...originalUrls]);
+
+  /// 最优视频地址（优先 watermark，再 original，再 thumbnail）
+  String get bestVideoUrl =>
+      UrlUtils.firstVideoUrl([watermarkUrl, ...originalUrls, thumbnailUrl]);
 }

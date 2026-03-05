@@ -7,15 +7,20 @@ import '../../../app/styles.dart';
 import '../../../core/auth/auth_provider.dart';
 import '../../../core/constants/api.dart';
 import '../../../core/network/http_client.dart';
+import '../../../core/utils/url_utils.dart';
+import '../../../shared/network_video_thumbnail.dart';
 import '../../../shared/favorite_group_sheet.dart';
+import '../../../shared/material_download_helper.dart';
 import '../../../shared/share_helper.dart';
 import '../models/material_model.dart';
 import '../providers/favorite_provider.dart';
 import '../repositories/material_repository.dart';
 import 'material_preview_page.dart';
 
-final materialDetailProvider =
-    FutureProvider.family<MaterialDetail?, int>((ref, id) async {
+final materialDetailProvider = FutureProvider.family<MaterialDetail?, int>((
+  ref,
+  id,
+) async {
   final repo = MaterialRepository();
   return repo.getDetail(id);
 });
@@ -38,10 +43,11 @@ class MaterialDetailPage extends ConsumerWidget {
           if (detailAsync.valueOrNull != null)
             IconButton(
               icon: const Icon(Icons.share_outlined, size: 22),
-              onPressed: () => ShareHelper.shareMaterial(
-                id: materialId,
-                title: detailAsync.valueOrNull!.title,
-              ),
+              onPressed:
+                  () => ShareHelper.shareMaterial(
+                    id: materialId,
+                    title: detailAsync.valueOrNull!.title,
+                  ),
             ),
         ],
       ),
@@ -52,12 +58,12 @@ class MaterialDetailPage extends ConsumerWidget {
           }
           return _DetailContent(
             detail: detail,
-            isAuthenticated:
-                authState.status == AuthStatus.authenticated,
+            isAuthenticated: authState.status == AuthStatus.authenticated,
           );
         },
-        loading: () => const Center(
-            child: CircularProgressIndicator(strokeWidth: 2)),
+        loading:
+            () =>
+                const Center(child: CircularProgressIndicator(strokeWidth: 2)),
         error: (e, _) => Center(child: Text('加载失败: $e')),
       ),
     );
@@ -68,10 +74,7 @@ class _DetailContent extends ConsumerStatefulWidget {
   final MaterialDetail detail;
   final bool isAuthenticated;
 
-  const _DetailContent({
-    required this.detail,
-    required this.isAuthenticated,
-  });
+  const _DetailContent({required this.detail, required this.isAuthenticated});
 
   @override
   ConsumerState<_DetailContent> createState() => _DetailContentState();
@@ -91,17 +94,21 @@ class _DetailContentState extends ConsumerState<_DetailContent> {
     _loadQuestions();
     // 初始化共享收藏状态（仅当还未被预览页设置时才生效）
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      ref.read(materialFavoriteProvider(detail.id).notifier).init(
-        isFavorited: detail.isFavorited,
-        favoriteCount: detail.favoriteCount,
-      );
+      ref
+          .read(materialFavoriteProvider(detail.id).notifier)
+          .init(
+            isFavorited: detail.isFavorited,
+            favoriteCount: detail.favoriteCount,
+          );
     });
   }
 
   Future<void> _loadQuestions() async {
     try {
-      final resp = await HttpClient()
-          .get(Api.questionsByMaterial(detail.id), params: {'page': 1, 'page_size': 50});
+      final resp = await HttpClient().get(
+        Api.questionsByMaterial(detail.id),
+        params: {'page': 1, 'page_size': 50},
+      );
       if (resp.isSuccess && resp.data != null) {
         if (!mounted) return;
         setState(() {
@@ -137,15 +144,19 @@ class _DetailContentState extends ConsumerState<_DetailContent> {
               borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
             ),
             padding: EdgeInsets.fromLTRB(
-              16, 16, 16, MediaQuery.of(ctx).padding.bottom + 16,
+              16,
+              16,
+              16,
+              MediaQuery.of(ctx).padding.bottom + 16,
             ),
             child: Column(
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const Text('提问',
-                    style: TextStyle(
-                        fontSize: 16, fontWeight: FontWeight.w600)),
+                const Text(
+                  '提问',
+                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
+                ),
                 const SizedBox(height: 12),
                 TextField(
                   controller: controller,
@@ -155,7 +166,9 @@ class _DetailContentState extends ConsumerState<_DetailContent> {
                   decoration: InputDecoration(
                     hintText: '输入你的提问...',
                     hintStyle: const TextStyle(
-                        color: AppColors.textHint, fontSize: 14),
+                      color: AppColors.textHint,
+                      fontSize: 14,
+                    ),
                     filled: true,
                     fillColor: AppColors.surface,
                     border: OutlineInputBorder(
@@ -182,12 +195,14 @@ class _DetailContentState extends ConsumerState<_DetailContent> {
                       final messenger = ScaffoldMessenger.of(context);
 
                       try {
-                        final resp =
-                            await HttpClient().post(Api.questions, data: {
-                          'target_type': 'material',
-                          'target_id': detail.id,
-                          'question_text': text,
-                        });
+                        final resp = await HttpClient().post(
+                          Api.questions,
+                          data: {
+                            'target_type': 'material',
+                            'target_id': detail.id,
+                            'question_text': text,
+                          },
+                        );
 
                         if (!mounted) return;
 
@@ -248,9 +263,9 @@ class _DetailContentState extends ConsumerState<_DetailContent> {
           .read(materialFavoriteProvider(detail.id).notifier)
           .removeFavorite(detail.id);
       if (error != null && mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(error)),
-        );
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text(error)));
       }
     } else {
       // 未收藏 → 弹出分组选择
@@ -260,9 +275,9 @@ class _DetailContentState extends ConsumerState<_DetailContent> {
           .read(materialFavoriteProvider(detail.id).notifier)
           .addToGroup(detail.id, groupId);
       if (error != null && mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(error)),
-        );
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text(error)));
       }
     }
   }
@@ -318,8 +333,7 @@ class _DetailContentState extends ConsumerState<_DetailContent> {
                       Expanded(
                         child: Text(
                           detail.title,
-                          style: const TextStyle(
-                              fontSize: 15, height: 1.5),
+                          style: const TextStyle(fontSize: 15, height: 1.5),
                         ),
                       ),
                     ],
@@ -335,7 +349,9 @@ class _DetailContentState extends ConsumerState<_DetailContent> {
                 // 素材信息
                 Padding(
                   padding: const EdgeInsets.symmetric(horizontal: 16),
-                  child: _infoText('浏览 ${detail.viewCount}  收藏 $favoriteCount  下载 ${detail.downloadCount}'),
+                  child: _infoText(
+                    '浏览 ${detail.viewCount}  收藏 $favoriteCount  下载 ${detail.downloadCount}',
+                  ),
                 ),
                 // 标签
                 if (detail.tags.isNotEmpty) ...[
@@ -345,20 +361,28 @@ class _DetailContentState extends ConsumerState<_DetailContent> {
                     child: Wrap(
                       spacing: 6,
                       runSpacing: 6,
-                      children: detail.tags
-                          .map((tag) => Container(
-                                padding: const EdgeInsets.symmetric(
-                                    horizontal: 10, vertical: 4),
-                                decoration: BoxDecoration(
-                                  color: AppColors.surface,
-                                  borderRadius: BorderRadius.circular(12),
-                                ),
-                                child: Text('#$tag',
+                      children:
+                          detail.tags
+                              .map(
+                                (tag) => Container(
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 10,
+                                    vertical: 4,
+                                  ),
+                                  decoration: BoxDecoration(
+                                    color: AppColors.surface,
+                                    borderRadius: BorderRadius.circular(12),
+                                  ),
+                                  child: Text(
+                                    '#$tag',
                                     style: const TextStyle(
-                                        fontSize: 12,
-                                        color: AppColors.textSecondary)),
-                              ))
-                          .toList(),
+                                      fontSize: 12,
+                                      color: AppColors.textSecondary,
+                                    ),
+                                  ),
+                                ),
+                              )
+                              .toList(),
                     ),
                   ),
                 ],
@@ -370,7 +394,9 @@ class _DetailContentState extends ConsumerState<_DetailContent> {
                   child: Text(
                     '提问 (${_questions.length})',
                     style: const TextStyle(
-                        fontSize: 15, fontWeight: FontWeight.w600),
+                      fontSize: 15,
+                      fontWeight: FontWeight.w600,
+                    ),
                   ),
                 ),
                 const SizedBox(height: 8),
@@ -378,15 +404,20 @@ class _DetailContentState extends ConsumerState<_DetailContent> {
                   const Padding(
                     padding: EdgeInsets.all(20),
                     child: Center(
-                        child: CircularProgressIndicator(strokeWidth: 2)),
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    ),
                   )
                 else if (_questions.isEmpty)
                   const Padding(
                     padding: EdgeInsets.symmetric(vertical: 20),
                     child: Center(
-                      child: Text('暂无提问，点击下方“提问”按钮发起提问',
-                          style: TextStyle(
-                              color: AppColors.textHint, fontSize: 13)),
+                      child: Text(
+                        '暂无提问，点击下方“提问”按钮发起提问',
+                        style: TextStyle(
+                          color: AppColors.textHint,
+                          fontSize: 13,
+                        ),
+                      ),
                     ),
                   )
                 else
@@ -408,21 +439,25 @@ class _DetailContentState extends ConsumerState<_DetailContent> {
                               Text(
                                 q['user_nickname'] ?? '匿名',
                                 style: const TextStyle(
-                                    fontSize: 13,
-                                    fontWeight: FontWeight.w500),
+                                  fontSize: 13,
+                                  fontWeight: FontWeight.w500,
+                                ),
                               ),
                               const Spacer(),
                               Text(
                                 q['created_at'] ?? '',
                                 style: const TextStyle(
-                                    fontSize: 11,
-                                    color: AppColors.textHint),
+                                  fontSize: 11,
+                                  color: AppColors.textHint,
+                                ),
                               ),
                             ],
                           ),
                           const SizedBox(height: 6),
-                          Text(q['question_text'] ?? '',
-                              style: const TextStyle(fontSize: 14)),
+                          Text(
+                            q['question_text'] ?? '',
+                            style: const TextStyle(fontSize: 14),
+                          ),
                           if ((q['reply_text'] ?? '').isNotEmpty) ...[
                             const SizedBox(height: 8),
                             Container(
@@ -432,20 +467,21 @@ class _DetailContentState extends ConsumerState<_DetailContent> {
                                 borderRadius: BorderRadius.circular(6),
                               ),
                               child: Row(
-                                crossAxisAlignment:
-                                    CrossAxisAlignment.start,
+                                crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
-                                  const Icon(Icons.reply,
-                                      size: 14,
-                                      color: AppColors.textHint),
+                                  const Icon(
+                                    Icons.reply,
+                                    size: 14,
+                                    color: AppColors.textHint,
+                                  ),
                                   const SizedBox(width: 6),
                                   Expanded(
                                     child: Text(
                                       q['reply_text'],
                                       style: const TextStyle(
-                                          fontSize: 13,
-                                          color:
-                                              AppColors.textSecondary),
+                                        fontSize: 13,
+                                        color: AppColors.textSecondary,
+                                      ),
                                     ),
                                   ),
                                 ],
@@ -465,7 +501,8 @@ class _DetailContentState extends ConsumerState<_DetailContent> {
         Container(
           decoration: const BoxDecoration(
             border: Border(
-                top: BorderSide(color: AppColors.divider, width: 0.5)),
+              top: BorderSide(color: AppColors.divider, width: 0.5),
+            ),
           ),
           padding: EdgeInsets.only(
             left: 8,
@@ -477,9 +514,10 @@ class _DetailContentState extends ConsumerState<_DetailContent> {
             mainAxisAlignment: MainAxisAlignment.spaceAround,
             children: [
               _ActionBtn(
-                icon: isFavorited
-                    ? Icons.star_rounded
-                    : Icons.star_border_rounded,
+                icon:
+                    isFavorited
+                        ? Icons.star_rounded
+                        : Icons.star_border_rounded,
                 label: isFavorited ? '已收藏' : '收藏',
                 color: isFavorited ? AppColors.favoriteActive : null,
                 onTap: _handleFavorite,
@@ -488,9 +526,9 @@ class _DetailContentState extends ConsumerState<_DetailContent> {
                 icon: Icons.sentiment_dissatisfied_outlined,
                 label: '不喜欢',
                 onTap: () {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(content: Text('已标记不喜欢')),
-                  );
+                  ScaffoldMessenger.of(
+                    context,
+                  ).showSnackBar(const SnackBar(content: Text('已标记不喜欢')));
                 },
               ),
               _ActionBtn(
@@ -501,14 +539,12 @@ class _DetailContentState extends ConsumerState<_DetailContent> {
               _ActionBtn(
                 icon: Icons.file_download_outlined,
                 label: '下载',
-                onTap: () {
+                onTap: () async {
                   if (!isAuthenticated) {
                     _showLoginHint(context);
                     return;
                   }
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(content: Text('下载功能即将上线')),
-                  );
+                  await _handleDownload();
                 },
               ),
             ],
@@ -520,17 +556,128 @@ class _DetailContentState extends ConsumerState<_DetailContent> {
 
   /// 原图列表（优先 originalUrls，否则封面/水印图）
   List<String> get _displayUrls {
+    if (detail.isVideo) {
+      return const [];
+    }
     if (detail.originalUrls.isNotEmpty) {
-      return detail.originalUrls.where((e) => e.isNotEmpty).toList();
+      return detail.originalUrls
+          .where((e) => e.isNotEmpty && !UrlUtils.isVideoUrl(e))
+          .toList();
     }
     final url =
-        detail.watermarkUrl.isNotEmpty ? detail.watermarkUrl : detail.thumbnailUrl;
-    if (url.isNotEmpty) return [url];
+        detail.watermarkUrl.isNotEmpty
+            ? detail.watermarkUrl
+            : detail.thumbnailUrl;
+    if (url.isNotEmpty && !UrlUtils.isVideoUrl(url)) return [url];
     return const [];
+  }
+
+  Future<void> _handleDownload() async {
+    final fallbackUrls = <String>[
+      ...detail.originalUrls,
+      detail.watermarkUrl,
+      detail.thumbnailUrl,
+      detail.previewMovUrl,
+    ];
+    await MaterialDownloadHelper.downloadToAlbum(
+      context,
+      materialId: detail.id,
+      materialType: detail.type,
+      fallbackUrls: fallbackUrls,
+      fallbackVideoUrl: detail.bestVideoUrl,
+      fallbackLiveVideoUrl: detail.previewMovUrl,
+    );
   }
 
   /// 微信九宫格缩略图
   Widget _buildThumbnails(BuildContext context) {
+    if (detail.isVideo) {
+      final coverUrl = detail.safeThumbnailUrl;
+      final videoUrl = detail.bestVideoUrl;
+      return GestureDetector(
+        onTap: () => _openPreview(context, const [], 0),
+        child: ClipRRect(
+          borderRadius: BorderRadius.circular(6),
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxHeight: 240),
+            child: Stack(
+              fit: StackFit.expand,
+              children: [
+                if (coverUrl.isNotEmpty)
+                  CachedNetworkImage(
+                    imageUrl: coverUrl,
+                    fit: BoxFit.cover,
+                    placeholder:
+                        (_, __) =>
+                            Container(height: 180, color: AppColors.shimmer),
+                    errorWidget:
+                        (_, __, ___) => Container(
+                          height: 180,
+                          color: AppColors.shimmer,
+                          child: const Center(
+                            child: Icon(
+                              Icons.broken_image_outlined,
+                              color: AppColors.textDisabled,
+                              size: 36,
+                            ),
+                          ),
+                        ),
+                  )
+                else if (videoUrl.isNotEmpty)
+                  NetworkVideoThumbnail(
+                    videoUrl: videoUrl,
+                    fit: BoxFit.cover,
+                    placeholder: Container(
+                      color: AppColors.shimmer,
+                      child: const Center(
+                        child: Icon(
+                          Icons.play_circle_outline_rounded,
+                          color: AppColors.textSecondary,
+                          size: 42,
+                        ),
+                      ),
+                    ),
+                    errorWidget: Container(
+                      color: AppColors.shimmer,
+                      child: const Center(
+                        child: Icon(
+                          Icons.broken_image_outlined,
+                          color: AppColors.textDisabled,
+                          size: 36,
+                        ),
+                      ),
+                    ),
+                  )
+                else
+                  Container(
+                    color: AppColors.shimmer,
+                    child: const Center(
+                      child: Icon(
+                        Icons.play_circle_outline_rounded,
+                        color: AppColors.textSecondary,
+                        size: 42,
+                      ),
+                    ),
+                  ),
+                Positioned.fill(
+                  child: Container(
+                    color: Colors.black.withValues(alpha: 0.15),
+                    child: const Center(
+                      child: Icon(
+                        Icons.play_circle_fill_rounded,
+                        color: Colors.white,
+                        size: 52,
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      );
+    }
+
     final urls = _displayUrls;
     if (urls.isEmpty) {
       return const SizedBox.shrink();
@@ -548,15 +695,20 @@ class _DetailContentState extends ConsumerState<_DetailContent> {
               imageUrl: urls[0],
               fit: BoxFit.cover,
               width: double.infinity,
-      placeholder: (_, __) =>
-                  Container(height: 180, color: AppColors.shimmer),
-              errorWidget: (_, __, ___) => Container(
-                height: 180,
-                color: AppColors.shimmer,
-                child: const Center(
-                    child: Icon(Icons.broken_image_outlined,
-                        color: AppColors.textDisabled, size: 36)),
-              ),
+              placeholder:
+                  (_, __) => Container(height: 180, color: AppColors.shimmer),
+              errorWidget:
+                  (_, __, ___) => Container(
+                    height: 180,
+                    color: AppColors.shimmer,
+                    child: const Center(
+                      child: Icon(
+                        Icons.broken_image_outlined,
+                        color: AppColors.textDisabled,
+                        size: 36,
+                      ),
+                    ),
+                  ),
             ),
           ),
         ),
@@ -568,7 +720,8 @@ class _DetailContentState extends ConsumerState<_DetailContent> {
     const padding = 16.0 * 2;
     const spacing = 4.0;
     final columns = urls.length == 4 ? 2 : 3;
-    final cellSize = (screenWidth - padding - spacing * (columns - 1)) / columns;
+    final cellSize =
+        (screenWidth - padding - spacing * (columns - 1)) / columns;
 
     return Wrap(
       spacing: spacing,
@@ -585,11 +738,15 @@ class _DetailContentState extends ConsumerState<_DetailContent> {
                 imageUrl: urls[i],
                 fit: BoxFit.cover,
                 placeholder: (_, __) => Container(color: AppColors.shimmer),
-                errorWidget: (_, __, ___) => Container(
-                  color: AppColors.shimmer,
-                  child: const Icon(Icons.broken_image_outlined,
-                      color: AppColors.textDisabled, size: 24),
-                ),
+                errorWidget:
+                    (_, __, ___) => Container(
+                      color: AppColors.shimmer,
+                      child: const Icon(
+                        Icons.broken_image_outlined,
+                        color: AppColors.textDisabled,
+                        size: 24,
+                      ),
+                    ),
               ),
             ),
           ),
@@ -661,4 +818,3 @@ class _ActionBtn extends StatelessWidget {
     );
   }
 }
-
