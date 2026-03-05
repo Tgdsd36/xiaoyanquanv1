@@ -36,8 +36,7 @@ class LivePhotoChannel {
 }
 
 /// Live Photo 展示组件
-/// - iOS: 使用原生 PHLivePhotoView（长按可播放动效）
-/// - macOS: 使用 MOV 循环播放模拟 Live 动效
+/// - iOS/macOS: 使用 MOV 循环播放模拟 Live 动效（稳定兜底）
 /// - Android/Web: 静态图片 + Live Photo 角标
 class LivePhotoView extends StatelessWidget {
   final String imageUrl;
@@ -57,17 +56,8 @@ class LivePhotoView extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    if (!kIsWeb && Platform.isIOS) {
-      return _IOSLivePhotoView(
-        imageUrl: imageUrl,
-        videoUrl: videoUrl,
-        width: width,
-        height: height,
-      );
-    }
-
-    if (!kIsWeb && Platform.isMacOS) {
-      return _MacOSLivePhotoView(
+    if (!kIsWeb && (Platform.isIOS || Platform.isMacOS)) {
+      return _VideoLiveMotionView(
         imageUrl: imageUrl,
         videoUrl: videoUrl,
         width: width,
@@ -83,14 +73,16 @@ class LivePhotoView extends StatelessWidget {
           width: width,
           height: height,
           fit: fit,
-          placeholder: (_, __) => Container(
-            color: Colors.grey[900],
-            child: const Center(child: CircularProgressIndicator()),
-          ),
-          errorWidget: (_, __, ___) => Container(
-            color: Colors.grey[900],
-            child: const Icon(Icons.broken_image, color: Colors.grey),
-          ),
+          placeholder:
+              (_, __) => Container(
+                color: Colors.grey[900],
+                child: const Center(child: CircularProgressIndicator()),
+              ),
+          errorWidget:
+              (_, __, ___) => Container(
+                color: Colors.grey[900],
+                child: const Icon(Icons.broken_image, color: Colors.grey),
+              ),
         ),
         Positioned(
           top: 8,
@@ -142,46 +134,15 @@ class LivePhotoView extends StatelessWidget {
   }
 }
 
-/// iOS 原生 PHLivePhotoView 包装
-class _IOSLivePhotoView extends StatelessWidget {
-  final String imageUrl;
-  final String videoUrl;
-  final double? width;
-  final double? height;
-
-  const _IOSLivePhotoView({
-    required this.imageUrl,
-    required this.videoUrl,
-    this.width,
-    this.height,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return SizedBox(
-      width: width,
-      height: height,
-      child: UiKitView(
-        viewType: 'com.xiaoyanquan/live_photo_view',
-        creationParams: {
-          'image_url': imageUrl,
-          'video_url': videoUrl,
-        },
-        creationParamsCodec: const StandardMessageCodec(),
-      ),
-    );
-  }
-}
-
-/// macOS 上使用 MOV 循环播放模拟 Live 动效
-class _MacOSLivePhotoView extends StatefulWidget {
+/// iOS/macOS 上使用 MOV 循环播放模拟 Live 动效
+class _VideoLiveMotionView extends StatefulWidget {
   final String imageUrl;
   final String videoUrl;
   final double? width;
   final double? height;
   final BoxFit fit;
 
-  const _MacOSLivePhotoView({
+  const _VideoLiveMotionView({
     required this.imageUrl,
     required this.videoUrl,
     this.width,
@@ -190,10 +151,10 @@ class _MacOSLivePhotoView extends StatefulWidget {
   });
 
   @override
-  State<_MacOSLivePhotoView> createState() => _MacOSLivePhotoViewState();
+  State<_VideoLiveMotionView> createState() => _VideoLiveMotionViewState();
 }
 
-class _MacOSLivePhotoViewState extends State<_MacOSLivePhotoView> {
+class _VideoLiveMotionViewState extends State<_VideoLiveMotionView> {
   VideoPlayerController? _controller;
   bool _initialized = false;
   bool _failed = false;
@@ -205,7 +166,7 @@ class _MacOSLivePhotoViewState extends State<_MacOSLivePhotoView> {
   }
 
   @override
-  void didUpdateWidget(covariant _MacOSLivePhotoView oldWidget) {
+  void didUpdateWidget(covariant _VideoLiveMotionView oldWidget) {
     super.didUpdateWidget(oldWidget);
     if (oldWidget.videoUrl != widget.videoUrl) {
       _disposeController();
@@ -259,14 +220,16 @@ class _MacOSLivePhotoViewState extends State<_MacOSLivePhotoView> {
         width: widget.width,
         height: widget.height,
         fit: widget.fit,
-        placeholder: (_, __) => Container(
-          color: Colors.grey[900],
-          child: const Center(child: CircularProgressIndicator()),
-        ),
-        errorWidget: (_, __, ___) => Container(
-          color: Colors.grey[900],
-          child: const Icon(Icons.broken_image, color: Colors.grey),
-        ),
+        placeholder:
+            (_, __) => Container(
+              color: Colors.grey[900],
+              child: const Center(child: CircularProgressIndicator()),
+            ),
+        errorWidget:
+            (_, __, ___) => Container(
+              color: Colors.grey[900],
+              child: const Icon(Icons.broken_image, color: Colors.grey),
+            ),
       );
     }
 
