@@ -19,6 +19,15 @@ workflows:
         script: |
           cd "$FLUTTER_PROJECT_DIR"
           flutter pub get
+      - name: Install CocoaPods dependencies
+        script: |
+          cd "$FLUTTER_PROJECT_DIR/ios"
+          export LANG=en_US.UTF-8
+          export LC_ALL=en_US.UTF-8
+          rm -rf Pods
+          pod install
+          test -f "Pods/Target Support Files/Pods-Runner/Pods-Runner-frameworks-Release-input-files.xcfilelist"
+          test -f "Pods/Target Support Files/Pods-Runner/Pods-Runner-resources-Release-input-files.xcfilelist"
       - name: Apply provisioning profiles to Xcode project
         script: |
           cd "$FLUTTER_PROJECT_DIR/ios"
