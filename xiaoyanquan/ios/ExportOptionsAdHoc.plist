@@ -5,16 +5,11 @@
   <key>method</key>
   <string>ad-hoc</string>
   <key>signingStyle</key>
-  <string>manual</string>
+  <string>automatic</string>
   <key>teamID</key>
   <string>U4Q689E4A3</string>
   <key>signingCertificate</key>
   <string>iPhone Distribution</string>
-  <key>provisioningProfiles</key>
-  <dict>
-    <key>app.upon286163.kele</key>
-    <string>00008130-000A45EE0AF9001C53</string>
-  </dict>
   <key>compileBitcode</key>
   <false/>
   <key>stripSwiftSymbols</key>
