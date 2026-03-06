@@ -1,12 +1,16 @@
 package handler
 
 import (
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"io"
+	"net/http"
 	"os"
 	"os/exec"
 	"path"
 	"path/filepath"
+	"regexp"
 	"sort"
 	"strconv"
 	"strings"
@@ -28,6 +32,12 @@ type AdminHandler struct {
 	DB  *gorm.DB
 	Cfg *config.Config
 }
+
+var (
+	liveImgEditedNameRe = regexp.MustCompile(`^img[_-]?e(\d+)$`)
+	liveCopySuffixRe    = regexp.MustCompile(`\s*\(\d+\)$`)
+	liveSpaceNumSuffix  = regexp.MustCompile(`\s+\d+$`)
+)
 
 // ==================== 认证 ====================
 
@@ -1032,6 +1042,144 @@ func (h *AdminHandler) AssetUpload(c *gin.Context) {
 	response.Success(c, asset)
 }
 
+// AssetInspect 上传诊断（不入库），用于定位移动端文件选择后的真实文件类型。
+func (h *AdminHandler) AssetInspect(c *gin.Context) {
+	file, err := c.FormFile("file")
+	if err != nil {
+		response.BadRequest(c, 400, "请选择文件")
+		return
+	}
+
+	src, err := file.Open()
+	if err != nil {
+		response.ServerError(c, "读取文件失败")
+		return
+	}
+	defer src.Close()
+
+	header := make([]byte, 512)
+	n, _ := io.ReadFull(src, header)
+	if n <= 0 {
+		n, _ = src.Read(header)
+	}
+	if n < 0 {
+		n = 0
+	}
+	header = header[:n]
+
+	ext := strings.ToLower(filepath.Ext(file.Filename))
+	filenameNoExt := strings.TrimSuffix(file.Filename, filepath.Ext(file.Filename))
+	baseName := normalizeLiveBaseName(filenameNoExt)
+	clientContentType := strings.TrimSpace(file.Header.Get("Content-Type"))
+	sniffContentType := http.DetectContentType(header)
+	ftypBrand := detectISOBaseMediaBrand(header)
+	liveRole := detectLiveRoleByHeader(ext, clientContentType, sniffContentType, ftypBrand)
+
+	guessType := "unknown"
+	switch {
+	case liveRole == "image":
+		guessType = "live_image_candidate"
+	case liveRole == "video":
+		guessType = "live_video_candidate"
+	case isImageExt(ext):
+		guessType = "image"
+	case isVideoExt(ext):
+		guessType = "video"
+	}
+
+	suggestion := "当前文件无法直接确认是 Live 套件成员"
+	if liveRole == "image" {
+		suggestion = "识别为 Live 静态图候选（还需要同名 MOV）"
+	} else if liveRole == "video" {
+		suggestion = "识别为 Live 动态视频候选（还需要同名 HEIC/HEIF）"
+	}
+
+	response.Success(c, gin.H{
+		"filename":             file.Filename,
+		"ext":                  ext,
+		"size":                 file.Size,
+		"base_name":            baseName,
+		"client_content_type":  clientContentType,
+		"sniff_content_type":   sniffContentType,
+		"ftyp_brand":           ftypBrand,
+		"guess_type":           guessType,
+		"live_role_candidate":  liveRole,
+		"can_split_to_live":    false,
+		"split_hint":           "仅有静态图无法在服务端拆分出 MOV；必须上传原始 HEIC/HEIF + MOV 两个文件",
+		"suggestion":           suggestion,
+		"header_sample_hex":    bytesToHexPreview(header),
+	})
+}
+
+func isImageExt(ext string) bool {
+	switch strings.ToLower(strings.TrimSpace(ext)) {
+	case ".jpg", ".jpeg", ".png", ".gif", ".webp", ".bmp", ".heic", ".heif":
+		return true
+	default:
+		return false
+	}
+}
+
+func isVideoExt(ext string) bool {
+	switch strings.ToLower(strings.TrimSpace(ext)) {
+	case ".mp4", ".mov", ".m4v", ".avi", ".mkv", ".webm":
+		return true
+	default:
+		return false
+	}
+}
+
+func detectISOBaseMediaBrand(header []byte) string {
+	if len(header) < 12 {
+		return ""
+	}
+	if string(header[4:8]) != "ftyp" {
+		return ""
+	}
+	brand := string(header[8:12])
+	brand = strings.TrimSpace(brand)
+	return strings.Trim(brand, "\x00")
+}
+
+func detectLiveRoleByHeader(ext, clientContentType, sniffContentType, ftypBrand string) string {
+	if role := resolveLiveRole("", ext); role != "" {
+		return role
+	}
+
+	lowerClient := strings.ToLower(strings.TrimSpace(clientContentType))
+	lowerSniff := strings.ToLower(strings.TrimSpace(sniffContentType))
+	lowerBrand := strings.ToLower(strings.TrimSpace(ftypBrand))
+
+	if strings.Contains(lowerClient, "heic") || strings.Contains(lowerClient, "heif") ||
+		strings.Contains(lowerSniff, "heic") || strings.Contains(lowerSniff, "heif") {
+		return "image"
+	}
+
+	if strings.Contains(lowerClient, "quicktime") || strings.Contains(lowerSniff, "quicktime") {
+		return "video"
+	}
+
+	switch lowerBrand {
+	case "heic", "heix", "hevc", "mif1", "msf1":
+		return "image"
+	case "qt":
+		return "video"
+	default:
+		return ""
+	}
+}
+
+func bytesToHexPreview(header []byte) string {
+	if len(header) == 0 {
+		return ""
+	}
+	previewLen := len(header)
+	if previewLen > 32 {
+		previewLen = 32
+	}
+	return hex.EncodeToString(header[:previewLen])
+}
+
 func (h *AdminHandler) AssetList(c *gin.Context) {
 	page, _ := strconv.Atoi(c.DefaultQuery("page", "1"))
 	pageSize, _ := strconv.Atoi(c.DefaultQuery("page_size", "40"))
@@ -1621,11 +1769,81 @@ func liveBaseNameFromAsset(asset model.Asset) string {
 	if ext != "" {
 		name = strings.TrimSuffix(name, ext)
 	}
+	return normalizeLiveBaseName(name)
+}
+
+func normalizeLiveBaseName(raw string) string {
+	name := strings.TrimSpace(strings.ToLower(raw))
+	if name == "" {
+		return ""
+	}
+
+	name = strings.ReplaceAll(name, "（", "(")
+	name = strings.ReplaceAll(name, "）", ")")
+
+	if matched := liveImgEditedNameRe.FindStringSubmatch(name); len(matched) == 2 {
+		name = "img_" + matched[1]
+	}
+
+	name = liveCopySuffixRe.ReplaceAllString(name, "")
+	name = strings.TrimSpace(name)
+	name = strings.TrimSuffix(name, " copy")
+	name = strings.TrimSuffix(name, " 副本")
+	name = strings.TrimSpace(name)
+	name = liveSpaceNumSuffix.ReplaceAllString(name, "")
+	name = strings.TrimSpace(name)
+
+	return name
+}
+
+func trimLiveRoleSuffix(name, liveRole string) string {
+	if name == "" {
+		return ""
+	}
+	suffixes := []string{}
+	switch liveRole {
+	case "image":
+		suffixes = []string{
+			"_image", "-image", " image",
+			"_photo", "-photo", " photo",
+			"_static", "-static", " static",
+			"_heic", "-heic", " heic",
+			"_heif", "-heif", " heif",
+		}
+	case "video":
+		suffixes = []string{
+			"_video", "-video", " video",
+			"_mov", "-mov", " mov",
+			"_motion", "-motion", " motion",
+		}
+	default:
+		return name
+	}
+
+	result := name
+	for _, suffix := range suffixes {
+		if strings.HasSuffix(result, suffix) {
+			candidate := strings.TrimSuffix(result, suffix)
+			candidate = strings.TrimSpace(strings.TrimRight(candidate, "_- "))
+			if candidate != "" {
+				result = candidate
+			}
+			break
+		}
+	}
+	return result
+}
+
+func canonicalLiveBaseName(raw string) string {
+	name := normalizeLiveBaseName(raw)
+	name = trimLiveRoleSuffix(name, "image")
+	name = trimLiveRoleSuffix(name, "video")
 	return strings.TrimSpace(name)
 }
 
 func (h *AdminHandler) attachAssetToLivePack(asset model.Asset, liveRole string) (*model.LiveAssetPack, error) {
 	baseName := liveBaseNameFromAsset(asset)
+	baseName = trimLiveRoleSuffix(baseName, liveRole)
 	if baseName == "" {
 		return nil, fmt.Errorf("empty live base name")
 	}
@@ -1702,6 +1920,86 @@ func (h *AdminHandler) attachAssetToLivePack(asset model.Asset, liveRole string)
 
 func (h *AdminHandler) ensureLegacyLivePacks() error {
 	var packs []model.LiveAssetPack
+	if err := h.DB.Select("id, folder, base_name, image_asset_id, video_asset_id, created_at").
+		Order("created_at ASC, id ASC").
+		Find(&packs).Error; err != nil {
+		return err
+	}
+
+	// 修复历史数据：统一 base_name（例如 live_image/live_video -> live）
+	for i := range packs {
+		canonical := canonicalLiveBaseName(packs[i].BaseName)
+		if canonical == "" || canonical == packs[i].BaseName {
+			continue
+		}
+		if err := h.DB.Model(&model.LiveAssetPack{}).
+			Where("id = ?", packs[i].ID).
+			Update("base_name", canonical).Error; err != nil {
+			return err
+		}
+		packs[i].BaseName = canonical
+	}
+
+	// 合并同 folder + base_name 的重复半成品套件。
+	// 注意：如果 keeper 和 duplicate 都已 complete，说明是不同 Live（只是碰巧同名），
+	// 不应合并，否则会丢失数据。
+	type key struct {
+		folder   string
+		baseName string
+	}
+	keeperByKey := map[key]model.LiveAssetPack{}
+	deleteIDs := make([]uint, 0)
+	for _, p := range packs {
+		k := key{folder: strings.TrimSpace(p.Folder), baseName: strings.TrimSpace(p.BaseName)}
+		if k.baseName == "" {
+			continue
+		}
+		keeper, exists := keeperByKey[k]
+		if !exists {
+			keeperByKey[k] = p
+			continue
+		}
+
+		keeperComplete := keeper.ImageAssetID != nil && keeper.VideoAssetID != nil
+		duplicateComplete := p.ImageAssetID != nil && p.VideoAssetID != nil
+		if keeperComplete && duplicateComplete {
+			// 两个都完整，是不同 Live Photo，不合并
+			continue
+		}
+
+		updates := map[string]interface{}{}
+		imageAssetID := keeper.ImageAssetID
+		videoAssetID := keeper.VideoAssetID
+		if imageAssetID == nil && p.ImageAssetID != nil {
+			updates["image_asset_id"] = *p.ImageAssetID
+			id := *p.ImageAssetID
+			imageAssetID = &id
+		}
+		if videoAssetID == nil && p.VideoAssetID != nil {
+			updates["video_asset_id"] = *p.VideoAssetID
+			id := *p.VideoAssetID
+			videoAssetID = &id
+		}
+		if len(updates) > 0 {
+			updates["status"] = livePackStatus(imageAssetID, videoAssetID)
+			if err := h.DB.Model(&model.LiveAssetPack{}).Where("id = ?", keeper.ID).Updates(updates).Error; err != nil {
+				return err
+			}
+			keeper.ImageAssetID = imageAssetID
+			keeper.VideoAssetID = videoAssetID
+			keeper.Status = updates["status"].(string)
+			keeperByKey[k] = keeper
+		}
+		deleteIDs = append(deleteIDs, p.ID)
+	}
+	if len(deleteIDs) > 0 {
+		if err := h.DB.Where("id IN ?", deleteIDs).Delete(&model.LiveAssetPack{}).Error; err != nil {
+			return err
+		}
+	}
+
+	// 重新读取，确保后续 linked 集合基于最新套件。
+	packs = nil
 	if err := h.DB.Select("id, image_asset_id, video_asset_id").Find(&packs).Error; err != nil {
 		return err
 	}

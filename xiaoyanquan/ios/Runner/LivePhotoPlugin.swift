@@ -7,6 +7,7 @@ import PhotosUI
 
 class LivePhotoPlugin: NSObject, FlutterPlugin, PHPickerViewControllerDelegate {
     private var pendingPickResult: FlutterResult?
+    private var isMultiPick = false
 
     static func register(with registrar: FlutterPluginRegistrar) {
         // PlatformView factory
@@ -33,6 +34,9 @@ class LivePhotoPlugin: NSObject, FlutterPlugin, PHPickerViewControllerDelegate {
             requestPhotoLibraryPermission(result: result)
         case "pickLiveForUpload":
             pickLiveForUpload(result: result)
+        case "pickMultipleLiveForUpload":
+            let limit = (call.arguments as? [String: Any])?["limit"] as? Int ?? 20
+            pickMultipleLiveForUpload(limit: limit, result: result)
         default:
             result(FlutterMethodNotImplemented)
         }
@@ -54,7 +58,7 @@ class LivePhotoPlugin: NSObject, FlutterPlugin, PHPickerViewControllerDelegate {
         }
     }
 
-    private func pickLiveForUpload(result: @escaping FlutterResult) {
+    private func presentLivePicker(selectionLimit: Int, multi: Bool, result: @escaping FlutterResult) {
         if pendingPickResult != nil {
             result(FlutterError(code: "BUSY", message: "Live picker is busy", details: nil))
             return
@@ -79,11 +83,12 @@ class LivePhotoPlugin: NSObject, FlutterPlugin, PHPickerViewControllerDelegate {
 
             var config = PHPickerConfiguration(photoLibrary: PHPhotoLibrary.shared())
             config.filter = .livePhotos
-            config.selectionLimit = 1
+            config.selectionLimit = selectionLimit
 
             let picker = PHPickerViewController(configuration: config)
             picker.delegate = self
             self.pendingPickResult = result
+            self.isMultiPick = multi
             rootVC.present(picker, animated: true)
         }
 
@@ -110,32 +115,79 @@ class LivePhotoPlugin: NSObject, FlutterPlugin, PHPickerViewControllerDelegate {
         }
     }
 
+    private func pickLiveForUpload(result: @escaping FlutterResult) {
+        presentLivePicker(selectionLimit: 1, multi: false, result: result)
+    }
+
+    private func pickMultipleLiveForUpload(limit: Int, result: @escaping FlutterResult) {
+        presentLivePicker(selectionLimit: min(limit, 20), multi: true, result: result)
+    }
+
     @available(iOS 14, *)
     func picker(_ picker: PHPickerViewController, didFinishPicking results: [PHPickerResult]) {
         let flutterResult = pendingPickResult
+        let multi = isMultiPick
         pendingPickResult = nil
+        isMultiPick = false
 
         picker.dismiss(animated: true)
 
         guard let result = flutterResult else { return }
-        guard let first = results.first, let assetId = first.assetIdentifier else {
-            result(nil)
+
+        if results.isEmpty {
+            result(multi ? [] : nil)
             return
         }
 
-        let assets = PHAsset.fetchAssets(withLocalIdentifiers: [assetId], options: nil)
-        guard let asset = assets.firstObject else {
-            result(FlutterError(code: "ASSET_NOT_FOUND", message: "Unable to fetch selected Live asset", details: nil))
+        // 收集所有有效 assetId
+        let assetIds = results.compactMap { $0.assetIdentifier }
+        if assetIds.isEmpty {
+            result(multi ? [] : nil)
             return
         }
 
-        exportLiveAsset(asset: asset) { exportResult in
-            switch exportResult {
-            case .success(let payload):
-                result(payload)
-            case .failure(let error):
-                result(FlutterError(code: "LIVE_EXPORT_FAILED", message: error.localizedDescription, details: nil))
+        let fetchResult = PHAsset.fetchAssets(withLocalIdentifiers: assetIds, options: nil)
+        var phAssets: [PHAsset] = []
+        fetchResult.enumerateObjects { asset, _, _ in
+            phAssets.append(asset)
+        }
+
+        if !multi {
+            // 单选模式：返回单个 dict
+            guard let asset = phAssets.first else {
+                result(FlutterError(code: "ASSET_NOT_FOUND", message: "Unable to fetch selected Live asset", details: nil))
+                return
             }
+            exportLiveAsset(asset: asset) { exportResult in
+                switch exportResult {
+                case .success(let payload): result(payload)
+                case .failure(let error): result(FlutterError(code: "LIVE_EXPORT_FAILED", message: error.localizedDescription, details: nil))
+                }
+            }
+            return
+        }
+
+        // 多选模式：逐个导出，收集结果数组
+        let group = DispatchGroup()
+        var payloads: [[String: Any]] = []
+        var errors: [String] = []
+        let lock = NSLock()
+
+        for asset in phAssets {
+            group.enter()
+            exportLiveAsset(asset: asset) { exportResult in
+                lock.lock()
+                switch exportResult {
+                case .success(let payload): payloads.append(payload)
+                case .failure(let error): errors.append(error.localizedDescription)
+                }
+                lock.unlock()
+                group.leave()
+            }
+        }
+
+        group.notify(queue: .main) {
+            result(payloads)
         }
     }
 
@@ -157,11 +209,29 @@ class LivePhotoPlugin: NSObject, FlutterPlugin, PHPickerViewControllerDelegate {
             return
         }
 
-        let imageExt = (imageRes.originalFilename as NSString).pathExtension.isEmpty ? "heic" : (imageRes.originalFilename as NSString).pathExtension
-        let videoExt = (videoRes.originalFilename as NSString).pathExtension.isEmpty ? "mov" : (videoRes.originalFilename as NSString).pathExtension
+        // 使用原始文件名（如 IMG_1234.HEIC / IMG_1234.MOV），确保不同 Live Photo
+        // 有不同的 baseName，避免多次上传时服务端错误配对。
+        let imageOrigName = imageRes.originalFilename.trimmingCharacters(in: .whitespacesAndNewlines)
+        let videoOrigName = videoRes.originalFilename.trimmingCharacters(in: .whitespacesAndNewlines)
 
-        let imageURL = baseDir.appendingPathComponent("live_image.\(imageExt)")
-        let videoURL = baseDir.appendingPathComponent("live_video.\(videoExt)")
+        let imageFileName: String
+        let videoFileName: String
+
+        if !imageOrigName.isEmpty && imageOrigName != videoOrigName {
+            // 正常情况：使用原始文件名（例如 IMG_1234.HEIC + IMG_1234.MOV）
+            imageFileName = imageOrigName
+            videoFileName = videoOrigName
+        } else {
+            // 兜底：原始文件名为空或相同时，用 UUID 区分
+            let imageExt = (imageRes.originalFilename as NSString).pathExtension.isEmpty ? "heic" : (imageRes.originalFilename as NSString).pathExtension
+            let videoExt = (videoRes.originalFilename as NSString).pathExtension.isEmpty ? "mov" : (videoRes.originalFilename as NSString).pathExtension
+            let pairId = UUID().uuidString.prefix(8)
+            imageFileName = "live_\(pairId)_image.\(imageExt)"
+            videoFileName = "live_\(pairId)_video.\(videoExt)"
+        }
+
+        let imageURL = baseDir.appendingPathComponent(imageFileName)
+        let videoURL = baseDir.appendingPathComponent(videoFileName)
 
         let manager = PHAssetResourceManager.default()
         let group = DispatchGroup()

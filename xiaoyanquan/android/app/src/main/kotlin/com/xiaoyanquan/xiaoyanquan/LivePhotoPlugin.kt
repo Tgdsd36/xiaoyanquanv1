@@ -24,8 +24,11 @@ class LivePhotoPlugin : FlutterPlugin, MethodChannel.MethodCallHandler, Activity
     private var activityBinding: ActivityPluginBinding? = null
     private var pendingResult: MethodChannel.Result? = null
 
+    private var isMultiPick = false
+
     companion object {
         private const val REQUEST_PICK_LIVE = 9908
+        private const val REQUEST_PICK_LIVE_MULTI = 9909
     }
 
     override fun onAttachedToEngine(binding: FlutterPlugin.FlutterPluginBinding) {
@@ -40,15 +43,23 @@ class LivePhotoPlugin : FlutterPlugin, MethodChannel.MethodCallHandler, Activity
                 result.error("UNSUPPORTED", "Live Photo save is not supported on Android", null)
             }
             "requestPermission" -> {
-                // 使用 ACTION_OPEN_DOCUMENT 选择文件，一般无需额外权限弹窗
                 result.success(true)
             }
             "pickLiveForUpload" -> pickLiveForUpload(result)
+            "pickMultipleLiveForUpload" -> pickMultipleLiveForUpload(result)
             else -> result.notImplemented()
         }
     }
 
     private fun pickLiveForUpload(result: MethodChannel.Result) {
+        launchPicker(result, multi = false)
+    }
+
+    private fun pickMultipleLiveForUpload(result: MethodChannel.Result) {
+        launchPicker(result, multi = true)
+    }
+
+    private fun launchPicker(result: MethodChannel.Result, multi: Boolean) {
         val hostActivity = activity
         if (hostActivity == null) {
             result.error("NO_ACTIVITY", "Activity is not attached", null)
@@ -60,27 +71,28 @@ class LivePhotoPlugin : FlutterPlugin, MethodChannel.MethodCallHandler, Activity
         }
 
         pendingResult = result
+        isMultiPick = multi
         val intent = Intent(Intent.ACTION_OPEN_DOCUMENT).apply {
             addCategory(Intent.CATEGORY_OPENABLE)
             type = "image/*"
+            if (multi) putExtra(Intent.EXTRA_ALLOW_MULTIPLE, true)
         }
-        hostActivity.startActivityForResult(intent, REQUEST_PICK_LIVE)
+        hostActivity.startActivityForResult(
+            intent,
+            if (multi) REQUEST_PICK_LIVE_MULTI else REQUEST_PICK_LIVE,
+        )
     }
 
     override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?): Boolean {
-        if (requestCode != REQUEST_PICK_LIVE) return false
+        if (requestCode != REQUEST_PICK_LIVE && requestCode != REQUEST_PICK_LIVE_MULTI) return false
         val result = pendingResult
+        val multi = isMultiPick
         pendingResult = null
+        isMultiPick = false
 
         if (result == null) return true
         if (resultCode != Activity.RESULT_OK) {
-            result.success(null)
-            return true
-        }
-
-        val uri = data?.data
-        if (uri == null) {
-            result.error("NO_URI", "No file selected", null)
+            result.success(if (multi) emptyList<Map<String, Any>>() else null)
             return true
         }
 
@@ -90,42 +102,63 @@ class LivePhotoPlugin : FlutterPlugin, MethodChannel.MethodCallHandler, Activity
             return true
         }
 
+        // 收集所有 URI
+        val uris = mutableListOf<Uri>()
+        val clipData = data?.clipData
+        if (clipData != null) {
+            for (i in 0 until clipData.itemCount) {
+                clipData.getItemAt(i)?.uri?.let { uris.add(it) }
+            }
+        } else {
+            data?.data?.let { uris.add(it) }
+        }
+
+        if (uris.isEmpty()) {
+            result.success(if (multi) emptyList<Map<String, Any>>() else null)
+            return true
+        }
+
         try {
-            val bytes = readAllBytes(hostActivity.contentResolver.openInputStream(uri))
-            if (bytes.isEmpty()) {
-                result.error("EMPTY_FILE", "Selected file is empty", null)
-                return true
+            val payloads = mutableListOf<Map<String, Any>>()
+            for (uri in uris) {
+                val payload = processMotionPhotoUri(hostActivity, uri)
+                if (payload != null) payloads.add(payload)
             }
 
-            val imageExt = inferImageExtension(hostActivity, uri)
-            val imageFile = File(hostActivity.cacheDir, "live_img_${UUID.randomUUID()}.$imageExt")
-            writeBytes(imageFile, bytes)
-
-            val videoBytes = extractMotionVideoBytes(bytes)
-            if (videoBytes == null) {
-                result.error(
-                    "NO_MOTION_VIDEO",
-                    "未检测到 Live/Motion 的动态视频片段，请改用手动选择静态图+视频",
-                    null
-                )
-                return true
+            if (!multi) {
+                if (payloads.isEmpty()) {
+                    result.error("NO_MOTION_VIDEO", "未检测到 Live/Motion 的动态视频片段，请改用手动选择静态图+视频", null)
+                } else {
+                    result.success(payloads.first())
+                }
+            } else {
+                result.success(payloads)
             }
-            val videoFile = File(hostActivity.cacheDir, "live_vid_${UUID.randomUUID()}.mp4")
-            writeBytes(videoFile, videoBytes)
-
-            result.success(
-                mapOf(
-                    "image_path" to imageFile.absolutePath,
-                    "video_path" to videoFile.absolutePath,
-                    "image_name" to imageFile.name,
-                    "video_name" to videoFile.name,
-                    "source" to "android_motion_photo",
-                )
-            )
         } catch (e: Exception) {
             result.error("PICK_FAILED", "Live pick failed: ${e.message}", null)
         }
         return true
+    }
+
+    private fun processMotionPhotoUri(hostActivity: Activity, uri: Uri): Map<String, Any>? {
+        val bytes = readAllBytes(hostActivity.contentResolver.openInputStream(uri))
+        if (bytes.isEmpty()) return null
+
+        val imageExt = inferImageExtension(hostActivity, uri)
+        val imageFile = File(hostActivity.cacheDir, "live_img_${UUID.randomUUID()}.$imageExt")
+        writeBytes(imageFile, bytes)
+
+        val videoBytes = extractMotionVideoBytes(bytes) ?: return null
+        val videoFile = File(hostActivity.cacheDir, "live_vid_${UUID.randomUUID()}.mp4")
+        writeBytes(videoFile, videoBytes)
+
+        return mapOf(
+            "image_path" to imageFile.absolutePath,
+            "video_path" to videoFile.absolutePath,
+            "image_name" to imageFile.name,
+            "video_name" to videoFile.name,
+            "source" to "android_motion_photo",
+        )
     }
 
     private fun readAllBytes(inputStream: InputStream?): ByteArray {

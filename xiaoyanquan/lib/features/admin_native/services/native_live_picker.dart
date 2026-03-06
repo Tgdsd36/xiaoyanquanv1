@@ -40,4 +40,28 @@ class NativeLivePicker {
     }
     return null;
   }
+
+  /// 批量选择多张 Live Photo（iOS 最多 [limit] 张）
+  static Future<List<NativeLivePickResult>> pickMultipleLiveForUpload({
+    int limit = 20,
+  }) async {
+    final result = await _channel.invokeMethod<dynamic>(
+      'pickMultipleLiveForUpload',
+      {'limit': limit},
+    );
+    if (result == null) return const [];
+    if (result is List) {
+      return result
+          .whereType<Map>()
+          .map(NativeLivePickResult.fromMap)
+          .where((r) => r.isValid)
+          .toList();
+    }
+    // 兼容单个返回
+    if (result is Map) {
+      final parsed = NativeLivePickResult.fromMap(result);
+      return parsed.isValid ? [parsed] : const [];
+    }
+    return const [];
+  }
 }

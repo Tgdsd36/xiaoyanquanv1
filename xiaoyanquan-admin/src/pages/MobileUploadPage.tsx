@@ -3,6 +3,7 @@ import { ClearOutlined, PlayCircleOutlined, ReloadOutlined, StopOutlined, Upload
 import { Button, Card, message, Progress, Select, Space, Switch, Tag, Typography, Upload } from 'antd';
 import type { AxiosProgressEvent } from 'axios';
 import type { RcFile, UploadProps } from 'antd/es/upload';
+import { useNavigate } from 'react-router-dom';
 import mobileHttp from '../api/mobileHttp';
 import './MobileUploadPage.css';
 
@@ -67,12 +68,18 @@ function getFileExt(name: string): string {
 
 function normalizeBaseName(name: string): string {
   const dotIdx = name.lastIndexOf('.');
-  const noExt = dotIdx > 0 ? name.slice(0, dotIdx) : name;
-  return noExt
+  let normalized = dotIdx > 0 ? name.slice(0, dotIdx) : name;
+  normalized = normalized
     .trim()
     .toLowerCase()
+    .replace(/（/g, '(')
+    .replace(/）/g, ')')
+    .replace(/^img[_-]?e(\d+)$/i, 'img_$1')
     .replace(/\s*\(\d+\)$/g, '')
+    .replace(/\s+(copy|副本)$/g, '')
+    .replace(/\s+\d+$/g, '')
     .replace(/\s+/g, ' ');
+  return normalized;
 }
 
 function isImageExt(ext: string): boolean {
@@ -264,6 +271,7 @@ function buildQueueItems(sourceFiles: SourceFile[], mode: UploadMode, strictLive
 const { Text } = Typography;
 
 export default function MobileUploadPage() {
+  const navigate = useNavigate();
   const [mode, setMode] = useState<UploadMode>('all');
   const [folder, setFolder] = useState<string>('');
   const [strictLive, setStrictLive] = useState(true);
@@ -700,6 +708,13 @@ export default function MobileUploadPage() {
           <Text className="mobile-upload-note">
             说明：Live 套件按 HEIC/HEIF + MOV 自动配对；严格模式下，缺少任一文件会阻塞上传。
           </Text>
+          <Button
+            type="link"
+            style={{ padding: 0, height: 'auto', justifyContent: 'flex-start' }}
+            onClick={() => navigate('/mobile/live-debug')}
+          >
+            未识别为 Live？打开 Live 诊断页查看手机实际上传内容
+          </Button>
         </Space>
       </Card>
 

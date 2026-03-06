@@ -202,6 +202,7 @@ func Setup(cfg *config.Config, db *gorm.DB, rdb *redis.Client) *gin.Engine {
 
 			// 素材库(文件管理)
 			adminAuth.POST("/assets/upload", adminHandler.AssetUpload)
+			adminAuth.POST("/assets/inspect", adminHandler.AssetInspect)
 			adminAuth.GET("/assets", adminHandler.AssetList)
 			adminAuth.GET("/assets/live-packs", adminHandler.AssetLivePackList)
 			adminAuth.DELETE("/assets/:id", adminHandler.AssetDelete)

@@ -18,6 +18,7 @@ import MobileDashboardPage from './pages/mobile/MobileDashboardPage';
 import MobileAssetsPage from './pages/mobile/MobileAssetsPage';
 import MobileMaterialsPage from './pages/mobile/MobileMaterialsPage';
 import MobileQuestionsPage from './pages/mobile/MobileQuestionsPage';
+import MobileLiveDebugPage from './pages/mobile/MobileLiveDebugPage';
 
 function PrivateRoute({ children }: { children: React.ReactNode }) {
   return isAuthenticated() ? <>{children}</> : <Navigate to="/login" replace />;
@@ -54,6 +55,7 @@ export default function App() {
         <Route path="assets" element={<MobileAssetsPage />} />
         <Route path="materials" element={<MobileMaterialsPage />} />
         <Route path="questions" element={<MobileQuestionsPage />} />
+        <Route path="live-debug" element={<MobileLiveDebugPage />} />
       </Route>
       <Route
         path="/*"
