@@ -1,0 +1,79 @@
+.mobile-upload-page {
+  min-height: 100vh;
+  padding: 12px;
+  background: linear-gradient(180deg, #f3f8ff 0%, #f8fbff 42%, #f7f7fb 100%);
+}
+
+.mobile-upload-header {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  align-items: center;
+  margin-bottom: 12px;
+}
+
+.mobile-upload-title {
+  justify-self: center;
+  font-size: 16px;
+  font-weight: 600;
+  color: #1f2d3d;
+}
+
+.mobile-upload-placeholder {
+  width: 52px;
+}
+
+.mobile-upload-card {
+  border-radius: 14px;
+  margin-bottom: 12px;
+  box-shadow: 0 10px 24px rgba(31, 45, 61, 0.08);
+}
+
+.mobile-upload-label {
+  margin-bottom: 6px;
+  font-size: 13px;
+  color: #5b6b7b;
+}
+
+.mobile-upload-tip {
+  margin: 0;
+  white-space: normal;
+}
+
+.mobile-upload-note {
+  font-size: 12px;
+  line-height: 1.5;
+  color: #7c8797;
+}
+
+.mobile-upload-records {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.mobile-upload-record {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: #f8fafc;
+}
+
+.mobile-upload-record-name {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: #213141;
+  font-size: 13px;
+}
+
+.mobile-upload-empty {
+  text-align: center;
+  color: #8b95a3;
+  font-size: 13px;
+  padding: 10px 0;
+}
+

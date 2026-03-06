@@ -69,6 +69,52 @@ func (h *AdminHandler) Login(c *gin.Context) {
 	})
 }
 
+// ChangePassword 管理员修改自身密码
+func (h *AdminHandler) ChangePassword(c *gin.Context) {
+	var req struct {
+		OldPassword string `json:"old_password" binding:"required,min=6"`
+		NewPassword string `json:"new_password" binding:"required,min=6"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.BadRequest(c, 400, "参数错误")
+		return
+	}
+	if req.OldPassword == req.NewPassword {
+		response.BadRequest(c, 400, "新密码不能与旧密码相同")
+		return
+	}
+
+	adminID := middleware.GetAdminID(c)
+	if adminID == 0 {
+		response.Unauthorized(c, "管理员认证失败")
+		return
+	}
+
+	var admin model.Admin
+	if err := h.DB.First(&admin, adminID).Error; err != nil {
+		response.NotFound(c, "管理员不存在")
+		return
+	}
+
+	if err := bcrypt.CompareHashAndPassword([]byte(admin.PasswordHash), []byte(req.OldPassword)); err != nil {
+		response.BadRequest(c, response.ErrCodePasswordWrong, "旧密码错误")
+		return
+	}
+
+	hash, err := bcrypt.GenerateFromPassword([]byte(req.NewPassword), bcrypt.DefaultCost)
+	if err != nil {
+		response.ServerError(c, "密码加密失败")
+		return
+	}
+
+	if err := h.DB.Model(&admin).Update("password_hash", string(hash)).Error; err != nil {
+		response.ServerError(c, "密码更新失败")
+		return
+	}
+
+	response.SuccessMessage(c, "密码修改成功")
+}
+
 // InitAdmin 开发环境自动创建默认管理员（GET /api/admin/init）
 func (h *AdminHandler) InitAdmin(c *gin.Context) {
 	if h.Cfg == nil || h.Cfg.Server.Mode != "debug" {

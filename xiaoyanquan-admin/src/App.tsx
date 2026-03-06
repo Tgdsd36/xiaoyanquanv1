@@ -10,6 +10,7 @@ import UserPage from './pages/UserPage';
 import OrderPage from './pages/OrderPage';
 import ConfigPage from './pages/ConfigPage';
 import AssetPage from './pages/AssetPage';
+import MobileUploadPage from './pages/MobileUploadPage';
 
 function PrivateRoute({ children }: { children: React.ReactNode }) {
   return isAuthenticated() ? <>{children}</> : <Navigate to="/login" replace />;
@@ -19,6 +20,14 @@ export default function App() {
   return (
     <Routes>
       <Route path="/login" element={<LoginPage />} />
+      <Route
+        path="/mobile-upload"
+        element={
+          <PrivateRoute>
+            <MobileUploadPage />
+          </PrivateRoute>
+        }
+      />
       <Route
         path="/*"
         element={

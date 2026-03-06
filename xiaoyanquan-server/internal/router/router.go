@@ -162,6 +162,9 @@ func Setup(cfg *config.Config, db *gorm.DB, rdb *redis.Client) *gin.Engine {
 		adminAuth := adminGroup.Group("")
 		adminAuth.Use(middleware.AdminRequired(&cfg.JWT))
 		{
+			// 管理员账号
+			adminAuth.PUT("/password", adminHandler.ChangePassword)
+
 			// Dashboard
 			adminAuth.GET("/dashboard", adminHandler.Dashboard)
 
