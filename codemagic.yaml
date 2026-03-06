@@ -44,6 +44,8 @@ workflows:
             -workspace Runner.xcworkspace \
             -scheme Runner \
             -configuration Release \
+            -sdk iphoneos \
+            -destination "generic/platform=iOS" \
             -archivePath "$ARCHIVE_PATH" \
             archive \
             COMPILER_INDEX_STORE_ENABLE=NO \
