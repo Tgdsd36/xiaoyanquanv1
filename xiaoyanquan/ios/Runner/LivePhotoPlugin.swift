@@ -357,8 +357,13 @@ class LivePhotoPlatformView: NSObject, FlutterPlatformView {
     private func loadLivePhoto(imageURL: String, videoURL: String) {
         guard let imgURL = URL(string: imageURL), let vidURL = URL(string: videoURL) else { return }
         
-        // Show loading spinner
-        let spinner = UIActivityIndicatorView(style: .medium)
+        // Show loading spinner (compatible with iOS 12+)
+        let spinner: UIActivityIndicatorView
+        if #available(iOS 13.0, *) {
+            spinner = UIActivityIndicatorView(style: .medium)
+        } else {
+            spinner = UIActivityIndicatorView(style: .gray)
+        }
         spinner.color = .white
         spinner.center = CGPoint(x: containerView.bounds.midX, y: containerView.bounds.midY)
         spinner.startAnimating()
