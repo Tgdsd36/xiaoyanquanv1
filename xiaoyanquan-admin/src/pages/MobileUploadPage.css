@@ -1,7 +1,7 @@
 .mobile-upload-page {
   min-height: 100vh;
   padding: 12px;
-  background: linear-gradient(180deg, #f3f8ff 0%, #f8fbff 42%, #f7f7fb 100%);
+  background: linear-gradient(180deg, #eef5ff 0%, #f6f9ff 45%, #f7f7fb 100%);
 }
 
 .mobile-upload-header {
@@ -34,40 +34,82 @@
   color: #5b6b7b;
 }
 
-.mobile-upload-tip {
-  margin: 0;
-  white-space: normal;
+.mobile-upload-switch-row {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 8px;
+}
+
+.mobile-upload-switch-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 13px;
+  color: #4f5f70;
+  background: #f7f9fc;
+  border-radius: 10px;
+  padding: 10px 12px;
+}
+
+.mobile-upload-toolbar {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.mobile-upload-metrics {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
 }
 
 .mobile-upload-note {
   font-size: 12px;
-  line-height: 1.5;
-  color: #7c8797;
+  line-height: 1.6;
+  color: #6e7c8b;
 }
 
-.mobile-upload-records {
+.mobile-upload-queue {
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 10px;
 }
 
-.mobile-upload-record {
+.mobile-upload-queue-item {
+  border-radius: 12px;
+  background: #f8fafc;
+  padding: 10px 12px;
+}
+
+.mobile-upload-queue-head {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 10px;
-  padding: 10px 12px;
-  border-radius: 10px;
-  background: #f8fafc;
+  margin-bottom: 6px;
 }
 
-.mobile-upload-record-name {
+.mobile-upload-queue-title {
   flex: 1;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  color: #213141;
   font-size: 13px;
+  color: #1f2f3f;
+}
+
+.mobile-upload-queue-meta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 12px;
+  color: #70808f;
+}
+
+.mobile-upload-queue-error {
+  margin-top: 4px;
+  font-size: 12px;
+  color: #d4380d;
 }
 
 .mobile-upload-empty {
@@ -76,4 +118,3 @@
   font-size: 13px;
   padding: 10px 0;
 }
-

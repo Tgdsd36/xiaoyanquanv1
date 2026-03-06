@@ -1,0 +1,50 @@
+.mobile-admin-login {
+  min-height: 100vh;
+  padding: 20px 14px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: linear-gradient(180deg, #eef4ff 0%, #f7f8fe 100%);
+}
+
+.mobile-admin-login__card {
+  width: 100%;
+  max-width: 460px;
+  background: #fff;
+  border-radius: 16px;
+  padding: 18px 16px 16px;
+  box-shadow: 0 14px 28px rgba(30, 50, 80, 0.12);
+}
+
+.mobile-admin-login__brand {
+  display: inline-block;
+  padding: 4px 10px;
+  font-size: 12px;
+  color: #265bcc;
+  background: #edf3ff;
+  border-radius: 999px;
+  margin-bottom: 10px;
+}
+
+.mobile-admin-login__card h1 {
+  margin: 0 0 6px;
+  font-size: 22px;
+  color: #223246;
+}
+
+.mobile-admin-login__card p {
+  margin: 0 0 16px;
+  font-size: 13px;
+  line-height: 1.6;
+  color: #6d7c8a;
+}
+
+.mobile-admin-login__hint {
+  margin-top: 14px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: #7a8898;
+  font-size: 12px;
+}
+

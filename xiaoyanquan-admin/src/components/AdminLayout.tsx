@@ -99,7 +99,7 @@ export default function AdminLayout() {
           />
           <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
             <span>{adminInfo?.username ?? '管理员'}</span>
-            <Button type="text" icon={<MobileOutlined />} onClick={() => navigate('/mobile-upload')}>
+            <Button type="text" icon={<MobileOutlined />} onClick={() => navigate('/mobile-login')}>
               手机上传
             </Button>
             <Button type="text" icon={<LockOutlined />} onClick={openPasswordModal}>
