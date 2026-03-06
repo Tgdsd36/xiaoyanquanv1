@@ -16,6 +16,8 @@ import '../features/profile/pages/membership_page.dart';
 import '../features/profile/pages/my_list_page.dart';
 import '../features/profile/pages/favorite_group_detail_page.dart';
 import '../features/profile/pages/change_password_page.dart';
+import '../features/admin_native/pages/admin_native_login_page.dart';
+import '../features/admin_native/pages/admin_native_workbench_page.dart';
 import 'main_scaffold.dart';
 
 final _rootNavigatorKey = GlobalKey<NavigatorState>();
@@ -126,6 +128,17 @@ final routerProvider = Provider<GoRouter>((ref) {
         path: '/change-password',
         parentNavigatorKey: _rootNavigatorKey,
         builder: (context, state) => const ChangePasswordPage(),
+      ),
+      // Admin native workbench
+      GoRoute(
+        path: '/admin-native/login',
+        parentNavigatorKey: _rootNavigatorKey,
+        builder: (context, state) => const AdminNativeLoginPage(),
+      ),
+      GoRoute(
+        path: '/admin-native/workbench',
+        parentNavigatorKey: _rootNavigatorKey,
+        builder: (context, state) => const AdminNativeWorkbenchPage(),
       ),
       // Main tabs
       StatefulShellRoute.indexedStack(

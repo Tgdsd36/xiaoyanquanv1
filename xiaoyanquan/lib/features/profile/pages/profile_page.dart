@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -53,6 +55,8 @@ class _ProfilePageState extends ConsumerState<ProfilePage>
   List<Map<String, dynamic>> _questions = [];
   bool _questionsLoading = true;
   int _questionTotal = 0;
+  int _avatarSecretTapCount = 0;
+  Timer? _avatarSecretResetTimer;
 
   @override
   void initState() {
@@ -65,9 +69,35 @@ class _ProfilePageState extends ConsumerState<ProfilePage>
 
   @override
   void dispose() {
+    _avatarSecretResetTimer?.cancel();
     _tabController.removeListener(_onTabChanged);
     _tabController.dispose();
     super.dispose();
+  }
+
+  void _onAvatarSecretTap() {
+    _avatarSecretResetTimer?.cancel();
+    _avatarSecretTapCount += 1;
+
+    if (_avatarSecretTapCount >= 7) {
+      _avatarSecretTapCount = 0;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('已进入管理员隐藏入口')),
+      );
+      context.push('/admin-native/login');
+      return;
+    }
+
+    final remain = 7 - _avatarSecretTapCount;
+    if (_avatarSecretTapCount >= 4) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('再点击 $remain 次进入管理员入口')),
+      );
+    }
+
+    _avatarSecretResetTimer = Timer(const Duration(seconds: 4), () {
+      _avatarSecretTapCount = 0;
+    });
   }
 
   void _onTabChanged() {
@@ -512,30 +542,33 @@ class _ProfilePageState extends ConsumerState<ProfilePage>
                   bottom: 66,
                   child: Row(
                     children: [
-                      Container(
-                        width: 64,
-                        height: 64,
-                        decoration: BoxDecoration(
-                          shape: BoxShape.circle,
-                          color: Colors.white,
-                          border: Border.all(color: Colors.white, width: 2.5),
-                          boxShadow: [
-                            BoxShadow(
-                              color: Colors.black.withValues(alpha: 0.1),
-                              blurRadius: 8,
-                              offset: const Offset(0, 2),
-                            ),
-                          ],
-                        ),
-                        child: CircleAvatar(
-                          radius: 29,
-                          backgroundColor: AppColors.primaryLight,
-                          child: Text(
-                            nickname.isNotEmpty ? nickname[0] : '?',
-                            style: const TextStyle(
-                              fontSize: 26,
-                              fontWeight: FontWeight.w600,
-                              color: AppColors.primary,
+                      GestureDetector(
+                        onTap: _onAvatarSecretTap,
+                        child: Container(
+                          width: 64,
+                          height: 64,
+                          decoration: BoxDecoration(
+                            shape: BoxShape.circle,
+                            color: Colors.white,
+                            border: Border.all(color: Colors.white, width: 2.5),
+                            boxShadow: [
+                              BoxShadow(
+                                color: Colors.black.withValues(alpha: 0.1),
+                                blurRadius: 8,
+                                offset: const Offset(0, 2),
+                              ),
+                            ],
+                          ),
+                          child: CircleAvatar(
+                            radius: 29,
+                            backgroundColor: AppColors.primaryLight,
+                            child: Text(
+                              nickname.isNotEmpty ? nickname[0] : '?',
+                              style: const TextStyle(
+                                fontSize: 26,
+                                fontWeight: FontWeight.w600,
+                                color: AppColors.primary,
+                              ),
                             ),
                           ),
                         ),

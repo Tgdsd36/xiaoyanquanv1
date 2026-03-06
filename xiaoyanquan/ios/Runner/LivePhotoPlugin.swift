@@ -5,7 +5,9 @@ import PhotosUI
 
 // MARK: - Plugin Registration
 
-class LivePhotoPlugin: NSObject, FlutterPlugin {
+class LivePhotoPlugin: NSObject, FlutterPlugin, PHPickerViewControllerDelegate {
+    private var pendingPickResult: FlutterResult?
+
     static func register(with registrar: FlutterPluginRegistrar) {
         // PlatformView factory
         let factory = LivePhotoViewFactory(messenger: registrar.messenger())
@@ -29,6 +31,8 @@ class LivePhotoPlugin: NSObject, FlutterPlugin {
             saveLivePhoto(imageURL: imageURL, videoURL: videoURL, result: result)
         case "requestPermission":
             requestPhotoLibraryPermission(result: result)
+        case "pickLiveForUpload":
+            pickLiveForUpload(result: result)
         default:
             result(FlutterMethodNotImplemented)
         }
@@ -47,6 +51,150 @@ class LivePhotoPlugin: NSObject, FlutterPlugin {
                     result(status == .authorized)
                 }
             }
+        }
+    }
+
+    private func pickLiveForUpload(result: @escaping FlutterResult) {
+        if pendingPickResult != nil {
+            result(FlutterError(code: "BUSY", message: "Live picker is busy", details: nil))
+            return
+        }
+
+        let presentPicker = { [weak self] in
+            guard let self = self else {
+                result(FlutterError(code: "INTERNAL", message: "Plugin released", details: nil))
+                return
+            }
+            guard #available(iOS 14, *) else {
+                result(FlutterError(code: "UNSUPPORTED", message: "iOS 14+ required", details: nil))
+                return
+            }
+            guard let rootVC = UIApplication.shared.connectedScenes
+                .compactMap({ $0 as? UIWindowScene })
+                .flatMap({ $0.windows })
+                .first(where: { $0.isKeyWindow })?.rootViewController else {
+                result(FlutterError(code: "NO_VIEW_CONTROLLER", message: "Unable to find root view controller", details: nil))
+                return
+            }
+
+            var config = PHPickerConfiguration(photoLibrary: PHPhotoLibrary.shared())
+            config.filter = .livePhotos
+            config.selectionLimit = 1
+
+            let picker = PHPickerViewController(configuration: config)
+            picker.delegate = self
+            self.pendingPickResult = result
+            rootVC.present(picker, animated: true)
+        }
+
+        if #available(iOS 14, *) {
+            PHPhotoLibrary.requestAuthorization(for: .readWrite) { status in
+                DispatchQueue.main.async {
+                    if status == .authorized || status == .limited {
+                        presentPicker()
+                    } else {
+                        result(FlutterError(code: "PERMISSION_DENIED", message: "Photo library permission denied", details: nil))
+                    }
+                }
+            }
+        } else {
+            PHPhotoLibrary.requestAuthorization { status in
+                DispatchQueue.main.async {
+                    if status == .authorized {
+                        presentPicker()
+                    } else {
+                        result(FlutterError(code: "PERMISSION_DENIED", message: "Photo library permission denied", details: nil))
+                    }
+                }
+            }
+        }
+    }
+
+    @available(iOS 14, *)
+    func picker(_ picker: PHPickerViewController, didFinishPicking results: [PHPickerResult]) {
+        let flutterResult = pendingPickResult
+        pendingPickResult = nil
+
+        picker.dismiss(animated: true)
+
+        guard let result = flutterResult else { return }
+        guard let first = results.first, let assetId = first.assetIdentifier else {
+            result(nil)
+            return
+        }
+
+        let assets = PHAsset.fetchAssets(withLocalIdentifiers: [assetId], options: nil)
+        guard let asset = assets.firstObject else {
+            result(FlutterError(code: "ASSET_NOT_FOUND", message: "Unable to fetch selected Live asset", details: nil))
+            return
+        }
+
+        exportLiveAsset(asset: asset) { exportResult in
+            switch exportResult {
+            case .success(let payload):
+                result(payload)
+            case .failure(let error):
+                result(FlutterError(code: "LIVE_EXPORT_FAILED", message: error.localizedDescription, details: nil))
+            }
+        }
+    }
+
+    private func exportLiveAsset(asset: PHAsset, completion: @escaping (Result<[String: Any], Error>) -> Void) {
+        let resources = PHAssetResource.assetResources(for: asset)
+        let photoResource = resources.first { $0.type == .photo || $0.type == .fullSizePhoto }
+        let videoResource = resources.first { $0.type == .pairedVideo || $0.type == .video || $0.type == .fullSizeVideo }
+
+        guard let imageRes = photoResource, let videoRes = videoResource else {
+            completion(.failure(NSError(domain: "LivePhotoPlugin", code: -1001, userInfo: [NSLocalizedDescriptionKey: "未找到 Live 必需资源（静态图或动态视频）"])))
+            return
+        }
+
+        let baseDir = FileManager.default.temporaryDirectory.appendingPathComponent("live_upload_\(UUID().uuidString)", isDirectory: true)
+        do {
+            try FileManager.default.createDirectory(at: baseDir, withIntermediateDirectories: true)
+        } catch {
+            completion(.failure(error))
+            return
+        }
+
+        let imageExt = (imageRes.originalFilename as NSString).pathExtension.isEmpty ? "heic" : (imageRes.originalFilename as NSString).pathExtension
+        let videoExt = (videoRes.originalFilename as NSString).pathExtension.isEmpty ? "mov" : (videoRes.originalFilename as NSString).pathExtension
+
+        let imageURL = baseDir.appendingPathComponent("live_image.\(imageExt)")
+        let videoURL = baseDir.appendingPathComponent("live_video.\(videoExt)")
+
+        let manager = PHAssetResourceManager.default()
+        let group = DispatchGroup()
+        var firstError: Error?
+
+        group.enter()
+        manager.writeData(for: imageRes, toFile: imageURL, options: nil) { error in
+            if let error = error, firstError == nil {
+                firstError = error
+            }
+            group.leave()
+        }
+
+        group.enter()
+        manager.writeData(for: videoRes, toFile: videoURL, options: nil) { error in
+            if let error = error, firstError == nil {
+                firstError = error
+            }
+            group.leave()
+        }
+
+        group.notify(queue: .main) {
+            if let error = firstError {
+                completion(.failure(error))
+                return
+            }
+            completion(.success([
+                "image_path": imageURL.path,
+                "video_path": videoURL.path,
+                "image_name": imageRes.originalFilename,
+                "video_name": videoRes.originalFilename,
+                "source": "ios_live_photo"
+            ]))
         }
     }
     
