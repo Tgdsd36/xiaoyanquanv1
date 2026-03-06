@@ -7,7 +7,7 @@ workflows:
       xcode: 16.3
       ios_signing:
         distribution_type: ad_hoc
-        bundle_identifier: app.storm954.quinoa167
+        bundle_identifier: app.upon286163.kele
       vars:
         FLUTTER_PROJECT_DIR: xiaoyanquan
     cache:
@@ -25,11 +25,15 @@ workflows:
           xcode-project use-profiles
       - name: Build IPA (ad-hoc)
         script: |
-          cd "$FLUTTER_PROJECT_DIR"
-          flutter build ipa --release --export-method ad-hoc
+          cd "$FLUTTER_PROJECT_DIR/ios"
+          xcode-project build-ipa \
+            --workspace Runner.xcworkspace \
+            --scheme Runner
     artifacts:
       - xiaoyanquan/build/ios/ipa/*.ipa
       - xiaoyanquan/build/ios/archive/*.xcarchive
+      - xiaoyanquan/ios/build/ios/ipa/*.ipa
+      - xiaoyanquan/ios/build/ios/archive/*.xcarchive
       - /tmp/xcodebuild_logs/*.log
 
   android_release:
