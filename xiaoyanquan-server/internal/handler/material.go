@@ -23,16 +23,36 @@ type MaterialHandler struct {
 	BaseURL string
 }
 
-// fullURL 将相对路径转换为完整 URL
-func fullURL(baseURL, path string) string {
-	if path == "" {
+// cosPublicBase COS 公网域名前缀，由 router 层在启动时设置。
+// 为空时表示未启用 COS，所有路径走 BaseURL。
+var cosPublicBase string
+
+// SetCOSPublicBase 设置 COS 公网域名，在 router.Setup 中调用。
+func SetCOSPublicBase(base string) {
+	cosPublicBase = strings.TrimRight(base, "/")
+}
+
+// fullURL 将相对路径或 COS Key 转换为完整 URL
+// - 已是完整 URL → 直接返回
+// - 以 /static/ 开头 → 旧本地路径，拼 baseURL
+// - 其他 → COS Key，拼 cosPublicBase
+func fullURL(baseURL, p string) string {
+	if p == "" {
 		return ""
 	}
 	// 已经是完整 URL 的直接返回
-	if len(path) > 4 && (path[:4] == "http" || path[:2] == "//") {
-		return path
+	if len(p) > 4 && (p[:4] == "http" || p[:2] == "//") {
+		return p
 	}
-	return baseURL + path
+	// 旧本地路径
+	if strings.HasPrefix(p, "/static/") {
+		return baseURL + p
+	}
+	// COS Key
+	if cosPublicBase != "" {
+		return cosPublicBase + "/" + p
+	}
+	return baseURL + "/" + p
 }
 
 // parseOriginalURLs 解析 jsonb 中的 original_urls 并补全域名

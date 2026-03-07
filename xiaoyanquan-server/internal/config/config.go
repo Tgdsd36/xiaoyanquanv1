@@ -14,7 +14,7 @@ type Config struct {
 	Redis    RedisConfig
 	JWT      JWTConfig
 	SMS      SMSConfig
-	OSS      OSSConfig
+	Storage  StorageConfig
 }
 
 type ServerConfig struct {
@@ -57,13 +57,13 @@ type SMSConfig struct {
 	TemplateCode string
 }
 
-type OSSConfig struct {
-	Provider        string // aliyun, aws
-	Endpoint        string
-	AccessKeyID     string
-	AccessKeySecret string
-	BucketName      string
-	CDNDomain       string
+type StorageConfig struct {
+	COSEnabled  bool
+	COSSecretID string
+	COSSecretKey string
+	COSBucket   string
+	COSRegion   string
+	COSCDNDomain string
 }
 
 func Load() *Config {
@@ -104,13 +104,13 @@ func Load() *Config {
 			SignName:     getEnv("SMS_SIGN_NAME", "小颜圈"),
 			TemplateCode: getEnv("SMS_TEMPLATE_CODE", ""),
 		},
-		OSS: OSSConfig{
-			Provider:        getEnv("OSS_PROVIDER", "aliyun"),
-			Endpoint:        getEnv("OSS_ENDPOINT", ""),
-			AccessKeyID:     getEnv("OSS_ACCESS_KEY_ID", ""),
-			AccessKeySecret: getEnv("OSS_ACCESS_KEY_SECRET", ""),
-			BucketName:      getEnv("OSS_BUCKET_NAME", "xiaoyanquan"),
-			CDNDomain:       getEnv("OSS_CDN_DOMAIN", ""),
+		Storage: StorageConfig{
+			COSEnabled:   getEnv("COS_ENABLED", "false") == "true",
+			COSSecretID:  getEnv("COS_SECRET_ID", ""),
+			COSSecretKey: getEnv("COS_SECRET_KEY", ""),
+			COSBucket:    getEnv("COS_BUCKET", ""),
+			COSRegion:    getEnv("COS_REGION", "ap-guangzhou"),
+			COSCDNDomain: getEnv("COS_CDN_DOMAIN", ""),
 		},
 	}
 }

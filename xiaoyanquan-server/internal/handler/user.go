@@ -15,12 +15,14 @@ import (
 
 	"github.com/xiaoyanquan/server/internal/middleware"
 	"github.com/xiaoyanquan/server/internal/model"
+	"github.com/xiaoyanquan/server/internal/storage"
 	"github.com/xiaoyanquan/server/pkg/response"
 )
 
 type UserHandler struct {
 	DB      *gorm.DB
 	BaseURL string
+	Store   storage.Storage
 }
 
 type ProfileResponse struct {
@@ -144,17 +146,33 @@ func (h *UserHandler) UploadImage(c *gin.Context) {
 
 	newFilename := uuid.New().String() + ext
 	dateDir := time.Now().Format("2006/01")
-	uploadDir := filepath.Join("static", "uploads", "user", dateDir)
-	os.MkdirAll(uploadDir, 0755)
+	key := fmt.Sprintf("user/%s/%s", dateDir, newFilename)
 
-	dstPath := filepath.Join(uploadDir, newFilename)
-	if err := c.SaveUploadedFile(file, dstPath); err != nil {
-		response.ServerError(c, "文件保存失败")
-		return
+	if h.Store != nil && h.Store.Enabled() {
+		// COS 模式：流式上传
+		src, err := file.Open()
+		if err != nil {
+			response.ServerError(c, "读取文件失败")
+			return
+		}
+		defer src.Close()
+		if err := h.Store.Upload(key, src, file.Size); err != nil {
+			response.ServerError(c, "文件上传失败")
+			return
+		}
+		response.Success(c, gin.H{"url": key})
+	} else {
+		// 本地模式
+		uploadDir := filepath.Join("static", "uploads", "user", dateDir)
+		os.MkdirAll(uploadDir, 0755)
+		dstPath := filepath.Join(uploadDir, newFilename)
+		if err := c.SaveUploadedFile(file, dstPath); err != nil {
+			response.ServerError(c, "文件保存失败")
+			return
+		}
+		fileURL := fmt.Sprintf("/static/uploads/user/%s/%s", dateDir, newFilename)
+		response.Success(c, gin.H{"url": fileURL})
 	}
-
-	url := fmt.Sprintf("/static/uploads/user/%s/%s", dateDir, newFilename)
-	response.Success(c, gin.H{"url": url})
 }
 
 // Downloads 我的下载记录

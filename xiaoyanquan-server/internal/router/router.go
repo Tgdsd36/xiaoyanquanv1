@@ -1,6 +1,8 @@
 package router
 
 import (
+	"log"
+
 	"github.com/gin-gonic/gin"
 	"github.com/redis/go-redis/v9"
 	"gorm.io/gorm"
@@ -8,6 +10,7 @@ import (
 	"github.com/xiaoyanquan/server/internal/config"
 	"github.com/xiaoyanquan/server/internal/handler"
 	"github.com/xiaoyanquan/server/internal/middleware"
+	"github.com/xiaoyanquan/server/internal/storage"
 )
 
 func Setup(cfg *config.Config, db *gorm.DB, rdb *redis.Client) *gin.Engine {
@@ -18,6 +21,27 @@ func Setup(cfg *config.Config, db *gorm.DB, rdb *redis.Client) *gin.Engine {
 	r := gin.Default()
 	r.Use(middleware.CORS(cfg))
 
+	// 初始化存储后端
+	var store storage.Storage
+	if cfg.Storage.COSEnabled {
+		cosStore, err := storage.NewCOSStorage(storage.COSConfig{
+			SecretID:  cfg.Storage.COSSecretID,
+			SecretKey: cfg.Storage.COSSecretKey,
+			Bucket:    cfg.Storage.COSBucket,
+			Region:    cfg.Storage.COSRegion,
+			CDNDomain: cfg.Storage.COSCDNDomain,
+		})
+		if err != nil {
+			log.Fatalf("初始化 COS 存储失败: %v", err)
+		}
+		store = cosStore
+		handler.SetCOSPublicBase(cosStore.PublicURL(""))
+		log.Printf("COS 存储已启用: %s (%s)", cfg.Storage.COSBucket, cfg.Storage.COSRegion)
+	} else {
+		store = storage.NewLocalStorage("./static/uploads")
+		log.Println("使用本地文件存储")
+	}
+
 	// 初始化 handlers
 	authHandler := &handler.AuthHandler{DB: db, RDB: rdb, Cfg: cfg}
 	categoryHandler := &handler.CategoryHandler{DB: db}
@@ -27,7 +51,7 @@ func Setup(cfg *config.Config, db *gorm.DB, rdb *redis.Client) *gin.Engine {
 	favoriteHandler := &handler.FavoriteHandler{DB: db}
 	favoriteGroupHandler := &handler.FavoriteGroupHandler{DB: db, BaseURL: cfg.Server.BaseURL}
 	questionHandler := &handler.QuestionHandler{DB: db, BaseURL: cfg.Server.BaseURL}
-	userHandler := &handler.UserHandler{DB: db, BaseURL: cfg.Server.BaseURL}
+	userHandler := &handler.UserHandler{DB: db, BaseURL: cfg.Server.BaseURL, Store: store}
 	membershipHandler := &handler.MembershipHandler{DB: db}
 
 	// 公共 API
@@ -137,7 +161,7 @@ func Setup(cfg *config.Config, db *gorm.DB, rdb *redis.Client) *gin.Engine {
 	}
 
 	// ==================== 管理后台 API ====================
-	adminHandler := &handler.AdminHandler{DB: db, Cfg: cfg}
+	adminHandler := &handler.AdminHandler{DB: db, Cfg: cfg, Store: store}
 
 	adminGroup := r.Group("/api/admin")
 	{

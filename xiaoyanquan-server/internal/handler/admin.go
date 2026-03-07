@@ -24,13 +24,15 @@ import (
 	"github.com/xiaoyanquan/server/internal/config"
 	"github.com/xiaoyanquan/server/internal/middleware"
 	"github.com/xiaoyanquan/server/internal/model"
+	"github.com/xiaoyanquan/server/internal/storage"
 	myjwt "github.com/xiaoyanquan/server/pkg/jwt"
 	"github.com/xiaoyanquan/server/pkg/response"
 )
 
 type AdminHandler struct {
-	DB  *gorm.DB
-	Cfg *config.Config
+	DB      *gorm.DB
+	Cfg     *config.Config
+	Store   storage.Storage
 }
 
 var (
@@ -992,37 +994,80 @@ func (h *AdminHandler) AssetUpload(c *gin.Context) {
 		return
 	}
 
-	// 生成唯一文件名
 	newFilename := uuid.New().String() + ext
 	dateDir := time.Now().Format("2006/01")
-	uploadDir := filepath.Join("static", "uploads", dateDir)
-	os.MkdirAll(uploadDir, 0755)
+	key := fmt.Sprintf("assets/%s/%s", dateDir, newFilename)
 
-	dstPath := filepath.Join(uploadDir, newFilename)
-	if err := c.SaveUploadedFile(file, dstPath); err != nil {
+	// 无论 COS 是否启用，都先存本地临时文件（后处理需要）
+	tmpDir := filepath.Join(os.TempDir(), "xyq-upload", dateDir)
+	os.MkdirAll(tmpDir, 0755)
+	tmpPath := filepath.Join(tmpDir, newFilename)
+	if err := c.SaveUploadedFile(file, tmpPath); err != nil {
 		response.ServerError(c, "文件保存失败")
 		return
 	}
 
-	// 构建 URL
-	url := fmt.Sprintf("/static/uploads/%s/%s", dateDir, newFilename)
-	previewURL := ""
-	if isHEICExt(ext) {
-		if generated, err := ensureHEICPreview(url); err == nil {
-			previewURL = generated
+	var assetURL string
+	var previewURL string
+
+	if h.Store != nil && h.Store.Enabled() {
+		// COS 模式：上传原文件到 COS
+		tmpFile, err := os.Open(tmpPath)
+		if err != nil {
+			response.ServerError(c, "读取文件失败")
+			return
 		}
-	}
-	if fileType == "video" {
-		// 异步生成移动端 MP4 版本，避免后台上传阻塞。
-		go func(sourceURL string) {
-			_, _ = ensureMobileVideoVariant(sourceURL)
-		}(url)
+		defer tmpFile.Close()
+		if err := h.Store.Upload(key, tmpFile, file.Size); err != nil {
+			response.ServerError(c, "上传到对象存储失败")
+			return
+		}
+		assetURL = key
+
+		// HEIC 预览：本地转换后上传到 COS
+		if isHEICExt(ext) {
+			if pvURL, pvPath, err := generateHEICPreviewLocal(tmpPath, key); err == nil {
+				previewURL = pvURL
+				go h.uploadLocalFileToCOS(pvPath, pvURL)
+			}
+		}
+		// 视频转码：本地转换后上传到 COS
+		if fileType == "video" {
+			go func(srcPath, srcKey string) {
+				if mobileKey, mobilePath, err := generateMobileVideoLocal(srcPath, srcKey); err == nil {
+					h.uploadLocalFileToCOS(mobilePath, mobileKey)
+					os.Remove(mobilePath)
+				}
+				os.Remove(srcPath)
+			}(tmpPath, key)
+		} else {
+			// 图片上传完成后清理临时文件
+			go os.Remove(tmpPath)
+		}
+	} else {
+		// 本地模式：将临时文件移动到正式目录
+		uploadDir := filepath.Join("static", "uploads", dateDir)
+		os.MkdirAll(uploadDir, 0755)
+		dstPath := filepath.Join(uploadDir, newFilename)
+		os.Rename(tmpPath, dstPath)
+
+		assetURL = fmt.Sprintf("/static/uploads/%s/%s", dateDir, newFilename)
+		if isHEICExt(ext) {
+			if generated, err := ensureHEICPreview(assetURL); err == nil {
+				previewURL = generated
+			}
+		}
+		if fileType == "video" {
+			go func(sourceURL string) {
+				_, _ = ensureMobileVideoVariant(sourceURL)
+			}(assetURL)
+		}
 	}
 
 	asset := model.Asset{
 		Filename:     newFilename,
 		OriginalName: file.Filename,
-		URL:          url,
+		URL:          assetURL,
 		PreviewURL:   previewURL,
 		FileType:     fileType,
 		Folder:       folder,
@@ -1039,6 +1084,71 @@ func (h *AdminHandler) AssetUpload(c *gin.Context) {
 		_ = h.DB.FirstOrCreate(&model.AssetFolder{}, model.AssetFolder{Name: folder}).Error
 	}
 	response.Success(c, asset)
+}
+
+// uploadLocalFileToCOS 将本地文件上传到 COS（后处理产物用）
+func (h *AdminHandler) uploadLocalFileToCOS(localPath, cosKey string) {
+	f, err := os.Open(localPath)
+	if err != nil {
+		return
+	}
+	defer f.Close()
+	fi, err := f.Stat()
+	if err != nil {
+		return
+	}
+	_ = h.Store.Upload(cosKey, f, fi.Size())
+	os.Remove(localPath)
+}
+
+// generateHEICPreviewLocal 本地生成 HEIC 预览 JPG，返回 COS key 和本地路径
+func generateHEICPreviewLocal(sourcePath, sourceKey string) (cosKey string, localPath string, err error) {
+	baseNoExt := strings.TrimSuffix(filepath.Base(sourcePath), filepath.Ext(sourcePath))
+	previewFilename := baseNoExt + "_preview.jpg"
+	previewPath := filepath.Join(filepath.Dir(sourcePath), previewFilename)
+	previewKey := path.Join(path.Dir(sourceKey), previewFilename)
+
+	// 优先 sips，其次 ffmpeg
+	if p, _ := exec.LookPath("sips"); p != "" {
+		if exec.Command("sips", "-s", "format", "jpeg", sourcePath, "--out", previewPath).Run() == nil {
+			return previewKey, previewPath, nil
+		}
+	}
+	if p, _ := exec.LookPath("ffmpeg"); p != "" {
+		if exec.Command("ffmpeg", "-y", "-i", sourcePath, "-frames:v", "1", previewPath).Run() == nil {
+			return previewKey, previewPath, nil
+		}
+	}
+	return "", "", fmt.Errorf("heic preview generation failed")
+}
+
+// generateMobileVideoLocal 本地生成移动端 MP4，返回 COS key 和本地路径
+func generateMobileVideoLocal(sourcePath, sourceKey string) (cosKey string, localPath string, err error) {
+	ext := strings.ToLower(filepath.Ext(sourcePath))
+	if ext == ".mp4" {
+		return sourceKey, sourcePath, nil
+	}
+
+	baseNoExt := strings.TrimSuffix(filepath.Base(sourcePath), ext)
+	mobileFilename := baseNoExt + "_mobile.mp4"
+	mobilePath := filepath.Join(filepath.Dir(sourcePath), mobileFilename)
+	mobileKey := path.Join(path.Dir(sourceKey), mobileFilename)
+
+	if _, lookErr := exec.LookPath("ffmpeg"); lookErr != nil {
+		return "", "", lookErr
+	}
+	cmd := exec.Command(
+		"ffmpeg", "-y", "-i", sourcePath,
+		"-movflags", "+faststart",
+		"-c:v", "libx264", "-preset", "veryfast", "-crf", "24",
+		"-pix_fmt", "yuv420p",
+		"-c:a", "aac", "-b:a", "128k",
+		mobilePath,
+	)
+	if err := cmd.Run(); err != nil {
+		return "", "", err
+	}
+	return mobileKey, mobilePath, nil
 }
 
 // AssetInspect 上传诊断（不入库），用于定位移动端文件选择后的真实文件类型。
