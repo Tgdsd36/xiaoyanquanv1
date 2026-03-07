@@ -651,7 +651,11 @@ class _AdminNativeWorkbenchPageState extends State<AdminNativeWorkbenchPage> {
     final resp = await AdminHttpClient().dio.post(
       '/assets/upload',
       data: formData,
-      options: Options(headers: {'Content-Type': 'multipart/form-data'}),
+      options: Options(
+        headers: {'Content-Type': 'multipart/form-data'},
+        sendTimeout: const Duration(minutes: 5),
+        receiveTimeout: const Duration(minutes: 3),
+      ),
     );
     final data = resp.data as Map<String, dynamic>;
     if ((data['code'] ?? -1) != 0) {
@@ -1437,11 +1441,30 @@ class _AdminNativeWorkbenchPageState extends State<AdminNativeWorkbenchPage> {
     }
   }
 
-  List<Map<String, dynamic>> get _folderExistingImages =>
-      _folderExistingAssets.where(_assetIsImage).toList(growable: false);
+  Set<int> get _folderLiveAssetIds {
+    final ids = <int>{};
+    for (final pack in _folderExistingLivePacks) {
+      final imgId = (pack['image_asset_id'] as num?)?.toInt();
+      final vidId = (pack['video_asset_id'] as num?)?.toInt();
+      if (imgId != null && imgId > 0) ids.add(imgId);
+      if (vidId != null && vidId > 0) ids.add(vidId);
+    }
+    return ids;
+  }
 
-  List<Map<String, dynamic>> get _folderExistingVideos =>
-      _folderExistingAssets.where(_assetIsVideo).toList(growable: false);
+  List<Map<String, dynamic>> get _folderExistingImages {
+    final liveIds = _folderLiveAssetIds;
+    return _folderExistingAssets
+        .where((item) => _assetIsImage(item) && !liveIds.contains(_assetId(item)))
+        .toList(growable: false);
+  }
+
+  List<Map<String, dynamic>> get _folderExistingVideos {
+    final liveIds = _folderLiveAssetIds;
+    return _folderExistingAssets
+        .where((item) => _assetIsVideo(item) && !liveIds.contains(_assetId(item)))
+        .toList(growable: false);
+  }
 
   Widget _buildImageGrid() {
     final existingImages = _folderExistingImages;

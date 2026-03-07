@@ -1187,6 +1187,14 @@ func (h *AdminHandler) AssetList(c *gin.Context) {
 	keyword := c.Query("keyword")
 
 	query := h.DB.Model(&model.Asset{})
+	// 排除已关联到 Live 套件的散件，避免 Live 照片的 JPG/MOV 混入普通图片/视频分类
+	if c.Query("exclude_live") == "true" {
+		query = query.Where(`id NOT IN (
+			SELECT image_asset_id FROM live_asset_packs WHERE image_asset_id IS NOT NULL
+			UNION
+			SELECT video_asset_id FROM live_asset_packs WHERE video_asset_id IS NOT NULL
+		)`)
+	}
 	if fileType != "" {
 		switch strings.ToLower(strings.TrimSpace(fileType)) {
 		case "image":

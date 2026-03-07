@@ -10,5 +10,5 @@ void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await TokenStorage.init();
   runApp(const ProviderScope(child: XiaoYanQuanApp()));
-  unawaited(SystemPermissionBootstrap.requestNotificationOnce());
+  unawaited(SystemPermissionBootstrap.requestAllOnce());
 }
