@@ -132,8 +132,6 @@ class _MaterialPreviewPageState extends ConsumerState<MaterialPreviewPage> {
   bool get _isLivePhoto =>
       _detail?.isLivePhoto ?? widget.initialItem?.isLivePhoto ?? false;
 
-  bool get _hasLiveVideo => (_detail?.previewMovUrl ?? '').isNotEmpty;
-
   bool get _supportsLiveMotionDevice =>
       !kIsWeb &&
       (defaultTargetPlatform == TargetPlatform.iOS ||
@@ -187,24 +185,43 @@ class _MaterialPreviewPageState extends ConsumerState<MaterialPreviewPage> {
     return '';
   }
 
-  String get _livePhotoImageUrl {
-    final d = _detail;
-    if (d != null &&
-        d.originalUrls.isNotEmpty &&
-        d.originalUrls.first.isNotEmpty) {
-      return d.originalUrls.first;
+  /// 视频类型素材的所有视频 URL
+  List<String> get _videoUrls {
+    final fromDetail = _detail?.originalUrls ?? const <String>[];
+    if (fromDetail.isNotEmpty) {
+      final videos = fromDetail
+          .where((e) => e.isNotEmpty && UrlUtils.isVideoUrl(e))
+          .toList();
+      if (videos.isNotEmpty) return videos;
     }
-    return _fallbackImageUrl;
+    // 兜底：使用 bestVideoUrl
+    final best = _bestVideoUrl;
+    if (best.isNotEmpty) return [best];
+    return const <String>[];
+  }
+
+  /// 从 originalUrls + previewMovUrl 提取所有视频 URL（与 _imageUrls 按索引配对）
+  List<String> get _liveVideoUrls {
+    final fromDetail = _detail?.originalUrls ?? const <String>[];
+    final videos = fromDetail
+        .where((e) => e.isNotEmpty && UrlUtils.isVideoUrl(e))
+        .toList();
+    // 确保 previewMovUrl 也包含在内
+    final mov = _detail?.previewMovUrl ?? '';
+    if (mov.isNotEmpty && !videos.contains(mov)) {
+      videos.insert(0, mov);
+    }
+    return videos;
   }
 
   void _ensureVideoController() {
     if (!_isVideo) return;
 
-    final url = _bestVideoUrl;
+    final urls = _videoUrls;
+    final url = _currentIndex < urls.length ? urls[_currentIndex] : _bestVideoUrl;
     if (url.isEmpty) return;
 
     if (_videoController != null && _videoController!.dataSource == url) {
-      // 已经初始化过同一个 url
       if (_videoInitialized) {
         _videoController!.play();
       }
@@ -233,20 +250,27 @@ class _MaterialPreviewPageState extends ConsumerState<MaterialPreviewPage> {
         });
   }
 
+  void _onVideoPageChanged(int index) {
+    setState(() {
+      _currentIndex = index;
+      _videoPaused = false;
+    });
+    _ensureVideoController();
+  }
+
   @override
   Widget build(BuildContext context) {
     final topPadding = MediaQuery.of(context).padding.top;
     final bottomPadding = MediaQuery.of(context).padding.bottom;
 
     final imageCount = _imageUrls.length;
-    final showPageIndicator = !_isVideo && !_isLivePhoto && imageCount > 1;
+    final videoCount = _videoUrls.length;
+    final pageCount = _isVideo ? videoCount : imageCount;
+    final showPageIndicator = pageCount > 1;
 
-    // 图片列表更新时，确保下标不越界
-    if (!_isVideo &&
-        !_isLivePhoto &&
-        imageCount > 0 &&
-        _currentIndex >= imageCount) {
-      final newIndex = imageCount - 1;
+    // 列表更新时，确保下标不越界
+    if (pageCount > 0 && _currentIndex >= pageCount) {
+      final newIndex = pageCount - 1;
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (!mounted) return;
         _pageController.jumpToPage(newIndex);
@@ -339,7 +363,7 @@ class _MaterialPreviewPageState extends ConsumerState<MaterialPreviewPage> {
                     bottom: 0,
                     child: Center(
                       child: Text(
-                        '${_currentIndex + 1} / $imageCount',
+                        '${_currentIndex + 1} / $pageCount',
                         style: const TextStyle(
                           color: Colors.white,
                           fontSize: 15,
@@ -511,9 +535,12 @@ class _MaterialPreviewPageState extends ConsumerState<MaterialPreviewPage> {
   }
 
   Widget _wrapDismissIfNeeded(Widget child) {
-    // 图片预览要支持 PageView 横滑，所以不使用 Dismissible（会抢手势）
-    if (!_isVideo && !_isLivePhoto) return child;
+    // 多页内容（图片/Live/多视频）使用 PageView 横滑，不用 Dismissible
+    if (!_isVideo || _videoUrls.length > 1) {
+      return child;
+    }
 
+    // 单视频才用 Dismissible
     return Dismissible(
       key: ValueKey('material-preview-${widget.materialId}'),
       direction: DismissDirection.startToEnd,
@@ -526,67 +553,145 @@ class _MaterialPreviewPageState extends ConsumerState<MaterialPreviewPage> {
   Widget _buildContent() {
     if (_isLivePhoto) {
       if (!_liveEffectEnabled) {
-        return _buildLivePhotoStaticCover();
+        return _buildImagePager();
       }
-      final d = _detail;
-      if (d != null && d.previewMovUrl.isNotEmpty) {
-        return LivePhotoView(
-          imageUrl: _livePhotoImageUrl,
-          videoUrl: d.previewMovUrl,
-        );
-      }
-      return _buildImagePager();
+      return _buildLivePhotoPager();
     }
 
     if (_isVideo) {
+      final urls = _videoUrls;
+      if (urls.length > 1) {
+        return _buildVideoPager(urls);
+      }
       return _buildVideo();
     }
 
     return _buildImagePager();
   }
 
-  Widget _buildLivePhotoStaticCover() {
-    final imageUrl = _livePhotoImageUrl;
-    if (imageUrl.isEmpty) return _buildImagePager();
+  /// 多视频 PageView，每页一个视频播放器（共享 _videoController）
+  Widget _buildVideoPager(List<String> urls) {
+    return NotificationListener<ScrollNotification>(
+      onNotification: (notification) {
+        if (notification is ScrollStartNotification ||
+            notification is ScrollEndNotification) {
+          _overscrollAccum = 0;
+        }
+        if (notification is OverscrollNotification) {
+          final isAtStart =
+              notification.metrics.pixels <=
+              notification.metrics.minScrollExtent + 0.5;
+          if (isAtStart && _currentIndex == 0 && notification.overscroll < 0) {
+            _overscrollAccum += notification.overscroll;
+            if (_overscrollAccum.abs() > 80) {
+              context.pop();
+            }
+          }
+        }
+        return false;
+      },
+      child: PageView.builder(
+        controller: _pageController,
+        itemCount: urls.length,
+        onPageChanged: _onVideoPageChanged,
+        itemBuilder: (context, index) {
+          // 只有当前页使用真正的视频播放器，其他页显示占位
+          if (index == _currentIndex) {
+            return _buildVideo();
+          }
+          // 非当前页显示封面占位
+          return Center(
+            child: Stack(
+              alignment: Alignment.center,
+              children: [
+                if (_fallbackImageUrl.isNotEmpty)
+                  CachedNetworkImage(
+                    imageUrl: _fallbackImageUrl,
+                    fit: BoxFit.contain,
+                  ),
+                Icon(
+                  Icons.play_circle_fill_rounded,
+                  size: 64,
+                  color: Colors.white.withValues(alpha: 0.6),
+                ),
+              ],
+            ),
+          );
+        },
+      ),
+    );
+  }
 
-    return Stack(
-      alignment: Alignment.bottomCenter,
-      children: [
-        Center(
-          child: CachedNetworkImage(
-            imageUrl: imageUrl,
-            fit: BoxFit.contain,
-            placeholder: (_, __) => const CircularProgressIndicator(
-              strokeWidth: 2,
-              color: Colors.white24,
-            ),
-            errorWidget: (_, __, ___) =>
-                const Icon(Icons.broken_image, color: Colors.grey, size: 48),
-          ),
-        ),
-        Container(
-          margin: const EdgeInsets.only(bottom: 16),
-          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-          decoration: BoxDecoration(
-            color: Colors.black.withValues(alpha: 0.45),
-            borderRadius: BorderRadius.circular(14),
-          ),
-          child: const Text(
-            '点击左上角 LIVE 查看动态效果',
-            style: TextStyle(
-              color: Colors.white,
-              fontSize: 12,
-              fontWeight: FontWeight.w500,
-            ),
-          ),
-        ),
-      ],
+  /// Live Photo 动效模式的 PageView，每页一个 LivePhotoView
+  Widget _buildLivePhotoPager() {
+    final images = _imageUrls;
+    final videos = _liveVideoUrls;
+    final count = images.length;
+
+    if (count == 0) {
+      return _loadingDetail
+          ? const CircularProgressIndicator(strokeWidth: 2, color: Colors.white54)
+          : const Icon(Icons.broken_image, color: Colors.grey, size: 48);
+    }
+
+    return NotificationListener<ScrollNotification>(
+      onNotification: (notification) {
+        if (notification is ScrollStartNotification ||
+            notification is ScrollEndNotification) {
+          _overscrollAccum = 0;
+        }
+        if (notification is OverscrollNotification) {
+          final isAtStart =
+              notification.metrics.pixels <=
+              notification.metrics.minScrollExtent + 0.5;
+          if (isAtStart && _currentIndex == 0 && notification.overscroll < 0) {
+            _overscrollAccum += notification.overscroll;
+            if (_overscrollAccum.abs() > 80) {
+              context.pop();
+            }
+          }
+        }
+        return false;
+      },
+      child: PageView.builder(
+        controller: _pageController,
+        itemCount: count,
+        onPageChanged: (i) => setState(() => _currentIndex = i),
+        itemBuilder: (context, index) {
+          final imageUrl = index < images.length ? images[index] : '';
+          final videoUrl = index < videos.length ? videos[index] : '';
+          if (videoUrl.isNotEmpty) {
+            return LivePhotoView(
+              imageUrl: imageUrl,
+              videoUrl: videoUrl,
+            );
+          }
+          // 没有视频的 pack 显示静态图
+          if (imageUrl.isNotEmpty) {
+            return Center(
+              child: CachedNetworkImage(
+                imageUrl: imageUrl,
+                fit: BoxFit.contain,
+                placeholder: (_, __) => const CircularProgressIndicator(
+                  strokeWidth: 2,
+                  color: Colors.white24,
+                ),
+                errorWidget: (_, __, ___) =>
+                    const Icon(Icons.broken_image, color: Colors.grey, size: 48),
+              ),
+            );
+          }
+          return const Icon(Icons.broken_image, color: Colors.grey, size: 48);
+        },
+      ),
     );
   }
 
   void _toggleLiveEffect() {
     if (!_isLivePhoto) return;
-    if (!_hasLiveVideo) {
+    // 检查是否有任何可用的 Live 视频
+    final hasAnyVideo = _liveVideoUrls.any((v) => v.isNotEmpty);
+    if (!hasAnyVideo) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Live 动态资源未就绪，请稍后重试')),
       );

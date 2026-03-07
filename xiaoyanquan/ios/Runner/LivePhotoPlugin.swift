@@ -120,7 +120,7 @@ class LivePhotoPlugin: NSObject, FlutterPlugin, PHPickerViewControllerDelegate {
     }
 
     private func pickMultipleLiveForUpload(limit: Int, result: @escaping FlutterResult) {
-        presentLivePicker(selectionLimit: min(limit, 20), multi: true, result: result)
+        presentLivePicker(selectionLimit: limit, multi: true, result: result)
     }
 
     @available(iOS 14, *)

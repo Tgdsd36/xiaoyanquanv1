@@ -41,9 +41,9 @@ class NativeLivePicker {
     return null;
   }
 
-  /// 批量选择多张 Live Photo（iOS 最多 [limit] 张）
+  /// 批量选择多张 Live Photo（0 = 不限制）
   static Future<List<NativeLivePickResult>> pickMultipleLiveForUpload({
-    int limit = 20,
+    int limit = 0,
   }) async {
     final result = await _channel.invokeMethod<dynamic>(
       'pickMultipleLiveForUpload',

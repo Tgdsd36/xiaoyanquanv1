@@ -1494,24 +1494,66 @@ func (h *AdminHandler) AssetLivePackList(c *gin.Context) {
 }
 
 // AssetFolders 获取所有分类列表
+// 计数逻辑：Live Photo 的图片+视频按套件计为 1，而非拆开计为 2
 func (h *AdminHandler) AssetFolders(c *gin.Context) {
-	var assetFolders []struct {
+	// 1. 每个文件夹的资产总数
+	type folderCount struct {
 		Folder string `json:"folder"`
 		Count  int64  `json:"count"`
 	}
+	var assetFolders []folderCount
 	h.DB.Model(&model.Asset{}).
 		Select("folder, count(*) as count").
 		Group("folder").
 		Scan(&assetFolders)
 
-	var folderDefs []model.AssetFolder
-	h.DB.Order("name ASC").Find(&folderDefs)
+	// 2. 每个文件夹的 Live 套件数
+	var livePackFolders []folderCount
+	h.DB.Model(&model.LiveAssetPack{}).
+		Select("folder, count(*) as count").
+		Group("folder").
+		Scan(&livePackFolders)
+
+	// 3. 每个文件夹中被 Live 套件引用的资产数（图片+视频都算）
+	var liveAssetFolders []folderCount
+	h.DB.Raw(`
+		SELECT a.folder, COUNT(DISTINCT a.id) as count
+		FROM assets a
+		WHERE a.id IN (
+			SELECT image_asset_id FROM live_asset_packs WHERE image_asset_id IS NOT NULL
+			UNION
+			SELECT video_asset_id FROM live_asset_packs WHERE video_asset_id IS NOT NULL
+		)
+		GROUP BY a.folder
+	`).Scan(&liveAssetFolders)
+
+	// 汇总：实际数量 = 资产总数 - Live关联资产数 + Live套件数
+	assetCountMap := map[string]int64{}
+	for _, item := range assetFolders {
+		assetCountMap[strings.TrimSpace(item.Folder)] += item.Count
+	}
+	livePackCountMap := map[string]int64{}
+	for _, item := range livePackFolders {
+		livePackCountMap[strings.TrimSpace(item.Folder)] += item.Count
+	}
+	liveAssetCountMap := map[string]int64{}
+	for _, item := range liveAssetFolders {
+		liveAssetCountMap[strings.TrimSpace(item.Folder)] += item.Count
+	}
 
 	folderCountMap := map[string]int64{}
-	for _, item := range assetFolders {
-		name := strings.TrimSpace(item.Folder)
-		folderCountMap[name] += item.Count
+	for name, cnt := range assetCountMap {
+		folderCountMap[name] = cnt - liveAssetCountMap[name] + livePackCountMap[name]
 	}
+	// 确保只有 Live 套件而无独立资产的文件夹也出现
+	for name, cnt := range livePackCountMap {
+		if _, exists := folderCountMap[name]; !exists {
+			folderCountMap[name] = cnt
+		}
+	}
+
+	var folderDefs []model.AssetFolder
+	h.DB.Order("name ASC").Find(&folderDefs)
 	for _, folder := range folderDefs {
 		name := strings.TrimSpace(folder.Name)
 		if name == "" {
@@ -1531,26 +1573,29 @@ func (h *AdminHandler) AssetFolders(c *gin.Context) {
 	}
 	sort.Strings(names)
 
-	folders := make([]struct {
-		Folder string `json:"folder"`
-		Count  int64  `json:"count"`
-	}, 0, len(names)+1)
+	folders := make([]folderCount, 0, len(names)+1)
 	if hasUncategorized {
-		folders = append(folders, struct {
-			Folder string `json:"folder"`
-			Count  int64  `json:"count"`
-		}{Folder: "", Count: uncategorizedCount})
+		folders = append(folders, folderCount{Folder: "", Count: uncategorizedCount})
 	}
 	for _, name := range names {
-		folders = append(folders, struct {
-			Folder string `json:"folder"`
-			Count  int64  `json:"count"`
-		}{Folder: name, Count: folderCountMap[name]})
+		folders = append(folders, folderCount{Folder: name, Count: folderCountMap[name]})
 	}
 
-	// 总数
-	var total int64
-	h.DB.Model(&model.Asset{}).Count(&total)
+	// 总数（同样按逻辑项计算）
+	var totalAssets int64
+	h.DB.Model(&model.Asset{}).Count(&totalAssets)
+	var totalLivePacks int64
+	h.DB.Model(&model.LiveAssetPack{}).Count(&totalLivePacks)
+	var totalLiveAssets int64
+	h.DB.Raw(`
+		SELECT COUNT(DISTINCT id) FROM assets
+		WHERE id IN (
+			SELECT image_asset_id FROM live_asset_packs WHERE image_asset_id IS NOT NULL
+			UNION
+			SELECT video_asset_id FROM live_asset_packs WHERE video_asset_id IS NOT NULL
+		)
+	`).Scan(&totalLiveAssets)
+	total := totalAssets - totalLiveAssets + totalLivePacks
 
 	response.Success(c, gin.H{
 		"folders": folders,

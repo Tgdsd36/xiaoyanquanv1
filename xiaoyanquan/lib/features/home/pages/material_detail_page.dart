@@ -621,6 +621,16 @@ class _DetailContentState extends ConsumerState<_DetailContent> {
   /// 微信九宫格缩略图
   Widget _buildThumbnails(BuildContext context) {
     if (detail.isVideo) {
+      final videoUrls = detail.originalUrls
+          .where((e) => e.isNotEmpty && UrlUtils.isVideoUrl(e))
+          .toList();
+
+      // 多视频：九宫格展示
+      if (videoUrls.length > 1) {
+        return _buildVideoGrid(context, videoUrls);
+      }
+
+      // 单视频：大封面
       final coverUrl = detail.safeThumbnailUrl;
       final videoUrl = detail.bestVideoUrl;
       return GestureDetector(
@@ -776,6 +786,98 @@ class _DetailContentState extends ConsumerState<_DetailContent> {
                         size: 24,
                       ),
                     ),
+              ),
+            ),
+          ),
+        );
+      }),
+    );
+  }
+
+  /// 多视频九宫格布局
+  Widget _buildVideoGrid(BuildContext context, List<String> videoUrls) {
+    final screenWidth = MediaQuery.of(context).size.width;
+    const padding = 16.0 * 2;
+    const spacing = 4.0;
+    final columns = videoUrls.length == 4 ? 2 : 3;
+    final cellSize =
+        (screenWidth - padding - spacing * (columns - 1)) / columns;
+
+    return Wrap(
+      spacing: spacing,
+      runSpacing: spacing,
+      children: List.generate(videoUrls.length, (i) {
+        final vUrl = UrlUtils.absolute(videoUrls[i]);
+        return GestureDetector(
+          onTap: () => _openPreview(context, const [], i),
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(4),
+            child: SizedBox(
+              width: cellSize,
+              height: cellSize,
+              child: Stack(
+                fit: StackFit.expand,
+                children: [
+                  if (vUrl.isNotEmpty)
+                    NetworkVideoThumbnail(
+                      videoUrl: vUrl,
+                      fit: BoxFit.cover,
+                      placeholder: Container(
+                        color: AppColors.shimmer,
+                        child: const Center(
+                          child: Icon(
+                            Icons.play_circle_outline_rounded,
+                            color: AppColors.textSecondary,
+                            size: 28,
+                          ),
+                        ),
+                      ),
+                      errorWidget: Container(
+                        color: AppColors.shimmer,
+                        child: const Icon(
+                          Icons.broken_image_outlined,
+                          color: AppColors.textDisabled,
+                          size: 24,
+                        ),
+                      ),
+                    )
+                  else
+                    Container(color: AppColors.shimmer),
+                  Positioned.fill(
+                    child: Container(
+                      color: Colors.black.withValues(alpha: 0.1),
+                      child: Center(
+                        child: Icon(
+                          Icons.play_circle_fill_rounded,
+                          color: Colors.white.withValues(alpha: 0.85),
+                          size: 32,
+                        ),
+                      ),
+                    ),
+                  ),
+                  // 视频序号
+                  Positioned(
+                    right: 4,
+                    bottom: 4,
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 5,
+                        vertical: 1,
+                      ),
+                      decoration: BoxDecoration(
+                        color: Colors.black.withValues(alpha: 0.55),
+                        borderRadius: BorderRadius.circular(4),
+                      ),
+                      child: Text(
+                        '${i + 1}/${videoUrls.length}',
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 10,
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
               ),
             ),
           ),

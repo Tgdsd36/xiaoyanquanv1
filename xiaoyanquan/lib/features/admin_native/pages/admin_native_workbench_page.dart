@@ -87,7 +87,7 @@ class _AdminNativeWorkbenchPageState extends State<AdminNativeWorkbenchPage> {
   Map<String, String> _folderThumbnails = const {};
   List<Map<String, dynamic>> _folderExistingAssets = const [];
   List<Map<String, dynamic>> _folderExistingLivePacks = const [];
-  XFile? _singleVideo;
+  List<XFile> _videos = const [];
   XFile? _liveImage;
   XFile? _liveVideo;
   List<_LiveUploadPair> _livePairs = const [];
@@ -463,9 +463,20 @@ class _AdminNativeWorkbenchPageState extends State<AdminNativeWorkbenchPage> {
   }
 
   Future<void> _pickVideo() async {
-    final file = await _picker.pickVideo(source: ImageSource.gallery);
-    if (!mounted || file == null) return;
-    setState(() => _singleVideo = file);
+    final files = await _picker.pickMultipleMedia();
+    if (!mounted || files.isEmpty) return;
+    // 只保留视频文件
+    final videoFiles = files.where((f) {
+      final ext = f.path.split('.').last.toLowerCase();
+      return ext == 'mp4' || ext == 'mov' || ext == 'avi' || ext == 'mkv' || ext == 'm4v';
+    }).toList();
+    if (videoFiles.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('未选择到视频文件')),
+      );
+      return;
+    }
+    setState(() => _videos = [..._videos, ...videoFiles]);
   }
 
   Future<void> _pickLiveImage() async {
@@ -681,7 +692,7 @@ class _AdminNativeWorkbenchPageState extends State<AdminNativeWorkbenchPage> {
     if (_uploadMode == 'image') {
       total = _images.length;
     } else if (_uploadMode == 'video') {
-      total = 1;
+      total = _videos.length;
     } else {
       total = _livePairs.isNotEmpty ? _livePairs.length * 2 : 2;
     }
@@ -698,8 +709,10 @@ class _AdminNativeWorkbenchPageState extends State<AdminNativeWorkbenchPage> {
           if (mounted) setState(() => _uploadCurrent++);
         }
       } else if (_uploadMode == 'video') {
-        await _uploadOne(_singleVideo!);
-        if (mounted) setState(() => _uploadCurrent++);
+        for (final file in _videos) {
+          await _uploadOne(file);
+          if (mounted) setState(() => _uploadCurrent++);
+        }
       } else {
         if (_livePairs.isNotEmpty) {
           for (final pair in _livePairs) {
@@ -725,12 +738,19 @@ class _AdminNativeWorkbenchPageState extends State<AdminNativeWorkbenchPage> {
       ).showSnackBar(SnackBar(content: Text(successText)));
       setState(() {
         _images = const [];
-        _singleVideo = null;
+        _videos = const [];
         _liveImage = null;
         _liveVideo = null;
-
         _livePairs = const [];
+        // 重置发布素材缓存，下次打开素材选择器时会重新加载
+        _publishDataLoaded = false;
       });
+      // 刷新当前文件夹列表，让新上传的素材立即可见
+      if (_uploadSelectedFolder != null) {
+        await _enterUploadFolder(_uploadSelectedFolder!);
+      } else {
+        await _loadCurrent();
+      }
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(
@@ -1317,7 +1337,7 @@ class _AdminNativeWorkbenchPageState extends State<AdminNativeWorkbenchPage> {
       case 'image':
         return _images.length;
       case 'video':
-        return _singleVideo != null ? 1 : 0;
+        return _videos.length;
       case 'live':
         if (_livePairs.isNotEmpty) return _livePairs.length;
         return (_liveImage != null && _liveVideo != null) ? 1 : 0;
@@ -1615,8 +1635,8 @@ class _AdminNativeWorkbenchPageState extends State<AdminNativeWorkbenchPage> {
   Widget _buildVideoContent() {
     final existingVideos = _folderExistingVideos;
     final existingCount = existingVideos.length;
-    final hasLocal = _singleVideo != null;
-    final total = existingCount + (hasLocal ? 1 : 0) + 1; // +1 添加按钮
+    final localCount = _videos.length;
+    final total = existingCount + localCount + 1; // +1 添加按钮
     return GridView.builder(
       shrinkWrap: true,
       physics: const NeverScrollableScrollPhysics(),
@@ -1705,7 +1725,8 @@ class _AdminNativeWorkbenchPageState extends State<AdminNativeWorkbenchPage> {
         }
         // 本地已选视频
         final localIndex = index - existingCount;
-        if (hasLocal && localIndex == 0) {
+        if (localIndex < localCount) {
+          final file = _videos[localIndex];
           return Stack(
             fit: StackFit.expand,
             children: [
@@ -1720,10 +1741,33 @@ class _AdminNativeWorkbenchPageState extends State<AdminNativeWorkbenchPage> {
                 ),
               ),
               Positioned(
+                left: 4,
+                bottom: 4,
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
+                  decoration: BoxDecoration(
+                    color: Colors.black.withValues(alpha: 0.55),
+                    borderRadius: BorderRadius.circular(4),
+                  ),
+                  child: Text(
+                    file.name,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(color: Colors.white, fontSize: 9),
+                  ),
+                ),
+              ),
+              Positioned(
                 right: 4,
                 top: 4,
                 child: GestureDetector(
-                  onTap: () => setState(() => _singleVideo = null),
+                  onTap: () {
+                    setState(() {
+                      final list = List<XFile>.from(_videos);
+                      list.removeAt(localIndex);
+                      _videos = list;
+                    });
+                  },
                   child: Container(
                     width: 22,
                     height: 22,
@@ -2429,7 +2473,7 @@ class _AdminNativeWorkbenchPageState extends State<AdminNativeWorkbenchPage> {
                   _folderExistingAssets = const [];
                   _folderExistingLivePacks = const [];
                   _images = const [];
-                  _singleVideo = null;
+                  _videos = const [];
                   _liveImage = null;
                   _liveVideo = null;
                   _livePairs = const [];
@@ -3009,8 +3053,8 @@ class _AdminNativeWorkbenchPageState extends State<AdminNativeWorkbenchPage> {
       _folder = folderValue;
       _folderExistingAssets = const [];
       _folderExistingLivePacks = const [];
-      _images = const [];
-      _singleVideo = null;
+    _images = const [];
+      _videos = const [];
       _liveImage = null;
       _liveVideo = null;
       _livePairs = const [];
@@ -4576,8 +4620,9 @@ class _AdminNativeWorkbenchPageState extends State<AdminNativeWorkbenchPage> {
         }
         successCount = 1;
       } else {
-        // 多个 Live 打包成一条素材（与图片行为一致）
+        // 多个 Live 打包成一条素材：original_urls 存 [所有图片, 所有视频]
         final imageUrls = <String>[];
+        final videoUrls = <String>[];
         String firstPreview = '';
         String firstMov = '';
         for (final pack in selectedLivePacks) {
@@ -4592,6 +4637,7 @@ class _AdminNativeWorkbenchPageState extends State<AdminNativeWorkbenchPage> {
             continue;
           }
           imageUrls.add(imgUrl);
+          videoUrls.add(movUrl);
           if (firstPreview.isEmpty) {
             final pv = _livePackImagePreviewRawUrl(pack).trim();
             firstPreview = pv.isNotEmpty ? pv : imgUrl;
@@ -4609,7 +4655,7 @@ class _AdminNativeWorkbenchPageState extends State<AdminNativeWorkbenchPage> {
           'status': 'published',
           'show_inspiration': _publishShowInspiration,
           'show_moments': _publishShowMoments,
-          'original_urls': imageUrls,
+          'original_urls': [...imageUrls, ...videoUrls],
           'thumbnail_url': firstPreview,
           'preview_mov_url': firstMov,
         };

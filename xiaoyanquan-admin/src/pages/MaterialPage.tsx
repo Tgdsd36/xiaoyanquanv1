@@ -1,10 +1,47 @@
 import { useEffect, useState, useCallback, useMemo } from 'react';
 import { Table, Button, Input, Select, Space, Tag, Modal, Form, message, Popconfirm, Switch, Alert } from 'antd';
-import { PlusOutlined, SearchOutlined } from '@ant-design/icons';
+import { DeleteOutlined, PlusOutlined, SearchOutlined } from '@ant-design/icons';
 import http from '../api/http';
 import AssetPicker, { MultiAssetPicker } from '../components/AssetPicker';
 import LivePackPicker from '../components/LivePackPicker';
 import { toAbsoluteUrl } from '../utils/url';
+
+interface LivePackEntry {
+  packId?: number;
+  imageUrl: string;
+  videoUrl: string;
+}
+
+const VIDEO_EXTS = new Set(['.mp4', '.mov', '.m4v', '.webm', '.mkv', '.avi']);
+function isVideoUrl(url: string): boolean {
+  const clean = url.split('?')[0];
+  const dot = clean.lastIndexOf('.');
+  if (dot < 0) return false;
+  return VIDEO_EXTS.has(clean.substring(dot).toLowerCase());
+}
+
+/** 从素材已存储的 URL 重建 Live 套件列表 */
+function reconstructLivePacks(originalUrls: string[], previewMovUrl: string): LivePackEntry[] {
+  const imageUrls: string[] = [];
+  const videoUrls: string[] = [];
+  for (const url of originalUrls) {
+    if (isVideoUrl(url)) {
+      videoUrls.push(url);
+    } else if (url.trim()) {
+      imageUrls.push(url);
+    }
+  }
+  if (previewMovUrl && !videoUrls.includes(previewMovUrl)) {
+    videoUrls.unshift(previewMovUrl);
+  }
+  const count = Math.max(imageUrls.length, videoUrls.length);
+  if (count === 0) return [];
+  const packs: LivePackEntry[] = [];
+  for (let i = 0; i < count; i++) {
+    packs.push({ imageUrl: imageUrls[i] || '', videoUrl: videoUrls[i] || '' });
+  }
+  return packs;
+}
 const statusColors: Record<string, string> = { draft: 'default', published: 'green', offline: 'red' };
 const statusLabels: Record<string, string> = { draft: '草稿', published: '已发布', offline: '已下线' };
 const typeLabels: Record<string, string> = { image: '图片', video: '视频', live_photo: 'Live Photo' };
@@ -104,6 +141,104 @@ function MaterialThumb({ row }: { row: any }) {
   return <>-</>;
 }
 
+/** Live 套件卡片：多级图片回退 + 视频回退 */
+function LivePackCard({
+  index,
+  pack,
+  imageCandidates,
+  onDelete,
+}: {
+  index: number;
+  pack: LivePackEntry;
+  imageCandidates: string[];
+  onDelete: () => void;
+}) {
+  const [imgIdx, setImgIdx] = useState(0);
+  const [useVideo, setUseVideo] = useState(false);
+  const candidateKey = imageCandidates.join('|');
+
+  useEffect(() => {
+    setImgIdx(0);
+    setUseVideo(false);
+  }, [candidateKey, pack.videoUrl]);
+
+  let preview: React.ReactNode;
+  if (!useVideo && imageCandidates.length > 0) {
+    const src = imageCandidates[imgIdx];
+    if (src) {
+      preview = (
+        <img
+          src={src}
+          style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+          onError={() => {
+            if (imgIdx < imageCandidates.length - 1) {
+              setImgIdx((prev) => prev + 1);
+            } else {
+              setUseVideo(true);
+            }
+          }}
+        />
+      );
+    } else {
+      preview = null;
+    }
+  } else if (pack.videoUrl) {
+    preview = (
+      <video
+        src={toFullUrl(pack.videoUrl)}
+        style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+        muted
+        playsInline
+        preload="metadata"
+      />
+    );
+  } else {
+    preview = <span style={{ color: '#999', fontSize: 12 }}>无预览</span>;
+  }
+
+  return (
+    <div
+      style={{
+        width: 180,
+        border: '1px solid #e8e8e8',
+        borderRadius: 8,
+        overflow: 'hidden',
+        position: 'relative',
+        background: '#fafafa',
+      }}
+    >
+      <div style={{ height: 100, background: '#f0f0f0', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+        {preview}
+      </div>
+      <Tag
+        color="blue"
+        style={{ position: 'absolute', top: 6, left: 6 }}
+      >
+        Live #{index + 1}
+      </Tag>
+      <div
+        onClick={onDelete}
+        style={{
+          position: 'absolute',
+          top: 6,
+          right: 6,
+          width: 22,
+          height: 22,
+          borderRadius: '50%',
+          background: 'rgba(0,0,0,0.5)',
+          color: '#fff',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          cursor: 'pointer',
+        }}
+      >
+        <DeleteOutlined style={{ fontSize: 12 }} />
+      </div>
+    </div>
+  );
+}
+
 export default function MaterialPage() {
   const [data, setData] = useState<any[]>([]);
   const [total, setTotal] = useState(0);
@@ -117,8 +252,7 @@ export default function MaterialPage() {
   const [selectedRowKeys, setSelectedRowKeys] = useState<React.Key[]>([]);
   const [form] = Form.useForm();
   const materialType = Form.useWatch('type', form) || 'image';
-  const liveOriginalUrls = Form.useWatch('original_urls', form) as string[] | undefined;
-  const livePreviewMovUrl = Form.useWatch('preview_mov_url', form) as string | undefined;
+  const [livePacks, setLivePacks] = useState<LivePackEntry[]>([]);
   const [messageApi, contextHolder] = message.useMessage();
   const secondLevelCategoryOptions = buildSecondLevelCategoryOptions(categories);
 
@@ -164,18 +298,21 @@ export default function MaterialPage() {
           payload.thumbnail_url = originalUrls[0];
         }
       } else if (payload.type === 'live_photo') {
-        if (originalUrls.length === 0) {
-          messageApi.warning('请先上传 Live 静态图');
+        if (livePacks.length === 0) {
+          messageApi.warning('请先选择至少一个 Live 套件');
           return;
         }
-        if (!payload.preview_mov_url) {
-          messageApi.warning('请先上传 Live 动态视频（MOV）');
+        const hasComplete = livePacks.some((p) => p.imageUrl && p.videoUrl);
+        if (!hasComplete) {
+          messageApi.warning('至少需要一个完整的 Live 套件（静态图 + MOV）');
           return;
         }
-        payload.original_urls = [originalUrls[0]];
-        if (!payload.thumbnail_url) {
-          payload.thumbnail_url = originalUrls[0];
-        }
+        // 所有 image URL + 所有 video URL 存入 original_urls
+        const allImages = livePacks.map((p) => p.imageUrl).filter(Boolean);
+        const allVideos = livePacks.map((p) => p.videoUrl).filter(Boolean);
+        payload.original_urls = [...allImages, ...allVideos];
+        payload.preview_mov_url = allVideos[0] || '';
+        payload.thumbnail_url = allImages[0] || '';
       } else if (payload.type === 'image') {
         if (originalUrls.length === 0 && !payload.thumbnail_url) {
           messageApi.warning('请先上传图片素材');
@@ -361,13 +498,20 @@ export default function MaterialPage() {
             />
           </Space>
           <Space>
-            <Button size="small" onClick={() => {
+          <Button size="small" onClick={() => {
               setEditItem(row);
               form.setFieldsValue({
                 ...row,
                 show_inspiration: !!row.show_inspiration,
                 show_moments: !!row.show_moments,
               });
+              // 重建 Live 套件列表
+              if (row.type === 'live_photo') {
+                const urls = Array.isArray(row.original_urls) ? row.original_urls : [];
+                setLivePacks(reconstructLivePacks(urls, row.preview_mov_url || ''));
+              } else {
+                setLivePacks([]);
+              }
               setModalOpen(true);
             }}
             >
@@ -404,6 +548,7 @@ export default function MaterialPage() {
               show_inspiration: false,
               show_moments: false,
             });
+            setLivePacks([]);
             setModalOpen(true);
           }}
         >
@@ -453,6 +598,7 @@ export default function MaterialPage() {
                     preview_mov_url: '',
                     thumbnail_url: '',
                   });
+                  setLivePacks([]);
                 }}
                 options={[{ value: 'image', label: '图片' }, { value: 'video', label: '视频' }, { value: 'live_photo', label: 'Live Photo' }]}
               />
@@ -491,7 +637,7 @@ export default function MaterialPage() {
               style={{ marginBottom: 12 }}
               type="info"
               showIcon
-              message="Live Photo 需要 1 张静态图 + 1 个 MOV 视频，封面将自动使用静态图。"
+              message="支持添加多个 Live 套件，所有图片和视频将一并保存。封面自动使用第一张静态图。"
               description="iPhone 可查看动效，Android 将展示静态图。"
             />
           ) : (
@@ -505,40 +651,46 @@ export default function MaterialPage() {
             </Form.Item>
           ) : materialType === 'live_photo' ? (
             <>
-              <Form.Item name="original_urls" hidden>
-                <Input />
-              </Form.Item>
-              <Form.Item name="preview_mov_url" hidden>
-                <Input />
-              </Form.Item>
-              <Form.Item name="thumbnail_url" hidden>
-                <Input />
-              </Form.Item>
-              <Form.Item name="live_pack_id" hidden>
-                <Input />
-              </Form.Item>
-              <Form.Item label="Live 套件">
-                <LivePackPicker
-                  valueImageUrl={liveOriginalUrls?.[0] || ''}
-                  valueVideoUrl={livePreviewMovUrl || ''}
-                  onChange={(value) => {
-                    if (!value) {
-                      form.setFieldsValue({
-                        live_pack_id: undefined,
-                        original_urls: [],
-                        preview_mov_url: '',
-                        thumbnail_url: '',
-                      });
-                      return;
+              <Form.Item name="original_urls" hidden><Input /></Form.Item>
+              <Form.Item name="preview_mov_url" hidden><Input /></Form.Item>
+              <Form.Item name="thumbnail_url" hidden><Input /></Form.Item>
+              {/* 封面预览 */}
+              {editItem && editItem.thumbnail_url && (
+                <Form.Item label="当前封面">
+                  <MaterialThumb row={editItem} />
+                </Form.Item>
+              )}
+              <Form.Item label={`Live 套件（${livePacks.length} 个）`}>
+                <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', alignItems: 'flex-start' }}>
+                  {livePacks.map((pack, idx) => {
+                    // 构建多级回退的预览候选列表
+                    const candidates: string[] = [];
+                    if (pack.imageUrl) {
+                      const heicPreview = deriveHEICPreviewUrl(pack.imageUrl);
+                      if (heicPreview) candidates.push(toFullUrl(heicPreview));
+                      candidates.push(toFullUrl(pack.imageUrl));
                     }
-                    form.setFieldsValue({
-                      live_pack_id: value.packId,
-                      original_urls: value.imageUrl ? [value.imageUrl] : [],
-                      preview_mov_url: value.videoUrl || '',
-                      thumbnail_url: value.imageUrl || '',
-                    });
-                  }}
-                />
+                    return (
+                      <LivePackCard
+                        key={`${pack.imageUrl}-${pack.videoUrl}-${idx}`}
+                        index={idx}
+                        pack={pack}
+                        imageCandidates={candidates}
+                        onDelete={() => setLivePacks((prev) => prev.filter((_, i) => i !== idx))}
+                      />
+                    );
+                  })}
+                  {/* 添加按钮 */}
+                  <LivePackPicker
+                    onChange={(value) => {
+                      if (!value) return;
+                      setLivePacks((prev) => [
+                        ...prev,
+                        { packId: value.packId, imageUrl: value.imageUrl, videoUrl: value.videoUrl },
+                      ]);
+                    }}
+                  />
+                </div>
               </Form.Item>
             </>
           ) : (
