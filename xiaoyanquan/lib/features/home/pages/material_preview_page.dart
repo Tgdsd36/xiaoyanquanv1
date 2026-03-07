@@ -68,6 +68,7 @@ class _MaterialPreviewPageState extends ConsumerState<MaterialPreviewPage> {
   VideoPlayerController? _videoController;
   bool _videoInitialized = false;
   bool _videoFailed = false;
+  bool _videoPaused = false;
   bool _liveEffectEnabled = false;
 
   late final PageController _pageController;
@@ -351,7 +352,23 @@ class _MaterialPreviewPageState extends ConsumerState<MaterialPreviewPage> {
           ),
         ),
         // ========== 中间内容区 ==========
-        Expanded(child: Center(child: _buildContent())),
+        Expanded(
+          child: GestureDetector(
+            onTap: _toggleVideoPause,
+            child: Stack(
+              alignment: Alignment.center,
+              children: [
+                Center(child: _buildContent()),
+                if (_isVideo && _videoPaused)
+                  const Icon(
+                    Icons.play_arrow_rounded,
+                    size: 72,
+                    color: Colors.white70,
+                  ),
+              ],
+            ),
+          ),
+        ),
         // ========== 底部操作栏 ==========
         Container(
           color: Colors.black,
@@ -427,6 +444,18 @@ class _MaterialPreviewPageState extends ConsumerState<MaterialPreviewPage> {
       backgroundColor: Colors.black,
       body: _wrapDismissIfNeeded(content),
     );
+  }
+
+  void _toggleVideoPause() {
+    if (!_isVideo || _videoController == null || !_videoInitialized) return;
+    setState(() {
+      _videoPaused = !_videoPaused;
+      if (_videoPaused) {
+        _videoController!.pause();
+      } else {
+        _videoController!.play();
+      }
+    });
   }
 
   Future<void> _handleFavorite() async {
@@ -693,7 +722,10 @@ class _BottomAction extends StatelessWidget {
   Widget build(BuildContext context) {
     final c = color ?? Colors.white;
     return GestureDetector(
-      onTap: onTap,
+      onTap: () {
+        HapticFeedback.lightImpact();
+        onTap();
+      },
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [

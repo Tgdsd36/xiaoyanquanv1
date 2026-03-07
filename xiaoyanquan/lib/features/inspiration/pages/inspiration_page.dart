@@ -861,7 +861,7 @@ class _InspirationFullPageState extends State<_InspirationFullPage> {
               bottom: 0,
               child: VideoProgressIndicator(
                 _videoController!,
-                allowScrubbing: false,
+                allowScrubbing: true,
                 colors: VideoProgressColors(
                   playedColor: Colors.white.withValues(alpha: 0.8),
                   bufferedColor: Colors.white.withValues(alpha: 0.3),
@@ -910,11 +910,12 @@ class _InspirationFullPageState extends State<_InspirationFullPage> {
 
     return PageView.builder(
       controller: _imagePageController,
-      physics: const NeverScrollableScrollPhysics(),
       itemCount: urls.length,
       onPageChanged: (index) {
         if (!mounted) return;
         setState(() => _currentImageIndex = index);
+        // 用户手动翻页后暂停自动轮播
+        _stopImageAutoSwitch();
       },
       itemBuilder: (context, index) {
         return CachedNetworkImage(
@@ -1076,7 +1077,10 @@ class _ActionButton extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return GestureDetector(
-      onTap: onTap,
+      onTap: () {
+        HapticFeedback.lightImpact();
+        onTap();
+      },
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [

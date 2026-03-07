@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:go_router/go_router.dart';
 import 'package:flutter_svg/flutter_svg.dart';
+import 'package:hive_flutter/hive_flutter.dart';
 import '../../../app/colors.dart';
 import '../../../app/styles.dart';
 import '../../../shared/network_video_thumbnail.dart';
@@ -32,6 +33,11 @@ class _SearchPageState extends ConsumerState<SearchPage> {
   final _scrollController = ScrollController();
   final _repo = MaterialRepository();
 
+  static const _historyBoxName = 'search_history';
+  static const _historyKey = 'recent';
+  static const _maxHistory = 10;
+  List<String> _history = [];
+
   List<MaterialListItem> _results = [];
   bool _loading = false;
   bool _hasMore = false;
@@ -51,6 +57,7 @@ class _SearchPageState extends ConsumerState<SearchPage> {
   void initState() {
     super.initState();
     _scrollController.addListener(_onScroll);
+    _loadHistory();
 
     // 从分类入口进来
     if (widget.args?.categoryId != null) {
@@ -61,6 +68,26 @@ class _SearchPageState extends ConsumerState<SearchPage> {
     } else {
       _focusNode.requestFocus();
     }
+  }
+
+  Future<void> _loadHistory() async {
+    final box = await Hive.openBox(_historyBoxName);
+    final list = box.get(_historyKey, defaultValue: <dynamic>[]);
+    setState(() => _history = List<String>.from(list));
+  }
+
+  Future<void> _saveToHistory(String keyword) async {
+    _history.remove(keyword);
+    _history.insert(0, keyword);
+    if (_history.length > _maxHistory) _history = _history.sublist(0, _maxHistory);
+    final box = await Hive.openBox(_historyBoxName);
+    await box.put(_historyKey, _history);
+  }
+
+  Future<void> _clearHistory() async {
+    setState(() => _history = []);
+    final box = await Hive.openBox(_historyBoxName);
+    await box.delete(_historyKey);
   }
 
   @override
@@ -81,6 +108,7 @@ class _SearchPageState extends ConsumerState<SearchPage> {
   Future<void> _search(String keyword) async {
     final trimmed = keyword.trim();
     if (trimmed.isEmpty) return;
+    _saveToHistory(trimmed);
     setState(() {
       _keyword = trimmed;
       _categoryId = null; // 手动搜索时清除分类筛选
@@ -245,12 +273,7 @@ class _SearchPageState extends ConsumerState<SearchPage> {
 
   Widget _buildBody(Color primary) {
     if (_keyword.isEmpty && _categoryId == null) {
-      return const Center(
-        child: Text(
-          '输入关键词搜索素材',
-          style: TextStyle(color: AppColors.textDisabled, fontSize: 14),
-        ),
-      );
+      return _buildHistoryView(primary);
     }
 
     if (_loading && _results.isEmpty) {
@@ -312,6 +335,66 @@ class _SearchPageState extends ConsumerState<SearchPage> {
               () => context.push('/material/${item.id}/preview', extra: item),
         );
       },
+    );
+  }
+
+  Widget _buildHistoryView(Color primary) {
+    if (_history.isEmpty) {
+      return const Center(
+        child: Text(
+          '输入关键词搜索素材',
+          style: TextStyle(color: AppColors.textDisabled, fontSize: 14),
+        ),
+      );
+    }
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              const Text(
+                '最近搜索',
+                style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600),
+              ),
+              const Spacer(),
+              GestureDetector(
+                onTap: _clearHistory,
+                child: const Icon(
+                  Icons.delete_outline_rounded,
+                  size: 18,
+                  color: AppColors.textHint,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 10),
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: _history.map((kw) {
+              return GestureDetector(
+                onTap: () {
+                  _controller.text = kw;
+                  _search(kw);
+                },
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                  decoration: BoxDecoration(
+                    color: AppColors.surface,
+                    borderRadius: BorderRadius.circular(16),
+                  ),
+                  child: Text(
+                    kw,
+                    style: const TextStyle(fontSize: 13, color: AppColors.textSecondary),
+                  ),
+                ),
+              );
+            }).toList(),
+          ),
+        ],
+      ),
     );
   }
 }

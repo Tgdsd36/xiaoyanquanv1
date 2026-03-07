@@ -254,8 +254,10 @@ class _HomePageState extends ConsumerState<HomePage> {
               color: primary,
               onRefresh:
                   () => ref.read(materialListProvider.notifier).refresh(),
-              child:
-                  materialState.items.isEmpty && !materialState.isLoading
+          child:
+                  materialState.items.isEmpty && materialState.isLoading
+                      ? const _SkeletonGrid()
+                      : materialState.items.isEmpty
                       ? ListView(
                         children: [
                           SizedBox(
@@ -715,5 +717,136 @@ class _MaterialCard extends ConsumerWidget {
     if (count >= 10000) return '${(count / 10000).toStringAsFixed(1)}w';
     if (count >= 1000) return '${(count / 1000).toStringAsFixed(1)}k';
     return '$count';
+  }
+}
+
+// ==================== 骨架屏 占位 ====================
+
+class _SkeletonGrid extends StatefulWidget {
+  const _SkeletonGrid();
+
+  @override
+  State<_SkeletonGrid> createState() => _SkeletonGridState();
+}
+
+class _SkeletonGridState extends State<_SkeletonGrid>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _ctrl;
+  late final Animation<double> _anim;
+
+  @override
+  void initState() {
+    super.initState();
+    _ctrl = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 1200),
+    )..repeat(reverse: true);
+    _anim = CurvedAnimation(parent: _ctrl, curve: Curves.easeInOut);
+  }
+
+  @override
+  void dispose() {
+    _ctrl.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AnimatedBuilder(
+      animation: _anim,
+      builder: (context, child) {
+        final opacity = 0.3 + 0.4 * _anim.value;
+        return Opacity(opacity: opacity, child: child!);
+      },
+      child: GridView.builder(
+        physics: const NeverScrollableScrollPhysics(),
+        gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+          crossAxisCount: 2,
+          mainAxisSpacing: 6,
+          crossAxisSpacing: 6,
+          childAspectRatio: 0.68,
+        ),
+        padding: const EdgeInsets.all(6),
+        itemCount: 6,
+        itemBuilder: (_, __) => const _SkeletonCard(),
+      ),
+    );
+  }
+}
+
+class _SkeletonCard extends StatelessWidget {
+  const _SkeletonCard();
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(14),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.04),
+            blurRadius: 6,
+            offset: const Offset(0, 2),
+          ),
+        ],
+      ),
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(14),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Expanded(child: Container(color: AppColors.shimmer)),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(8, 8, 8, 8),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Container(
+                    height: 12,
+                    width: double.infinity,
+                    decoration: BoxDecoration(
+                      color: AppColors.shimmer,
+                      borderRadius: BorderRadius.circular(4),
+                    ),
+                  ),
+                  const SizedBox(height: 6),
+                  Container(
+                    height: 12,
+                    width: 80,
+                    decoration: BoxDecoration(
+                      color: AppColors.shimmer,
+                      borderRadius: BorderRadius.circular(4),
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  Row(
+                    children: [
+                      Container(
+                        height: 10,
+                        width: 40,
+                        decoration: BoxDecoration(
+                          color: AppColors.shimmer,
+                          borderRadius: BorderRadius.circular(3),
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      Container(
+                        height: 10,
+                        width: 40,
+                        decoration: BoxDecoration(
+                          color: AppColors.shimmer,
+                          borderRadius: BorderRadius.circular(3),
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
   }
 }

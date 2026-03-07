@@ -10,7 +10,7 @@ class MainScaffold extends StatelessWidget {
   static const _tabs = [
     _TabItem(Icons.camera_outlined, Icons.camera_rounded, '素材库', false),
     _TabItem(Icons.auto_awesome_outlined, Icons.auto_awesome_rounded, '找灵感', false),
-    _TabItem(Icons.favorite_border_rounded, Icons.favorite_rounded, '朋友圈', true),
+    _TabItem(Icons.favorite_border_rounded, Icons.favorite_rounded, '朋友圈', false),
     _TabItem(Icons.person_outline_rounded, Icons.person_rounded, '我的', false),
   ];
 

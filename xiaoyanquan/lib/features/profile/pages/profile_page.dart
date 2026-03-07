@@ -741,11 +741,6 @@ class _ProfilePageState extends ConsumerState<ProfilePage>
                     _unbindCurrentDevice();
                   },
                 ),
-                ListTile(
-                  leading: const Icon(Icons.info_outline),
-                  title: const Text('关于小颜圈'),
-                  onTap: () => Navigator.pop(ctx),
-                ),
                 const Divider(),
                 ListTile(
                   leading: const Icon(Icons.logout, color: AppColors.error),

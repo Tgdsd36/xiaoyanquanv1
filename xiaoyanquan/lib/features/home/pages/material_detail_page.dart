@@ -12,6 +12,7 @@ import '../../../shared/network_video_thumbnail.dart';
 import '../../../shared/favorite_group_sheet.dart';
 import '../../../shared/material_download_helper.dart';
 import '../../../shared/share_helper.dart';
+import '../pages/search_page.dart';
 import '../../profile/providers/profile_refresh_provider.dart';
 import '../models/material_model.dart';
 import '../providers/favorite_provider.dart';
@@ -130,11 +131,14 @@ class _DetailContentState extends ConsumerState<_DetailContent> {
       return;
     }
     final controller = TextEditingController();
+    bool isSubmitting = false;
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
       builder: (ctx) {
+        return StatefulBuilder(
+          builder: (ctx, setSheetState) {
         return Padding(
           padding: EdgeInsets.only(
             bottom: MediaQuery.of(ctx).viewInsets.bottom,
@@ -184,7 +188,7 @@ class _DetailContentState extends ConsumerState<_DetailContent> {
                   width: double.infinity,
                   height: 44,
                   child: ElevatedButton(
-                    onPressed: () async {
+                    onPressed: isSubmitting ? null : () async {
                       final text = controller.text.trim();
                       if (text.length < 2) {
                         ScaffoldMessenger.of(context).showSnackBar(
@@ -194,6 +198,7 @@ class _DetailContentState extends ConsumerState<_DetailContent> {
                       }
 
                       final messenger = ScaffoldMessenger.of(context);
+                      setSheetState(() => isSubmitting = true);
 
                       try {
                         final resp = await HttpClient().post(
@@ -228,7 +233,10 @@ class _DetailContentState extends ConsumerState<_DetailContent> {
                         }
                       } catch (_) {
                         if (!mounted) return;
-                        if (ctx.mounted) Navigator.pop(ctx);
+                        if (ctx.mounted) {
+                          setSheetState(() => isSubmitting = false);
+                          Navigator.pop(ctx);
+                        }
                         messenger.showSnackBar(
                           const SnackBar(content: Text('提问失败')),
                         );
@@ -241,12 +249,23 @@ class _DetailContentState extends ConsumerState<_DetailContent> {
                         borderRadius: BorderRadius.circular(8),
                       ),
                     ),
-                    child: const Text('发送', style: TextStyle(fontSize: 15)),
+                    child: isSubmitting
+                        ? const SizedBox(
+                            width: 18,
+                            height: 18,
+                            child: CircularProgressIndicator(
+                              strokeWidth: 2,
+                              color: Colors.white,
+                            ),
+                          )
+                        : const Text('发送', style: TextStyle(fontSize: 15)),
                   ),
                 ),
               ],
             ),
           ),
+        );
+          },
         );
       },
     );
@@ -368,20 +387,26 @@ class _DetailContentState extends ConsumerState<_DetailContent> {
                       children:
                           detail.tags
                               .map(
-                                (tag) => Container(
-                                  padding: const EdgeInsets.symmetric(
-                                    horizontal: 10,
-                                    vertical: 4,
+                                (tag) => GestureDetector(
+                                  onTap: () => context.push(
+                                    '/search',
+                                    extra: SearchArgs(categoryName: tag),
                                   ),
-                                  decoration: BoxDecoration(
-                                    color: AppColors.surface,
-                                    borderRadius: BorderRadius.circular(12),
-                                  ),
-                                  child: Text(
-                                    '#$tag',
-                                    style: const TextStyle(
-                                      fontSize: 12,
-                                      color: AppColors.textSecondary,
+                                  child: Container(
+                                    padding: const EdgeInsets.symmetric(
+                                      horizontal: 10,
+                                      vertical: 4,
+                                    ),
+                                    decoration: BoxDecoration(
+                                      color: AppColors.surface,
+                                      borderRadius: BorderRadius.circular(12),
+                                    ),
+                                    child: Text(
+                                      '#$tag',
+                                      style: const TextStyle(
+                                        fontSize: 12,
+                                        color: AppColors.textSecondary,
+                                      ),
                                     ),
                                   ),
                                 ),

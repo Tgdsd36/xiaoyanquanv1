@@ -1,5 +1,6 @@
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:dio/dio.dart';
@@ -15,6 +16,7 @@ import '../../../shared/network_video_thumbnail.dart';
 import '../../../shared/favorite_group_sheet.dart';
 import '../../../shared/material_download_helper.dart';
 import '../../profile/pages/profile_page.dart';
+import '../../home/pages/material_preview_page.dart';
 
 // ==================== 模型 ====================
 
@@ -939,7 +941,14 @@ class _MomentCardState extends ConsumerState<_MomentCard> {
               _ActionBtn(
                 icon: Icons.sentiment_dissatisfied_outlined,
                 label: '不喜欢',
-                onTap: () {
+                onTap: () async {
+                  try {
+                    await HttpClient().post(
+                      Api.inspirationDislike,
+                      data: {'material_id': moment.id},
+                    );
+                  } catch (_) {}
+                  if (!context.mounted) return;
                   ScaffoldMessenger.of(
                     context,
                   ).showSnackBar(const SnackBar(content: Text('已标记不喜欢')));
@@ -1112,7 +1121,13 @@ class _MomentCardState extends ConsumerState<_MomentCard> {
       runSpacing: spacing,
       children: List.generate(displayCount, (i) {
         return GestureDetector(
-          onTap: () => context.push('/material/${moment.id}/preview'),
+          onTap: () => context.push(
+            '/material/${moment.id}/preview',
+            extra: MaterialPreviewArgs(
+              imageUrls: urls.where((u) => !UrlUtils.isVideoUrl(u)).toList(),
+              initialIndex: i,
+            ),
+          ),
           child: ClipRRect(
             borderRadius: BorderRadius.circular(4),
             child: SizedBox(
@@ -1159,7 +1174,10 @@ class _ActionBtn extends StatelessWidget {
   Widget build(BuildContext context) {
     final c = color ?? AppColors.textSecondary;
     return GestureDetector(
-      onTap: onTap,
+      onTap: () {
+        HapticFeedback.lightImpact();
+        onTap();
+      },
       behavior: HitTestBehavior.opaque,
       child: Padding(
         padding: const EdgeInsets.symmetric(vertical: 4),
