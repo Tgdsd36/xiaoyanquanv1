@@ -235,6 +235,7 @@ func Setup(cfg *config.Config, db *gorm.DB, rdb *redis.Client) *gin.Engine {
 			adminAuth.PUT("/assets/folders/rename", adminHandler.AssetFolderRename)
 			adminAuth.POST("/assets/folders/delete", adminHandler.AssetFolderDelete)
 			adminAuth.POST("/assets/folders/batch-update", adminHandler.AssetFolderBatchUpdate)
+			adminAuth.POST("/assets/batch-delete", adminHandler.AssetBatchDelete)
 
 			// 订单管理
 			adminAuth.GET("/orders", adminHandler.OrderList)

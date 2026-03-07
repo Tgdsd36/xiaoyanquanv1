@@ -95,6 +95,9 @@ class _AdminNativeWorkbenchPageState extends State<AdminNativeWorkbenchPage> {
   int _uploadCurrent = 0;
   int _uploadTotal = 0;
   List<XFile> _images = const [];
+  bool _isAssetSelectMode = false;
+  Set<int> _selectedDeleteAssetIds = <int>{};
+  Set<int> _selectedDeleteLivePackIds = <int>{};
 
   @override
   void initState() {
@@ -1486,25 +1489,68 @@ class _AdminNativeWorkbenchPageState extends State<AdminNativeWorkbenchPage> {
           final item = existingImages[index];
           final url = _assetThumbUrl(item);
           final isVideo = _assetIsVideo(item);
-          return Stack(
-            fit: StackFit.expand,
-            children: [
-              url.isNotEmpty
-                  ? Image.network(
-                    url,
-                    fit: BoxFit.cover,
-                    errorBuilder: (_, __, ___) => _thumbPlaceholder(isVideo),
-                  )
-                  : _thumbPlaceholder(isVideo),
-              if (isVideo)
-                Center(
-                  child: Icon(
-                    Icons.play_circle_fill_rounded,
-                    color: Colors.white.withValues(alpha: 0.8),
-                    size: 28,
+          final id = _assetId(item);
+          final isSelected = _selectedDeleteAssetIds.contains(id);
+          return GestureDetector(
+            onTap: _isAssetSelectMode
+                ? () {
+                    setState(() {
+                      if (isSelected) {
+                        _selectedDeleteAssetIds.remove(id);
+                      } else {
+                        _selectedDeleteAssetIds.add(id);
+                      }
+                    });
+                  }
+                : null,
+            onLongPress: !_isAssetSelectMode
+                ? () {
+                    setState(() {
+                      _isAssetSelectMode = true;
+                      _selectedDeleteAssetIds = <int>{id};
+                      _selectedDeleteLivePackIds = <int>{};
+                    });
+                  }
+                : null,
+            child: Stack(
+              fit: StackFit.expand,
+              children: [
+                url.isNotEmpty
+                    ? Image.network(
+                      url,
+                      fit: BoxFit.cover,
+                      errorBuilder: (_, __, ___) => _thumbPlaceholder(isVideo),
+                    )
+                    : _thumbPlaceholder(isVideo),
+                if (isVideo)
+                  Center(
+                    child: Icon(
+                      Icons.play_circle_fill_rounded,
+                      color: Colors.white.withValues(alpha: 0.8),
+                      size: 28,
+                    ),
                   ),
-                ),
-            ],
+                if (_isAssetSelectMode)
+                  Positioned(
+                    right: 4,
+                    top: 4,
+                    child: Icon(
+                      isSelected
+                          ? Icons.check_circle_rounded
+                          : Icons.circle_outlined,
+                      size: 22,
+                      color: isSelected ? AppColors.primary : Colors.white,
+                      shadows: const [
+                        Shadow(blurRadius: 4, color: Colors.black38),
+                      ],
+                    ),
+                  ),
+                if (_isAssetSelectMode && isSelected)
+                  Container(
+                    color: AppColors.primary.withValues(alpha: 0.15),
+                  ),
+              ],
+            ),
           );
         }
         // 添加按钮
@@ -1586,32 +1632,75 @@ class _AdminNativeWorkbenchPageState extends State<AdminNativeWorkbenchPage> {
           final item = existingVideos[index];
           final thumbUrl = _assetThumbUrl(item);
           final videoUrl = UrlUtils.absolute(_assetSourceUrl(item));
-          return Stack(
-            fit: StackFit.expand,
-            children: [
-              if (thumbUrl.isNotEmpty)
-                Image.network(
-                  thumbUrl,
-                  fit: BoxFit.cover,
-                  errorBuilder: (_, __, ___) => _thumbPlaceholder(true),
-                )
-              else if (videoUrl.isNotEmpty)
-                NetworkVideoThumbnail(
-                  videoUrl: videoUrl,
-                  fit: BoxFit.cover,
-                  placeholder: _thumbPlaceholder(true),
-                  errorWidget: _thumbPlaceholder(true),
-                )
-              else
-                _thumbPlaceholder(true),
-              Center(
-                child: Icon(
-                  Icons.play_circle_fill_rounded,
-                  color: Colors.white.withValues(alpha: 0.8),
-                  size: 28,
+          final id = _assetId(item);
+          final isSelected = _selectedDeleteAssetIds.contains(id);
+          return GestureDetector(
+            onTap: _isAssetSelectMode
+                ? () {
+                    setState(() {
+                      if (isSelected) {
+                        _selectedDeleteAssetIds.remove(id);
+                      } else {
+                        _selectedDeleteAssetIds.add(id);
+                      }
+                    });
+                  }
+                : null,
+            onLongPress: !_isAssetSelectMode
+                ? () {
+                    setState(() {
+                      _isAssetSelectMode = true;
+                      _selectedDeleteAssetIds = <int>{id};
+                      _selectedDeleteLivePackIds = <int>{};
+                    });
+                  }
+                : null,
+            child: Stack(
+              fit: StackFit.expand,
+              children: [
+                if (thumbUrl.isNotEmpty)
+                  Image.network(
+                    thumbUrl,
+                    fit: BoxFit.cover,
+                    errorBuilder: (_, __, ___) => _thumbPlaceholder(true),
+                  )
+                else if (videoUrl.isNotEmpty)
+                  NetworkVideoThumbnail(
+                    videoUrl: videoUrl,
+                    fit: BoxFit.cover,
+                    placeholder: _thumbPlaceholder(true),
+                    errorWidget: _thumbPlaceholder(true),
+                  )
+                else
+                  _thumbPlaceholder(true),
+                Center(
+                  child: Icon(
+                    Icons.play_circle_fill_rounded,
+                    color: Colors.white.withValues(alpha: 0.8),
+                    size: 28,
+                  ),
                 ),
-              ),
-            ],
+                if (_isAssetSelectMode)
+                  Positioned(
+                    right: 4,
+                    top: 4,
+                    child: Icon(
+                      isSelected
+                          ? Icons.check_circle_rounded
+                          : Icons.circle_outlined,
+                      size: 22,
+                      color: isSelected ? AppColors.primary : Colors.white,
+                      shadows: const [
+                        Shadow(blurRadius: 4, color: Colors.black38),
+                      ],
+                    ),
+                  ),
+                if (_isAssetSelectMode && isSelected)
+                  Container(
+                    color: AppColors.primary.withValues(alpha: 0.15),
+                  ),
+              ],
+            ),
           );
         }
         // 本地已选视频
@@ -1703,40 +1792,83 @@ class _AdminNativeWorkbenchPageState extends State<AdminNativeWorkbenchPage> {
                 // 服务器已有 Live 套件
                 final pack = existingPacks[index];
                 final imageUrl = _livePackImageDisplayUrl(pack);
-                return Stack(
-                  fit: StackFit.expand,
-                  children: [
-                    imageUrl.isNotEmpty
-                        ? Image.network(
-                          imageUrl,
-                          fit: BoxFit.cover,
-                          errorBuilder:
-                              (_, __, ___) => _thumbPlaceholder(false),
-                        )
-                        : _thumbPlaceholder(false),
-                    Positioned(
-                      left: 4,
-                      bottom: 4,
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 5,
-                          vertical: 1,
-                        ),
-                        decoration: BoxDecoration(
-                          color: Colors.black.withValues(alpha: 0.6),
-                          borderRadius: BorderRadius.circular(4),
-                        ),
-                        child: const Text(
-                          'LIVE',
-                          style: TextStyle(
-                            color: Colors.white,
-                            fontSize: 9,
-                            fontWeight: FontWeight.w700,
+                final packId = _livePackId(pack);
+                final isSelected = _selectedDeleteLivePackIds.contains(packId);
+                return GestureDetector(
+                  onTap: _isAssetSelectMode
+                      ? () {
+                          setState(() {
+                            if (isSelected) {
+                              _selectedDeleteLivePackIds.remove(packId);
+                            } else {
+                              _selectedDeleteLivePackIds.add(packId);
+                            }
+                          });
+                        }
+                      : null,
+                  onLongPress: !_isAssetSelectMode
+                      ? () {
+                          setState(() {
+                            _isAssetSelectMode = true;
+                            _selectedDeleteLivePackIds = <int>{packId};
+                            _selectedDeleteAssetIds = <int>{};
+                          });
+                        }
+                      : null,
+                  child: Stack(
+                    fit: StackFit.expand,
+                    children: [
+                      imageUrl.isNotEmpty
+                          ? Image.network(
+                            imageUrl,
+                            fit: BoxFit.cover,
+                            errorBuilder:
+                                (_, __, ___) => _thumbPlaceholder(false),
+                          )
+                          : _thumbPlaceholder(false),
+                      Positioned(
+                        left: 4,
+                        bottom: 4,
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 5,
+                            vertical: 1,
+                          ),
+                          decoration: BoxDecoration(
+                            color: Colors.black.withValues(alpha: 0.6),
+                            borderRadius: BorderRadius.circular(4),
+                          ),
+                          child: const Text(
+                            'LIVE',
+                            style: TextStyle(
+                              color: Colors.white,
+                              fontSize: 9,
+                              fontWeight: FontWeight.w700,
+                            ),
                           ),
                         ),
                       ),
-                    ),
-                  ],
+                      if (_isAssetSelectMode)
+                        Positioned(
+                          right: 4,
+                          top: 4,
+                          child: Icon(
+                            isSelected
+                                ? Icons.check_circle_rounded
+                                : Icons.circle_outlined,
+                            size: 22,
+                            color: isSelected ? AppColors.primary : Colors.white,
+                            shadows: const [
+                              Shadow(blurRadius: 4, color: Colors.black38),
+                            ],
+                          ),
+                        ),
+                      if (_isAssetSelectMode && isSelected)
+                        Container(
+                          color: AppColors.primary.withValues(alpha: 0.15),
+                        ),
+                    ],
+                  ),
                 );
               }
               // 本地选中的 Live 对
@@ -1923,6 +2055,9 @@ class _AdminNativeWorkbenchPageState extends State<AdminNativeWorkbenchPage> {
   }
 
   Widget _buildUploadBottomBar() {
+    if (_isAssetSelectMode) {
+      return _buildSelectModeBottomBar();
+    }
     final count = _uploadItemCount;
     final hasContent = count > 0;
     return Container(
@@ -2003,6 +2138,137 @@ class _AdminNativeWorkbenchPageState extends State<AdminNativeWorkbenchPage> {
                           ),
                         ),
                       ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildSelectModeBottomBar() {
+    final totalSelected =
+        _selectedDeleteAssetIds.length + _selectedDeleteLivePackIds.length;
+    final hasSelection = totalSelected > 0;
+
+    // 计算当前模式下的可选总数
+    int selectableCount;
+    if (_uploadMode == 'image') {
+      selectableCount = _folderExistingImages.length;
+    } else if (_uploadMode == 'video') {
+      selectableCount = _folderExistingVideos.length;
+    } else {
+      selectableCount = _folderExistingLivePacks.length;
+    }
+    final allSelected = selectableCount > 0 && totalSelected >= selectableCount;
+
+    return Container(
+      padding: const EdgeInsets.fromLTRB(12, 8, 12, 12),
+      decoration: BoxDecoration(
+        color: Colors.white.withValues(alpha: 0.95),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.05),
+            blurRadius: 10,
+            offset: const Offset(0, -2),
+          ),
+        ],
+      ),
+      child: Row(
+        children: [
+          // 全选/取消全选
+          GestureDetector(
+            onTap: () {
+              setState(() {
+                if (allSelected) {
+                  _selectedDeleteAssetIds = <int>{};
+                  _selectedDeleteLivePackIds = <int>{};
+                } else {
+                  if (_uploadMode == 'live') {
+                    _selectedDeleteLivePackIds = _folderExistingLivePacks
+                        .map((p) => _livePackId(p))
+                        .where((id) => id > 0)
+                        .toSet();
+                    _selectedDeleteAssetIds = <int>{};
+                  } else {
+                    final items = _uploadMode == 'image'
+                        ? _folderExistingImages
+                        : _folderExistingVideos;
+                    _selectedDeleteAssetIds = items
+                        .map((a) => _assetId(a))
+                        .where((id) => id > 0)
+                        .toSet();
+                    _selectedDeleteLivePackIds = <int>{};
+                  }
+                }
+              });
+            },
+            child: Container(
+              height: 48,
+              padding: const EdgeInsets.symmetric(horizontal: 14),
+              decoration: BoxDecoration(
+                color: AppColors.surface,
+                borderRadius: BorderRadius.circular(14),
+              ),
+              child: Row(
+                children: [
+                  Icon(
+                    allSelected
+                        ? Icons.check_circle_rounded
+                        : Icons.circle_outlined,
+                    size: 20,
+                    color:
+                        allSelected ? AppColors.primary : AppColors.textHint,
+                  ),
+                  const SizedBox(width: 6),
+                  Text(
+                    allSelected ? '取消全选' : '全选',
+                    style: const TextStyle(
+                      fontSize: 14,
+                      fontWeight: FontWeight.w600,
+                      color: AppColors.textPrimary,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+          const SizedBox(width: 10),
+          // 已选计数
+          Expanded(
+            child: Center(
+              child: Text(
+                '已选 $totalSelected 项',
+                style: TextStyle(
+                  fontSize: 14,
+                  fontWeight: FontWeight.w600,
+                  color: hasSelection
+                      ? AppColors.textPrimary
+                      : AppColors.textHint,
+                ),
+              ),
+            ),
+          ),
+          const SizedBox(width: 10),
+          // 删除按钮
+          SizedBox(
+            height: 48,
+            child: ElevatedButton.icon(
+              onPressed: hasSelection ? _batchDeleteAssets : null,
+              icon: const Icon(Icons.delete_outline_rounded, size: 18),
+              label: const Text(
+                '删除',
+                style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600),
+              ),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: const Color(0xFFE53935),
+                foregroundColor: Colors.white,
+                disabledBackgroundColor: AppColors.surface,
+                disabledForegroundColor: AppColors.textDisabled,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(14),
+                ),
+                elevation: 0,
+              ),
             ),
           ),
         ],
@@ -2167,6 +2433,9 @@ class _AdminNativeWorkbenchPageState extends State<AdminNativeWorkbenchPage> {
                   _liveImage = null;
                   _liveVideo = null;
                   _livePairs = const [];
+                  _isAssetSelectMode = false;
+                  _selectedDeleteAssetIds = <int>{};
+                  _selectedDeleteLivePackIds = <int>{};
                 });
                 _loadCurrent();
               },
@@ -2185,6 +2454,34 @@ class _AdminNativeWorkbenchPageState extends State<AdminNativeWorkbenchPage> {
               ),
             ),
           ),
+          // 选择/取消按钮
+          if (_folderExistingAssets.isNotEmpty || _folderExistingLivePacks.isNotEmpty)
+            Positioned(
+              right: 10,
+              top: topInset + 10,
+              child: GestureDetector(
+                onTap: _toggleAssetSelectMode,
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
+                  decoration: BoxDecoration(
+                    color: _isAssetSelectMode
+                        ? Colors.white.withValues(alpha: 0.9)
+                        : Colors.black.withValues(alpha: 0.35),
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  child: Text(
+                    _isAssetSelectMode ? '取消' : '选择',
+                    style: TextStyle(
+                      fontSize: 13,
+                      fontWeight: FontWeight.w600,
+                      color: _isAssetSelectMode
+                          ? AppColors.textPrimary
+                          : Colors.white,
+                    ),
+                  ),
+                ),
+              ),
+            ),
           // 分类名 + 计数
           Positioned(
             left: 16,
@@ -2752,6 +3049,77 @@ class _AdminNativeWorkbenchPageState extends State<AdminNativeWorkbenchPage> {
         }
       }
     } catch (_) {}
+  }
+
+  void _toggleAssetSelectMode() {
+    setState(() {
+      _isAssetSelectMode = !_isAssetSelectMode;
+      _selectedDeleteAssetIds = <int>{};
+      _selectedDeleteLivePackIds = <int>{};
+    });
+  }
+
+  void _exitAssetSelectMode() {
+    setState(() {
+      _isAssetSelectMode = false;
+      _selectedDeleteAssetIds = <int>{};
+      _selectedDeleteLivePackIds = <int>{};
+    });
+  }
+
+  Future<void> _batchDeleteAssets() async {
+    final assetCount = _selectedDeleteAssetIds.length;
+    final liveCount = _selectedDeleteLivePackIds.length;
+    if (assetCount == 0 && liveCount == 0) return;
+
+    final confirmed = await showCupertinoDialog<bool>(
+      context: context,
+      builder:
+          (ctx) => CupertinoAlertDialog(
+            title: const Text('批量删除'),
+            content: Text(
+              '确定删除选中的 $assetCount 个素材${liveCount > 0 ? '和 $liveCount 个 Live 套件' : ''}？\n此操作不可撤销。',
+            ),
+            actions: [
+              CupertinoDialogAction(
+                onPressed: () => Navigator.pop(ctx, false),
+                child: const Text('取消'),
+              ),
+              CupertinoDialogAction(
+                isDestructiveAction: true,
+                onPressed: () => Navigator.pop(ctx, true),
+                child: const Text('删除'),
+              ),
+            ],
+          ),
+    );
+    if (confirmed != true) return;
+
+    try {
+      final resp = await AdminHttpClient().dio.post(
+        '/assets/batch-delete',
+        data: {
+          'asset_ids': _selectedDeleteAssetIds.toList(),
+          'live_pack_ids': _selectedDeleteLivePackIds.toList(),
+        },
+      );
+      final data = resp.data as Map<String, dynamic>;
+      if ((data['code'] ?? -1) != 0) {
+        throw Exception((data['message'] ?? '批量删除失败').toString());
+      }
+      if (!mounted) return;
+      _exitAssetSelectMode();
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('批量删除成功')));
+      // 重新加载当前分类的素材
+      await _enterUploadFolder(_uploadSelectedFolder ?? '');
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('批量删除失败：$e')));
+    }
   }
 
   Widget _folderPlaceholder() {

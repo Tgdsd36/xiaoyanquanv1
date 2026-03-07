@@ -80,6 +80,32 @@ class UrlUtils {
     return '';
   }
 
+  /// 返回所有图片 URL（去重、保序）
+  static List<String> allImageUrls(Iterable<String?> urls) {
+    final result = <String>[];
+    final seen = <String>{};
+    for (final raw in urls) {
+      final url = absolute(raw);
+      if (url.isEmpty || isVideoUrl(url)) continue;
+      if (!isImageUrl(url)) continue;
+      if (seen.add(url)) result.add(url);
+    }
+    return result;
+  }
+
+  /// 返回所有视频 URL（去重、保序）
+  static List<String> allVideoUrls(Iterable<String?> urls) {
+    final result = <String>[];
+    final seen = <String>{};
+    for (final raw in urls) {
+      final url = absolute(raw);
+      if (url.isEmpty) continue;
+      if (!isVideoUrl(url)) continue;
+      if (seen.add(url)) result.add(url);
+    }
+    return result;
+  }
+
   static String _fileExtension(String? rawUrl) {
     final value = rawUrl?.trim() ?? '';
     if (value.isEmpty) return '';

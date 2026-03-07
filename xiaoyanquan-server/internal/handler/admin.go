@@ -1349,22 +1349,18 @@ func (h *AdminHandler) AssetList(c *gin.Context) {
 	query.Order("created_at DESC").
 		Offset((page - 1) * pageSize).Limit(pageSize).
 		Find(&assets)
+	baseURL := h.Cfg.Server.BaseURL
 	for i := range assets {
-		if assets[i].PreviewURL != "" {
-			continue
+		if assets[i].PreviewURL == "" && assets[i].FileType == "image" && isHEICURL(assets[i].URL) {
+			if generated, err := ensureHEICPreview(assets[i].URL); err == nil && generated != "" {
+				assets[i].PreviewURL = generated
+				h.DB.Model(&model.Asset{}).
+					Where("id = ?", assets[i].ID).
+					Update("preview_url", generated)
+			}
 		}
-		if assets[i].FileType != "image" {
-			continue
-		}
-		if !isHEICURL(assets[i].URL) {
-			continue
-		}
-		if generated, err := ensureHEICPreview(assets[i].URL); err == nil && generated != "" {
-			assets[i].PreviewURL = generated
-			h.DB.Model(&model.Asset{}).
-				Where("id = ?", assets[i].ID).
-				Update("preview_url", generated)
-		}
+		assets[i].URL = fullURL(baseURL, assets[i].URL)
+		assets[i].PreviewURL = fullURL(baseURL, assets[i].PreviewURL)
 	}
 
 	response.SuccessPage(c, assets, total, page, pageSize)
@@ -1442,6 +1438,7 @@ func (h *AdminHandler) AssetLivePackList(c *gin.Context) {
 		}
 	}
 
+	baseURL := h.Cfg.Server.BaseURL
 	list := make([]packItem, 0, len(packs))
 	for _, p := range packs {
 		item := packItem{
@@ -1454,13 +1451,13 @@ func (h *AdminHandler) AssetLivePackList(c *gin.Context) {
 		if p.ImageAssetID != nil {
 			item.ImageAssetID = *p.ImageAssetID
 			if a, ok := assetMap[*p.ImageAssetID]; ok {
-				item.ImageURL = a.URL
+				item.ImageURL = fullURL(baseURL, a.URL)
 				item.ImageName = a.OriginalName
 				if a.PreviewURL != "" {
-					item.ImagePreviewURL = a.PreviewURL
+					item.ImagePreviewURL = fullURL(baseURL, a.PreviewURL)
 				} else if isHEICURL(a.URL) {
 					if generated, err := ensureHEICPreview(a.URL); err == nil && generated != "" {
-						item.ImagePreviewURL = generated
+						item.ImagePreviewURL = fullURL(baseURL, generated)
 						h.DB.Model(&model.Asset{}).
 							Where("id = ?", a.ID).
 							Update("preview_url", generated)
@@ -1471,7 +1468,7 @@ func (h *AdminHandler) AssetLivePackList(c *gin.Context) {
 		if p.VideoAssetID != nil {
 			item.VideoAssetID = *p.VideoAssetID
 			if a, ok := assetMap[*p.VideoAssetID]; ok {
-				item.VideoURL = a.URL
+				item.VideoURL = fullURL(baseURL, a.URL)
 				item.VideoName = a.OriginalName
 			}
 		}
@@ -1776,6 +1773,18 @@ func (h *AdminHandler) AssetFolderBatchUpdate(c *gin.Context) {
 	})
 }
 
+// deleteAssetFile 删除素材文件（兼容本地和 COS）
+func (h *AdminHandler) deleteAssetFile(fileURL string) {
+	if fileURL == "" {
+		return
+	}
+	if strings.HasPrefix(fileURL, "/static/") {
+		os.Remove(filepath.Join(".", strings.TrimPrefix(fileURL, "/")))
+	} else if h.Store != nil && h.Store.Enabled() {
+		h.Store.Delete(fileURL)
+	}
+}
+
 func (h *AdminHandler) AssetDelete(c *gin.Context) {
 	id, _ := strconv.Atoi(c.Param("id"))
 	var asset model.Asset
@@ -1784,11 +1793,9 @@ func (h *AdminHandler) AssetDelete(c *gin.Context) {
 		return
 	}
 
-	// 删除本地文件
-	os.Remove(filepath.Join(".", strings.TrimPrefix(asset.URL, "/")))
-	if strings.TrimSpace(asset.PreviewURL) != "" {
-		os.Remove(filepath.Join(".", strings.TrimPrefix(asset.PreviewURL, "/")))
-	}
+	// 删除存储文件
+	h.deleteAssetFile(asset.URL)
+	h.deleteAssetFile(asset.PreviewURL)
 
 	if err := h.DB.Transaction(func(tx *gorm.DB) error {
 		if err := tx.Model(&model.LiveAssetPack{}).
@@ -1821,6 +1828,138 @@ func (h *AdminHandler) AssetDelete(c *gin.Context) {
 	}
 
 	response.SuccessMessage(c, "删除成功")
+}
+
+// AssetBatchDelete 批量删除素材和 Live 套件
+func (h *AdminHandler) AssetBatchDelete(c *gin.Context) {
+	var req struct {
+		AssetIDs    []uint `json:"asset_ids"`
+		LivePackIDs []uint `json:"live_pack_ids"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.BadRequest(c, 400, "参数错误")
+		return
+	}
+
+	// 去重
+	assetIDSet := make(map[uint]struct{}, len(req.AssetIDs))
+	assetIDs := make([]uint, 0, len(req.AssetIDs))
+	for _, id := range req.AssetIDs {
+		if id == 0 {
+			continue
+		}
+		if _, exists := assetIDSet[id]; exists {
+			continue
+		}
+		assetIDSet[id] = struct{}{}
+		assetIDs = append(assetIDs, id)
+	}
+
+	livePackIDSet := make(map[uint]struct{}, len(req.LivePackIDs))
+	livePackIDs := make([]uint, 0, len(req.LivePackIDs))
+	for _, id := range req.LivePackIDs {
+		if id == 0 {
+			continue
+		}
+		if _, exists := livePackIDSet[id]; exists {
+			continue
+		}
+		livePackIDSet[id] = struct{}{}
+		livePackIDs = append(livePackIDs, id)
+	}
+
+	if len(assetIDs) == 0 && len(livePackIDs) == 0 {
+		response.BadRequest(c, 400, "请至少选择一个素材或套件")
+		return
+	}
+
+	// 收集所有需要删除的 asset（包括 live pack 关联的）
+	allDeleteAssetIDs := make(map[uint]struct{})
+	for _, id := range assetIDs {
+		allDeleteAssetIDs[id] = struct{}{}
+	}
+
+	// 查找 live pack 关联的 asset
+	if len(livePackIDs) > 0 {
+		var packs []model.LiveAssetPack
+		h.DB.Select("id, image_asset_id, video_asset_id").
+			Where("id IN ?", livePackIDs).
+			Find(&packs)
+		for _, p := range packs {
+			if p.ImageAssetID != nil && *p.ImageAssetID > 0 {
+				allDeleteAssetIDs[*p.ImageAssetID] = struct{}{}
+			}
+			if p.VideoAssetID != nil && *p.VideoAssetID > 0 {
+				allDeleteAssetIDs[*p.VideoAssetID] = struct{}{}
+			}
+		}
+	}
+
+	// 查出所有待删 asset 的文件路径
+	finalAssetIDs := make([]uint, 0, len(allDeleteAssetIDs))
+	for id := range allDeleteAssetIDs {
+		finalAssetIDs = append(finalAssetIDs, id)
+	}
+
+	var assets []model.Asset
+	if len(finalAssetIDs) > 0 {
+		h.DB.Select("id, url, preview_url").Where("id IN ?", finalAssetIDs).Find(&assets)
+	}
+
+	// 删除存储文件
+	for _, asset := range assets {
+		h.deleteAssetFile(asset.URL)
+		h.deleteAssetFile(asset.PreviewURL)
+	}
+
+	// 事务：清理 DB 记录
+	if err := h.DB.Transaction(func(tx *gorm.DB) error {
+		if len(finalAssetIDs) > 0 {
+			// 解除其他 live pack 对这些 asset 的引用
+			if err := tx.Model(&model.LiveAssetPack{}).
+				Where("image_asset_id IN ?", finalAssetIDs).
+				Updates(map[string]interface{}{"image_asset_id": nil, "status": "incomplete"}).
+				Error; err != nil {
+				return err
+			}
+			if err := tx.Model(&model.LiveAssetPack{}).
+				Where("video_asset_id IN ?", finalAssetIDs).
+				Updates(map[string]interface{}{"video_asset_id": nil, "status": "incomplete"}).
+				Error; err != nil {
+				return err
+			}
+		}
+
+		// 删除指定的 live pack
+		if len(livePackIDs) > 0 {
+			if err := tx.Where("id IN ?", livePackIDs).Delete(&model.LiveAssetPack{}).Error; err != nil {
+				return err
+			}
+		}
+
+		// 清理双端都为空的 live pack
+		if err := tx.Where("image_asset_id IS NULL AND video_asset_id IS NULL").
+			Delete(&model.LiveAssetPack{}).Error; err != nil {
+			return err
+		}
+
+		// 删除 asset 记录
+		if len(finalAssetIDs) > 0 {
+			if err := tx.Where("id IN ?", finalAssetIDs).Delete(&model.Asset{}).Error; err != nil {
+				return err
+			}
+		}
+
+		return nil
+	}); err != nil {
+		response.ServerError(c, "批量删除失败")
+		return
+	}
+
+	response.Success(c, gin.H{
+		"asset_count":     len(finalAssetIDs),
+		"live_pack_count": len(livePackIDs),
+	})
 }
 
 func resolveLiveRole(rawRole, ext string) string {
@@ -1859,7 +1998,7 @@ func liveRoleFromAssetURL(url string) string {
 		cleanURL = cleanURL[:idx]
 	}
 	ext := strings.ToLower(filepath.Ext(cleanURL))
-	// 自动扫描时：HEIC/HEIF → image, MOV → video, JPG/JPEG → image（用于历史数据兼容）
+	// HEIC/HEIF → image, JPG/JPEG → image, MOV → video
 	if isHEICExt(ext) || ext == ".jpg" || ext == ".jpeg" {
 		return "image"
 	}
@@ -1867,6 +2006,15 @@ func liveRoleFromAssetURL(url string) string {
 		return "video"
 	}
 	return ""
+}
+
+func isJPGURL(url string) bool {
+	clean := url
+	if idx := strings.Index(clean, "?"); idx >= 0 {
+		clean = clean[:idx]
+	}
+	ext := strings.ToLower(filepath.Ext(clean))
+	return ext == ".jpg" || ext == ".jpeg"
 }
 
 func livePackStatus(imageAssetID, videoAssetID *uint) string {
@@ -2141,6 +2289,51 @@ func (h *AdminHandler) ensureLegacyLivePacks() error {
 		}
 	}
 
+	// 清理：删除因 JPG 被误判而创建的半成品 LiveAssetPack（仅有 image，无 video，且 image 是 JPG）
+	var jpgOnlyPacks []model.LiveAssetPack
+	if err := h.DB.Where("status = ? AND video_asset_id IS NULL AND image_asset_id IS NOT NULL", "incomplete").
+		Find(&jpgOnlyPacks).Error; err != nil {
+		return err
+	}
+	jpgCleanIDs := make([]uint, 0)
+	for _, p := range jpgOnlyPacks {
+		if p.ImageAssetID == nil {
+			continue
+		}
+		var imgAsset model.Asset
+		if err := h.DB.Select("id, url").First(&imgAsset, *p.ImageAssetID).Error; err != nil {
+			continue
+		}
+		cleanURL := imgAsset.URL
+		if idx := strings.Index(cleanURL, "?"); idx >= 0 {
+			cleanURL = cleanURL[:idx]
+		}
+		ext := strings.ToLower(filepath.Ext(cleanURL))
+		if ext == ".jpg" || ext == ".jpeg" {
+			jpgCleanIDs = append(jpgCleanIDs, p.ID)
+		}
+	}
+	if len(jpgCleanIDs) > 0 {
+		if err := h.DB.Where("id IN ?", jpgCleanIDs).Delete(&model.LiveAssetPack{}).Error; err != nil {
+			return err
+		}
+		// 重新构建 linked 集合
+		packs = nil
+		if err := h.DB.Select("id, image_asset_id, video_asset_id").Find(&packs).Error; err != nil {
+			return err
+		}
+		linked = make(map[uint]struct{}, len(packs)*2)
+		for _, p := range packs {
+			if p.ImageAssetID != nil {
+				linked[*p.ImageAssetID] = struct{}{}
+			}
+			if p.VideoAssetID != nil {
+				linked[*p.VideoAssetID] = struct{}{}
+			}
+		}
+	}
+
+	// 自动扫描：HEIC/HEIF + JPG/JPEG + MOV
 	var assets []model.Asset
 	if err := h.DB.Where(`
 		lower(coalesce(url, '')) LIKE '%.heic' OR
@@ -2152,15 +2345,46 @@ func (h *AdminHandler) ensureLegacyLivePacks() error {
 		return err
 	}
 
+	// 第一阶段：处理 HEIC/HEIF + MOV（可自由创建/补全 LiveAssetPack）
 	for _, asset := range assets {
 		if _, exists := linked[asset.ID]; exists {
 			continue
+		}
+		if isJPGURL(asset.URL) {
+			continue // JPG 留到第二阶段
 		}
 		liveRole := liveRoleFromAssetURL(asset.URL)
 		if liveRole == "" {
 			continue
 		}
 		if _, err := h.attachAssetToLivePack(asset, liveRole); err == nil {
+			linked[asset.ID] = struct{}{}
+		}
+	}
+
+	// 第二阶段：处理 JPG/JPEG（只补全已有 incomplete pack，不创建新 pack）
+	// 这样独立 JPG 不会被误划入 Live，而 JPG+MOV 的 Live Photo 能正确配对
+	for _, asset := range assets {
+		if _, exists := linked[asset.ID]; exists {
+			continue
+		}
+		if !isJPGURL(asset.URL) {
+			continue
+		}
+		baseName := liveBaseNameFromAsset(asset)
+		baseName = trimLiveRoleSuffix(baseName, "image")
+		if baseName == "" {
+			continue
+		}
+		folder := strings.TrimSpace(asset.Folder)
+		// 查找是否存在待配对的 incomplete pack（有 video 缺 image）
+		var existingPack model.LiveAssetPack
+		if err := h.DB.Where("folder = ? AND base_name = ? AND status = ? AND image_asset_id IS NULL AND video_asset_id IS NOT NULL",
+			folder, baseName, "incomplete").First(&existingPack).Error; err != nil {
+			continue // 没有对应的 MOV pack，这是独立 JPG，跳过
+		}
+		// 找到了待配对的 pack，补全它
+		if _, err := h.attachAssetToLivePack(asset, "image"); err == nil {
 			linked[asset.ID] = struct{}{}
 		}
 	}

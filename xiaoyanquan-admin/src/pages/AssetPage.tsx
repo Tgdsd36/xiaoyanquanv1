@@ -379,6 +379,29 @@ export default function AssetPage() {
     }
   };
 
+  const handleBatchDelete = async () => {
+    if (selectedCount === 0) {
+      message.warning('请先选择素材');
+      return;
+    }
+    try {
+      const { data: resp } = await http.post('/assets/batch-delete', {
+        asset_ids: isLiveMode ? [] : selectedAssetIds,
+        live_pack_ids: isLiveMode ? selectedLivePackIds : [],
+      });
+      if (resp.code === 0) {
+        message.success('批量删除成功');
+        handleClearSelection();
+        fetchData();
+        fetchFolders();
+      } else {
+        message.error(resp.message || '批量删除失败');
+      }
+    } catch {
+      message.error('批量删除失败');
+    }
+  };
+
   const handleCreateFolder = async () => {
     const name = newFolderName.trim();
     if (!name) return;
@@ -557,6 +580,17 @@ export default function AssetPage() {
           >
             <Button type="primary" disabled={selectedCount === 0 || !targetFolder}>
               批量修改分类
+            </Button>
+          </Popconfirm>
+          <Popconfirm
+            title={`确认删除已选的 ${selectedCount} 个${isLiveMode ? '套件' : '文件'}？此操作不可撤销。`}
+            onConfirm={handleBatchDelete}
+            disabled={selectedCount === 0}
+            okText="删除"
+            okButtonProps={{ danger: true }}
+          >
+            <Button danger disabled={selectedCount === 0} icon={<DeleteOutlined />}>
+              批量删除
             </Button>
           </Popconfirm>
         </Space>
