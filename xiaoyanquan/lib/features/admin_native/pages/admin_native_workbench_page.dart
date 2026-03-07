@@ -39,13 +39,7 @@ class AdminNativeWorkbenchPage extends StatefulWidget {
 class _AdminNativeWorkbenchPageState extends State<AdminNativeWorkbenchPage> {
   static const String _allFoldersValue = '__all__';
   static const String _uncategorizedFolderValue = '__uncategorized__';
-  static const List<String> _tabTitles = [
-    '看板',
-    '上传',
-    '素材',
-    '提问',
-    '分类',
-  ];
+  static const List<String> _tabTitles = ['看板', '上传', '素材', '提问', '分类'];
   static const List<String> _tabSubtitles = [
     '核心数据概览与快捷入口',
     '图片 / 视频 / Live 素材上传',
@@ -137,7 +131,7 @@ class _AdminNativeWorkbenchPageState extends State<AdminNativeWorkbenchPage> {
         if ((data['code'] ?? -1) == 0) {
           _dashboard = (data['data'] as Map?)?.cast<String, dynamic>() ?? {};
         }
-    } else if (_index == 1) {
+      } else if (_index == 1) {
         await _loadAssetFolders();
         await _loadFolderThumbnails();
       } else if (_index == 2) {
@@ -146,9 +140,10 @@ class _AdminNativeWorkbenchPageState extends State<AdminNativeWorkbenchPage> {
         await _loadPublishSourceAssets();
         await _loadPublishSourceLivePacks();
       } else if (_index == 3) {
-        final resp = await AdminHttpClient()
-            .dio
-            .get('/questions', queryParameters: {'page': 1, 'page_size': 20});
+        final resp = await AdminHttpClient().dio.get(
+          '/questions',
+          queryParameters: {'page': 1, 'page_size': 20},
+        );
         final data = resp.data as Map<String, dynamic>;
         if ((data['code'] ?? -1) == 0) {
           final payload = (data['data'] as Map?)?.cast<String, dynamic>() ?? {};
@@ -159,9 +154,9 @@ class _AdminNativeWorkbenchPageState extends State<AdminNativeWorkbenchPage> {
       }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('加载失败：$e')),
-        );
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('加载失败：$e')));
       }
     } finally {
       if (mounted) {
@@ -177,18 +172,17 @@ class _AdminNativeWorkbenchPageState extends State<AdminNativeWorkbenchPage> {
     final payload = (data['data'] as Map?)?.cast<String, dynamic>() ?? {};
     final list = List<dynamic>.from(payload['folders'] ?? const []);
     _assetFolders = list
-        .map(
-          (item) => (item as Map).cast<String, dynamic>(),
-        )
+        .map((item) => (item as Map).cast<String, dynamic>())
         .toList(growable: false);
   }
 
   Future<void> _loadAssets() async {
     final params = <String, dynamic>{'page': 1, 'page_size': 20};
     if (_assetFolderFilter != _allFoldersValue) {
-      params['folder'] = _assetFolderFilter == _uncategorizedFolderValue
-          ? ''
-          : _assetFolderFilter;
+      params['folder'] =
+          _assetFolderFilter == _uncategorizedFolderValue
+              ? ''
+              : _assetFolderFilter;
     }
     final resp = await AdminHttpClient().dio.get(
       '/assets',
@@ -203,9 +197,10 @@ class _AdminNativeWorkbenchPageState extends State<AdminNativeWorkbenchPage> {
   Future<void> _loadAssetLivePacks() async {
     final params = <String, dynamic>{'page': 1, 'page_size': 20};
     if (_assetFolderFilter != _allFoldersValue) {
-      params['folder'] = _assetFolderFilter == _uncategorizedFolderValue
-          ? ''
-          : _assetFolderFilter;
+      params['folder'] =
+          _assetFolderFilter == _uncategorizedFolderValue
+              ? ''
+              : _assetFolderFilter;
     }
     final resp = await AdminHttpClient().dio.get(
       '/assets/live-packs',
@@ -257,9 +252,7 @@ class _AdminNativeWorkbenchPageState extends State<AdminNativeWorkbenchPage> {
     if ((data['code'] ?? -1) != 0) return;
     final list = List<dynamic>.from(data['data'] ?? const []);
     _categories = list
-        .map(
-          (item) => (item as Map).cast<String, dynamic>(),
-        )
+        .map((item) => (item as Map).cast<String, dynamic>())
         .toList(growable: false);
   }
 
@@ -267,25 +260,26 @@ class _AdminNativeWorkbenchPageState extends State<AdminNativeWorkbenchPage> {
     final controller = TextEditingController();
     final name = await showDialog<String>(
       context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('新建分类'),
-        content: TextField(
-          controller: controller,
-          autofocus: true,
-          decoration: const InputDecoration(hintText: '输入分类名称'),
-          onSubmitted: (_) => Navigator.pop(ctx, controller.text.trim()),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx),
-            child: const Text('取消'),
+      builder:
+          (ctx) => AlertDialog(
+            title: const Text('新建分类'),
+            content: TextField(
+              controller: controller,
+              autofocus: true,
+              decoration: const InputDecoration(hintText: '输入分类名称'),
+              onSubmitted: (_) => Navigator.pop(ctx, controller.text.trim()),
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(ctx),
+                child: const Text('取消'),
+              ),
+              TextButton(
+                onPressed: () => Navigator.pop(ctx, controller.text.trim()),
+                child: const Text('确定'),
+              ),
+            ],
           ),
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, controller.text.trim()),
-            child: const Text('确定'),
-          ),
-        ],
-      ),
     );
     final folderName = (name ?? '').trim();
     if (folderName.isEmpty) return;
@@ -349,69 +343,77 @@ class _AdminNativeWorkbenchPageState extends State<AdminNativeWorkbenchPage> {
 
     final submitted = await showDialog<bool>(
       context: context,
-      builder: (ctx) => StatefulBuilder(
-        builder: (ctx, setDialogState) => AlertDialog(
-          title: const Text('新建分类'),
-          content: SingleChildScrollView(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                DropdownButtonFormField<int?>(
-                  value: selectedParentId,
-                  isExpanded: true,
-                  decoration: const InputDecoration(labelText: '归属一级分类'),
-                  hint: const Text('留空=创建一级分类'),
-                  items: [
-                    const DropdownMenuItem<int?>(
-                      value: null,
-                      child: Text('无（一级分类）'),
+      builder:
+          (ctx) => StatefulBuilder(
+            builder:
+                (ctx, setDialogState) => AlertDialog(
+                  title: const Text('新建分类'),
+                  content: SingleChildScrollView(
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        DropdownButtonFormField<int?>(
+                          value: selectedParentId,
+                          isExpanded: true,
+                          decoration: const InputDecoration(
+                            labelText: '归属一级分类',
+                          ),
+                          hint: const Text('留空=创建一级分类'),
+                          items: [
+                            const DropdownMenuItem<int?>(
+                              value: null,
+                              child: Text('无（一级分类）'),
+                            ),
+                            ...parentOptions.map(
+                              (e) => DropdownMenuItem<int?>(
+                                value: (e['id'] as num?)?.toInt(),
+                                child: Text((e['name'] ?? '').toString()),
+                              ),
+                            ),
+                          ],
+                          onChanged: (value) {
+                            setDialogState(() => selectedParentId = value);
+                          },
+                        ),
+                        const SizedBox(height: 10),
+                        TextField(
+                          controller: nameController,
+                          autofocus: true,
+                          decoration: const InputDecoration(labelText: '分类名称'),
+                        ),
+                        const SizedBox(height: 10),
+                        TextField(
+                          controller: sortController,
+                          keyboardType: TextInputType.number,
+                          decoration: const InputDecoration(
+                            labelText: '排序（默认0）',
+                          ),
+                        ),
+                        const SizedBox(height: 10),
+                        SwitchListTile(
+                          contentPadding: EdgeInsets.zero,
+                          title: const Text('是否可见'),
+                          value: isVisible,
+                          onChanged:
+                              (value) =>
+                                  setDialogState(() => isVisible = value),
+                        ),
+                      ],
                     ),
-                    ...parentOptions.map(
-                      (e) => DropdownMenuItem<int?>(
-                        value: (e['id'] as num?)?.toInt(),
-                        child: Text((e['name'] ?? '').toString()),
-                      ),
+                  ),
+                  actions: [
+                    TextButton(
+                      onPressed: () => Navigator.pop(ctx, false),
+                      child: const Text('取消'),
+                    ),
+                    TextButton(
+                      onPressed: () => Navigator.pop(ctx, true),
+                      child: const Text('创建'),
                     ),
                   ],
-                  onChanged: (value) {
-                    setDialogState(() => selectedParentId = value);
-                  },
                 ),
-                const SizedBox(height: 10),
-                TextField(
-                  controller: nameController,
-                  autofocus: true,
-                  decoration: const InputDecoration(labelText: '分类名称'),
-                ),
-                const SizedBox(height: 10),
-                TextField(
-                  controller: sortController,
-                  keyboardType: TextInputType.number,
-                  decoration: const InputDecoration(labelText: '排序（默认0）'),
-                ),
-                const SizedBox(height: 10),
-                SwitchListTile(
-                  contentPadding: EdgeInsets.zero,
-                  title: const Text('是否可见'),
-                  value: isVisible,
-                  onChanged: (value) => setDialogState(() => isVisible = value),
-                ),
-              ],
-            ),
           ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(ctx, false),
-              child: const Text('取消'),
-            ),
-            TextButton(
-              onPressed: () => Navigator.pop(ctx, true),
-              child: const Text('创建'),
-            ),
-          ],
-        ),
-      ),
     );
 
     if (submitted != true) return;
@@ -485,19 +487,19 @@ class _AdminNativeWorkbenchPageState extends State<AdminNativeWorkbenchPage> {
     try {
       final results = await NativeLivePicker.pickMultipleLiveForUpload();
       if (!mounted || results.isEmpty) return;
-      final newPairs = results
-          .map(
-            (r) => _LiveUploadPair(
-              image: XFile(r.imagePath),
-              video: XFile(r.videoPath),
-              baseName: _normalizeLiveBatchBase(r.imageName),
-              source: r.source,
-            ),
-          )
-          .toList();
+      final newPairs =
+          results
+              .map(
+                (r) => _LiveUploadPair(
+                  image: XFile(r.imagePath),
+                  video: XFile(r.videoPath),
+                  baseName: _normalizeLiveBatchBase(r.imageName),
+                  source: r.source,
+                ),
+              )
+              .toList();
       setState(() {
         _livePairs = [..._livePairs, ...newPairs];
-
       });
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
@@ -505,14 +507,14 @@ class _AdminNativeWorkbenchPageState extends State<AdminNativeWorkbenchPage> {
       );
     } on PlatformException catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(e.message ?? '选择 Live Photo 失败')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(e.message ?? '选择 Live Photo 失败')));
     } catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('选择 Live Photo 失败：$e')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('选择 Live Photo 失败：$e')));
     }
   }
 
@@ -538,10 +540,7 @@ class _AdminNativeWorkbenchPageState extends State<AdminNativeWorkbenchPage> {
       RegExp(r'([_\-\s]+)?(image|photo|static|heic|heif)$'),
       '',
     );
-    name = name.replaceAll(
-      RegExp(r'([_\-\s]+)?(video|mov|motion)$'),
-      '',
-    );
+    name = name.replaceAll(RegExp(r'([_\-\s]+)?(video|mov|motion)$'), '');
     return name.trim();
   }
 
@@ -586,7 +585,8 @@ class _AdminNativeWorkbenchPageState extends State<AdminNativeWorkbenchPage> {
       for (final base in allBases) {
         final imgList = images[base] ?? const <XFile>[];
         final vidList = videos[base] ?? const <XFile>[];
-        final pairCount = imgList.length < vidList.length ? imgList.length : vidList.length;
+        final pairCount =
+            imgList.length < vidList.length ? imgList.length : vidList.length;
         for (var i = 0; i < pairCount; i++) {
           pairs.add(
             _LiveUploadPair(
@@ -612,23 +612,23 @@ class _AdminNativeWorkbenchPageState extends State<AdminNativeWorkbenchPage> {
         _livePairs = pairs;
         _liveImage = pairs.first.image;
         _liveVideo = pairs.first.video;
-
       });
 
-      final msg = '已识别 ${pairs.length} 套 Live'
+      final msg =
+          '已识别 ${pairs.length} 套 Live'
           '${unpaired > 0 ? '，未配对 $unpaired 个文件' : ''}'
           '${skipped > 0 ? '，跳过 $skipped 个非 Live 文件' : ''}';
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg)));
     } on PlatformException catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(e.message ?? '批量选择 Live 失败')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(e.message ?? '批量选择 Live 失败')));
     } catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('批量选择 Live 失败：$e')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('批量选择 Live 失败：$e')));
     }
   }
 
@@ -641,7 +641,10 @@ class _AdminNativeWorkbenchPageState extends State<AdminNativeWorkbenchPage> {
   }) async {
     final folderText = (folder ?? _folder).trim();
     final formData = FormData.fromMap({
-      'file': await MultipartFile.fromFile(file.path, filename: _filename(file)),
+      'file': await MultipartFile.fromFile(
+        file.path,
+        filename: _filename(file),
+      ),
       if (folderText.isNotEmpty) 'folder': folderText,
       if (liveRole != null) 'live_role': liveRole,
     });
@@ -661,9 +664,9 @@ class _AdminNativeWorkbenchPageState extends State<AdminNativeWorkbenchPage> {
     if (_uploading) return;
     final count = _uploadItemCount;
     if (count == 0) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('请先选择文件')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('请先选择文件')));
       return;
     }
 
@@ -706,12 +709,13 @@ class _AdminNativeWorkbenchPageState extends State<AdminNativeWorkbenchPage> {
         }
       }
       if (!mounted) return;
-      final successText = _uploadMode == 'live' && _livePairs.isNotEmpty
-          ? '上传成功，已完成 ${_livePairs.length} 套 Live'
-          : '上传成功';
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(successText)),
-      );
+      final successText =
+          _uploadMode == 'live' && _livePairs.isNotEmpty
+              ? '上传成功，已完成 ${_livePairs.length} 套 Live'
+              : '上传成功';
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(successText)));
       setState(() {
         _images = const [];
         _singleVideo = null;
@@ -722,9 +726,9 @@ class _AdminNativeWorkbenchPageState extends State<AdminNativeWorkbenchPage> {
       });
     } catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('上传失败：$e')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('上传失败：$e')));
     } finally {
       if (mounted) {
         setState(() {
@@ -743,22 +747,26 @@ class _AdminNativeWorkbenchPageState extends State<AdminNativeWorkbenchPage> {
     );
     final text = await showDialog<String>(
       context: context,
-      builder: (ctx) => AlertDialog(
-        title: Text('回复提问 #$id'),
-        content: TextField(
-          controller: controller,
-          minLines: 3,
-          maxLines: 6,
-          decoration: const InputDecoration(hintText: '输入回复内容'),
-        ),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('取消')),
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, controller.text.trim()),
-            child: const Text('提交'),
+      builder:
+          (ctx) => AlertDialog(
+            title: Text('回复提问 #$id'),
+            content: TextField(
+              controller: controller,
+              minLines: 3,
+              maxLines: 6,
+              decoration: const InputDecoration(hintText: '输入回复内容'),
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(ctx),
+                child: const Text('取消'),
+              ),
+              TextButton(
+                onPressed: () => Navigator.pop(ctx, controller.text.trim()),
+                child: const Text('提交'),
+              ),
+            ],
           ),
-        ],
-      ),
     );
     if (text == null || text.isEmpty) return;
     try {
@@ -769,18 +777,18 @@ class _AdminNativeWorkbenchPageState extends State<AdminNativeWorkbenchPage> {
       final data = resp.data as Map<String, dynamic>;
       if ((data['code'] ?? -1) == 0) {
         if (!mounted) return;
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('回复成功')),
-        );
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(const SnackBar(content: Text('回复成功')));
         await _loadCurrent();
       } else {
         throw Exception((data['message'] ?? '回复失败').toString());
       }
     } catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('回复失败：$e')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('回复失败：$e')));
     }
   }
 
@@ -900,13 +908,15 @@ class _AdminNativeWorkbenchPageState extends State<AdminNativeWorkbenchPage> {
         height: 36,
         decoration: BoxDecoration(
           borderRadius: BorderRadius.circular(12),
-          color: danger
-              ? AppColors.error.withValues(alpha: 0.12)
-              : AppColors.surface,
+          color:
+              danger
+                  ? AppColors.error.withValues(alpha: 0.12)
+                  : AppColors.surface,
           border: Border.all(
-            color: danger
-                ? AppColors.error.withValues(alpha: 0.25)
-                : AppColors.border,
+            color:
+                danger
+                    ? AppColors.error.withValues(alpha: 0.25)
+                    : AppColors.border,
           ),
         ),
         child: Icon(
@@ -976,7 +986,8 @@ class _AdminNativeWorkbenchPageState extends State<AdminNativeWorkbenchPage> {
                       padding: const EdgeInsets.symmetric(vertical: 8),
                       decoration: BoxDecoration(
                         borderRadius: BorderRadius.circular(22),
-                        color: selected ? AppColors.primary : Colors.transparent,
+                        color:
+                            selected ? AppColors.primary : Colors.transparent,
                       ),
                       child: Column(
                         mainAxisSize: MainAxisSize.min,
@@ -984,7 +995,10 @@ class _AdminNativeWorkbenchPageState extends State<AdminNativeWorkbenchPage> {
                           Icon(
                             _tabIcons[i],
                             size: 18,
-                            color: selected ? Colors.white : AppColors.textSecondary,
+                            color:
+                                selected
+                                    ? Colors.white
+                                    : AppColors.textSecondary,
                           ),
                           const SizedBox(height: 2),
                           Text(
@@ -993,8 +1007,12 @@ class _AdminNativeWorkbenchPageState extends State<AdminNativeWorkbenchPage> {
                             overflow: TextOverflow.ellipsis,
                             style: TextStyle(
                               fontSize: 10.5,
-                              fontWeight: selected ? FontWeight.w700 : FontWeight.w600,
-                              color: selected ? Colors.white : AppColors.textSecondary,
+                              fontWeight:
+                                  selected ? FontWeight.w700 : FontWeight.w600,
+                              color:
+                                  selected
+                                      ? Colors.white
+                                      : AppColors.textSecondary,
                             ),
                           ),
                         ],
@@ -1019,10 +1037,26 @@ class _AdminNativeWorkbenchPageState extends State<AdminNativeWorkbenchPage> {
       AppColors.primary,
     ];
     final items = [
-      {'title': '用户总数', 'value': '${d['user_count'] ?? '-'}', 'icon': Icons.people_alt_rounded},
-      {'title': '素材总数', 'value': '${d['material_count'] ?? '-'}', 'icon': Icons.perm_media_rounded},
-      {'title': '订单总数', 'value': '${d['order_count'] ?? '-'}', 'icon': Icons.receipt_long_rounded},
-      {'title': '待回复提问', 'value': '${d['question_count'] ?? '-'}', 'icon': Icons.mark_chat_unread_rounded},
+      {
+        'title': '用户总数',
+        'value': '${d['user_count'] ?? '-'}',
+        'icon': Icons.people_alt_rounded,
+      },
+      {
+        'title': '素材总数',
+        'value': '${d['material_count'] ?? '-'}',
+        'icon': Icons.perm_media_rounded,
+      },
+      {
+        'title': '订单总数',
+        'value': '${d['order_count'] ?? '-'}',
+        'icon': Icons.receipt_long_rounded,
+      },
+      {
+        'title': '待回复提问',
+        'value': '${d['question_count'] ?? '-'}',
+        'icon': Icons.mark_chat_unread_rounded,
+      },
     ];
     return ListView(
       padding: const EdgeInsets.fromLTRB(14, 14, 14, 22),
@@ -1032,7 +1066,9 @@ class _AdminNativeWorkbenchPageState extends State<AdminNativeWorkbenchPage> {
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(18),
             color: AppColors.primaryBg,
-            border: Border.all(color: AppColors.primary.withValues(alpha: 0.24)),
+            border: Border.all(
+              color: AppColors.primary.withValues(alpha: 0.24),
+            ),
           ),
           child: const Row(
             children: [
@@ -1108,7 +1144,11 @@ class _AdminNativeWorkbenchPageState extends State<AdminNativeWorkbenchPage> {
         Row(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Icon(Icons.access_time_rounded, size: 14, color: AppColors.textHint),
+            Icon(
+              Icons.access_time_rounded,
+              size: 14,
+              color: AppColors.textHint,
+            ),
             const SizedBox(width: 4),
             Text(
               '运营数据每次进入页面时刷新',
@@ -1214,7 +1254,11 @@ class _AdminNativeWorkbenchPageState extends State<AdminNativeWorkbenchPage> {
                 ],
               ),
             ),
-            Icon(Icons.chevron_right_rounded, color: color.withValues(alpha: 0.5), size: 20),
+            Icon(
+              Icons.chevron_right_rounded,
+              color: color.withValues(alpha: 0.5),
+              size: 20,
+            ),
           ],
         ),
       ),
@@ -1288,52 +1332,57 @@ class _AdminNativeWorkbenchPageState extends State<AdminNativeWorkbenchPage> {
         borderRadius: BorderRadius.circular(22),
       ),
       child: Row(
-        children: modes.map((m) {
-          final value = m['value'] as String;
-          final selected = _uploadMode == value;
-          final unselectedColor = dark ? Colors.white70 : AppColors.textSecondary;
-          return Expanded(
-            child: GestureDetector(
-              onTap: () => setState(() => _uploadMode = value),
-              child: AnimatedContainer(
-                duration: const Duration(milliseconds: 200),
-                padding: const EdgeInsets.symmetric(vertical: 10),
-                decoration: BoxDecoration(
-                  color: selected ? AppColors.primary : Colors.transparent,
-                  borderRadius: BorderRadius.circular(18),
-                  boxShadow: selected
-                      ? [
-                          BoxShadow(
-                            color: AppColors.primary.withValues(alpha: 0.25),
-                            blurRadius: 8,
-                            offset: const Offset(0, 2),
+        children:
+            modes.map((m) {
+              final value = m['value'] as String;
+              final selected = _uploadMode == value;
+              final unselectedColor =
+                  dark ? Colors.white70 : AppColors.textSecondary;
+              return Expanded(
+                child: GestureDetector(
+                  onTap: () => setState(() => _uploadMode = value),
+                  child: AnimatedContainer(
+                    duration: const Duration(milliseconds: 200),
+                    padding: const EdgeInsets.symmetric(vertical: 10),
+                    decoration: BoxDecoration(
+                      color: selected ? AppColors.primary : Colors.transparent,
+                      borderRadius: BorderRadius.circular(18),
+                      boxShadow:
+                          selected
+                              ? [
+                                BoxShadow(
+                                  color: AppColors.primary.withValues(
+                                    alpha: 0.25,
+                                  ),
+                                  blurRadius: 8,
+                                  offset: const Offset(0, 2),
+                                ),
+                              ]
+                              : null,
+                    ),
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Icon(
+                          m['icon'] as IconData,
+                          size: 16,
+                          color: selected ? Colors.white : unselectedColor,
+                        ),
+                        const SizedBox(width: 5),
+                        Text(
+                          m['label'] as String,
+                          style: TextStyle(
+                            fontSize: 13,
+                            fontWeight: FontWeight.w600,
+                            color: selected ? Colors.white : unselectedColor,
                           ),
-                        ]
-                      : null,
-                ),
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    Icon(
-                      m['icon'] as IconData,
-                      size: 16,
-                      color: selected ? Colors.white : unselectedColor,
+                        ),
+                      ],
                     ),
-                    const SizedBox(width: 5),
-                    Text(
-                      m['label'] as String,
-                      style: TextStyle(
-                        fontSize: 13,
-                        fontWeight: FontWeight.w600,
-                        color: selected ? Colors.white : unselectedColor,
-                      ),
-                    ),
-                  ],
+                  ),
                 ),
-              ),
-            ),
-          );
-        }).toList(),
+              );
+            }).toList(),
       ),
     );
   }
@@ -1342,27 +1391,26 @@ class _AdminNativeWorkbenchPageState extends State<AdminNativeWorkbenchPage> {
     final controller = TextEditingController();
     final name = await showDialog<String>(
       context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('新建分类'),
-        content: TextField(
-          controller: controller,
-          autofocus: true,
-          decoration: const InputDecoration(hintText: '输入分类名称'),
-          onSubmitted: (_) =>
-              Navigator.pop(ctx, controller.text.trim()),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx),
-            child: const Text('取消'),
+      builder:
+          (ctx) => AlertDialog(
+            title: const Text('新建分类'),
+            content: TextField(
+              controller: controller,
+              autofocus: true,
+              decoration: const InputDecoration(hintText: '输入分类名称'),
+              onSubmitted: (_) => Navigator.pop(ctx, controller.text.trim()),
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(ctx),
+                child: const Text('取消'),
+              ),
+              TextButton(
+                onPressed: () => Navigator.pop(ctx, controller.text.trim()),
+                child: const Text('确定'),
+              ),
+            ],
           ),
-          TextButton(
-            onPressed: () =>
-                Navigator.pop(ctx, controller.text.trim()),
-            child: const Text('确定'),
-          ),
-        ],
-      ),
     );
     final folderName = (name ?? '').trim();
     if (folderName.isEmpty) return;
@@ -1373,20 +1421,19 @@ class _AdminNativeWorkbenchPageState extends State<AdminNativeWorkbenchPage> {
       );
       final data = resp.data as Map<String, dynamic>;
       if ((data['code'] ?? -1) != 0) {
-        throw Exception(
-            (data['message'] ?? '创建分类失败').toString());
+        throw Exception((data['message'] ?? '创建分类失败').toString());
       }
       await _loadAssetFolders();
       if (!mounted) return;
       setState(() => _folder = folderName);
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('分类创建成功')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('分类创建成功')));
     } catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('创建分类失败：$e')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('创建分类失败：$e')));
     }
   }
 
@@ -1420,13 +1467,19 @@ class _AdminNativeWorkbenchPageState extends State<AdminNativeWorkbenchPage> {
             fit: StackFit.expand,
             children: [
               url.isNotEmpty
-                  ? Image.network(url, fit: BoxFit.cover,
-                      errorBuilder: (_, __, ___) => _thumbPlaceholder(isVideo))
+                  ? Image.network(
+                    url,
+                    fit: BoxFit.cover,
+                    errorBuilder: (_, __, ___) => _thumbPlaceholder(isVideo),
+                  )
                   : _thumbPlaceholder(isVideo),
               if (isVideo)
                 Center(
-                  child: Icon(Icons.play_circle_fill_rounded,
-                      color: Colors.white.withValues(alpha: 0.8), size: 28),
+                  child: Icon(
+                    Icons.play_circle_fill_rounded,
+                    color: Colors.white.withValues(alpha: 0.8),
+                    size: 28,
+                  ),
                 ),
             ],
           );
@@ -1514,8 +1567,11 @@ class _AdminNativeWorkbenchPageState extends State<AdminNativeWorkbenchPage> {
             fit: StackFit.expand,
             children: [
               if (thumbUrl.isNotEmpty)
-                Image.network(thumbUrl, fit: BoxFit.cover,
-                    errorBuilder: (_, __, ___) => _thumbPlaceholder(true))
+                Image.network(
+                  thumbUrl,
+                  fit: BoxFit.cover,
+                  errorBuilder: (_, __, ___) => _thumbPlaceholder(true),
+                )
               else if (videoUrl.isNotEmpty)
                 NetworkVideoThumbnail(
                   videoUrl: videoUrl,
@@ -1526,8 +1582,11 @@ class _AdminNativeWorkbenchPageState extends State<AdminNativeWorkbenchPage> {
               else
                 _thumbPlaceholder(true),
               Center(
-                child: Icon(Icons.play_circle_fill_rounded,
-                    color: Colors.white.withValues(alpha: 0.8), size: 28),
+                child: Icon(
+                  Icons.play_circle_fill_rounded,
+                  color: Colors.white.withValues(alpha: 0.8),
+                  size: 28,
+                ),
               ),
             ],
           );
@@ -1541,8 +1600,11 @@ class _AdminNativeWorkbenchPageState extends State<AdminNativeWorkbenchPage> {
               Container(
                 color: Colors.black.withValues(alpha: 0.05),
                 child: Center(
-                  child: Icon(Icons.play_circle_fill_rounded,
-                      color: AppColors.primary.withValues(alpha: 0.7), size: 36),
+                  child: Icon(
+                    Icons.play_circle_fill_rounded,
+                    color: AppColors.primary.withValues(alpha: 0.7),
+                    size: 36,
+                  ),
                 ),
               ),
               Positioned(
@@ -1557,7 +1619,11 @@ class _AdminNativeWorkbenchPageState extends State<AdminNativeWorkbenchPage> {
                       color: Colors.black.withValues(alpha: 0.55),
                       borderRadius: BorderRadius.circular(999),
                     ),
-                    child: const Icon(Icons.close, color: Colors.white, size: 14),
+                    child: const Icon(
+                      Icons.close,
+                      color: Colors.white,
+                      size: 14,
+                    ),
                   ),
                 ),
               ),
@@ -1618,14 +1684,21 @@ class _AdminNativeWorkbenchPageState extends State<AdminNativeWorkbenchPage> {
                   fit: StackFit.expand,
                   children: [
                     imageUrl.isNotEmpty
-                        ? Image.network(imageUrl, fit: BoxFit.cover,
-                            errorBuilder: (_, __, ___) => _thumbPlaceholder(false))
+                        ? Image.network(
+                          imageUrl,
+                          fit: BoxFit.cover,
+                          errorBuilder:
+                              (_, __, ___) => _thumbPlaceholder(false),
+                        )
                         : _thumbPlaceholder(false),
                     Positioned(
                       left: 4,
                       bottom: 4,
                       child: Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 5,
+                          vertical: 1,
+                        ),
                         decoration: BoxDecoration(
                           color: Colors.black.withValues(alpha: 0.6),
                           borderRadius: BorderRadius.circular(4),
@@ -1648,13 +1721,19 @@ class _AdminNativeWorkbenchPageState extends State<AdminNativeWorkbenchPage> {
               return Stack(
                 fit: StackFit.expand,
                 children: [
-                  Image.file(File(pair.image.path), fit: BoxFit.cover,
-                      errorBuilder: (_, __, ___) => _thumbPlaceholder(false)),
+                  Image.file(
+                    File(pair.image.path),
+                    fit: BoxFit.cover,
+                    errorBuilder: (_, __, ___) => _thumbPlaceholder(false),
+                  ),
                   Positioned(
                     left: 4,
                     bottom: 4,
                     child: Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 5,
+                        vertical: 1,
+                      ),
                       decoration: BoxDecoration(
                         color: Colors.black.withValues(alpha: 0.6),
                         borderRadius: BorderRadius.circular(4),
@@ -1687,7 +1766,11 @@ class _AdminNativeWorkbenchPageState extends State<AdminNativeWorkbenchPage> {
                           color: Colors.black.withValues(alpha: 0.55),
                           borderRadius: BorderRadius.circular(999),
                         ),
-                        child: const Icon(Icons.close, color: Colors.white, size: 14),
+                        child: const Icon(
+                          Icons.close,
+                          color: Colors.white,
+                          size: 14,
+                        ),
                       ),
                     ),
                   ),
@@ -1765,8 +1848,9 @@ class _AdminNativeWorkbenchPageState extends State<AdminNativeWorkbenchPage> {
                       style: _compactOutlinedStyle(),
                       onPressed: _pickLiveBatchFiles,
                       icon: const Icon(
-                          Icons.library_add_check_outlined,
-                          size: 16),
+                        Icons.library_add_check_outlined,
+                        size: 16,
+                      ),
                       label: const Text('批量选择文件配对'),
                     ),
                   ],
@@ -1844,15 +1928,24 @@ class _AdminNativeWorkbenchPageState extends State<AdminNativeWorkbenchPage> {
                 child: Row(
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
-                    Icon(Icons.add_rounded, size: 20,
-                        color: _uploading ? AppColors.textDisabled : AppColors.textPrimary),
+                    Icon(
+                      Icons.add_rounded,
+                      size: 20,
+                      color:
+                          _uploading
+                              ? AppColors.textDisabled
+                              : AppColors.textPrimary,
+                    ),
                     const SizedBox(width: 4),
                     Text(
                       '添加素材',
                       style: TextStyle(
                         fontSize: 14,
                         fontWeight: FontWeight.w600,
-                        color: _uploading ? AppColors.textDisabled : AppColors.textPrimary,
+                        color:
+                            _uploading
+                                ? AppColors.textDisabled
+                                : AppColors.textPrimary,
                       ),
                     ),
                   ],
@@ -1864,28 +1957,29 @@ class _AdminNativeWorkbenchPageState extends State<AdminNativeWorkbenchPage> {
           Expanded(
             child: SizedBox(
               height: 48,
-              child: _uploading
-                  ? _buildUploadProgressBtn()
-                  : ElevatedButton(
-                      onPressed: hasContent ? _startUpload : null,
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: AppColors.primary,
-                        foregroundColor: Colors.white,
-                        disabledBackgroundColor: AppColors.surface,
-                        disabledForegroundColor: AppColors.textDisabled,
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(14),
+              child:
+                  _uploading
+                      ? _buildUploadProgressBtn()
+                      : ElevatedButton(
+                        onPressed: hasContent ? _startUpload : null,
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: AppColors.primary,
+                          foregroundColor: Colors.white,
+                          disabledBackgroundColor: AppColors.surface,
+                          disabledForegroundColor: AppColors.textDisabled,
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(14),
+                          ),
+                          elevation: 0,
                         ),
-                        elevation: 0,
-                      ),
-                      child: Text(
-                        hasContent ? '开始上传' : '请先选择',
-                        style: const TextStyle(
-                          fontSize: 14,
-                          fontWeight: FontWeight.w600,
+                        child: Text(
+                          hasContent ? '开始上传' : '请先选择',
+                          style: const TextStyle(
+                            fontSize: 14,
+                            fontWeight: FontWeight.w600,
+                          ),
                         ),
                       ),
-                    ),
             ),
           ),
         ],
@@ -1908,8 +2002,7 @@ class _AdminNativeWorkbenchPageState extends State<AdminNativeWorkbenchPage> {
   }
 
   Widget _buildUploadProgressBtn() {
-    final progress =
-        _uploadTotal > 0 ? _uploadCurrent / _uploadTotal : 0.0;
+    final progress = _uploadTotal > 0 ? _uploadCurrent / _uploadTotal : 0.0;
     final pct = (progress * 100).toInt();
     return Container(
       height: 48,
@@ -1935,9 +2028,7 @@ class _AdminNativeWorkbenchPageState extends State<AdminNativeWorkbenchPage> {
               style: TextStyle(
                 fontSize: 13,
                 fontWeight: FontWeight.w600,
-                color: progress > 0.5
-                    ? Colors.white
-                    : AppColors.primary,
+                color: progress > 0.5 ? Colors.white : AppColors.primary,
               ),
             ),
           ),
@@ -1974,17 +2065,22 @@ class _AdminNativeWorkbenchPageState extends State<AdminNativeWorkbenchPage> {
       var coverUrl = '';
       for (final asset in _folderExistingAssets) {
         final u = _assetThumbUrl(asset);
-        if (u.isNotEmpty) { coverUrl = u; break; }
+        if (u.isNotEmpty) {
+          coverUrl = u;
+          break;
+        }
       }
-      background = coverUrl.isNotEmpty
-          ? Image.network(
-              coverUrl,
-              fit: BoxFit.cover,
-              width: double.infinity,
-              height: double.infinity,
-              errorBuilder: (_, __, ___) => Container(color: AppColors.primary),
-            )
-          : Container(color: AppColors.primary);
+      background =
+          coverUrl.isNotEmpty
+              ? Image.network(
+                coverUrl,
+                fit: BoxFit.cover,
+                width: double.infinity,
+                height: double.infinity,
+                errorBuilder:
+                    (_, __, ___) => Container(color: AppColors.primary),
+              )
+              : Container(color: AppColors.primary);
     } else {
       background = Container(
         decoration: const BoxDecoration(
@@ -1998,16 +2094,18 @@ class _AdminNativeWorkbenchPageState extends State<AdminNativeWorkbenchPage> {
     }
 
     final folderLabel = _folder.isEmpty ? '未分类' : _folder;
-    final existingByMode = _uploadMode == 'image'
-        ? _folderExistingImages.length
-        : _uploadMode == 'video'
+    final existingByMode =
+        _uploadMode == 'image'
+            ? _folderExistingImages.length
+            : _uploadMode == 'video'
             ? _folderExistingVideos.length
             : _folderExistingLivePacks.length;
     final localCount = _uploadItemCount;
     final totalCount = existingByMode + localCount;
-    final modeLabel = _uploadMode == 'image'
-        ? '张照片'
-        : _uploadMode == 'video'
+    final modeLabel =
+        _uploadMode == 'image'
+            ? '张照片'
+            : _uploadMode == 'video'
             ? '个视频'
             : '个 Live';
 
@@ -2056,7 +2154,11 @@ class _AdminNativeWorkbenchPageState extends State<AdminNativeWorkbenchPage> {
                   color: Colors.black.withValues(alpha: 0.35),
                   borderRadius: BorderRadius.circular(10),
                 ),
-                child: const Icon(Icons.arrow_back_rounded, color: Colors.white, size: 18),
+                child: const Icon(
+                  Icons.arrow_back_rounded,
+                  color: Colors.white,
+                  size: 18,
+                ),
               ),
             ),
           ),
@@ -2078,9 +2180,7 @@ class _AdminNativeWorkbenchPageState extends State<AdminNativeWorkbenchPage> {
                         color: Colors.white,
                         fontSize: 22,
                         fontWeight: FontWeight.w800,
-                        shadows: [
-                          Shadow(blurRadius: 8, color: Colors.black38),
-                        ],
+                        shadows: [Shadow(blurRadius: 8, color: Colors.black38)],
                       ),
                     ),
                   ),
@@ -2092,7 +2192,11 @@ class _AdminNativeWorkbenchPageState extends State<AdminNativeWorkbenchPage> {
                       color: Colors.white.withValues(alpha: 0.25),
                       borderRadius: BorderRadius.circular(6),
                     ),
-                    child: const Icon(Icons.edit_rounded, size: 13, color: Colors.white),
+                    child: const Icon(
+                      Icons.edit_rounded,
+                      size: 13,
+                      color: Colors.white,
+                    ),
                   ),
                 ],
               ),
@@ -2130,10 +2234,11 @@ class _AdminNativeWorkbenchPageState extends State<AdminNativeWorkbenchPage> {
         borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
       ),
       builder: (ctx) {
-        final folders = _assetFolders
-            .where((item) => (item['folder'] ?? '').toString().isNotEmpty)
-            .map((item) => (item['folder'] ?? '').toString())
-            .toList();
+        final folders =
+            _assetFolders
+                .where((item) => (item['folder'] ?? '').toString().isNotEmpty)
+                .map((item) => (item['folder'] ?? '').toString())
+                .toList();
         return SafeArea(
           child: Column(
             mainAxisSize: MainAxisSize.min,
@@ -2161,36 +2266,60 @@ class _AdminNativeWorkbenchPageState extends State<AdminNativeWorkbenchPage> {
               ListTile(
                 leading: Icon(
                   Icons.folder_outlined,
-                  color: _folder.isEmpty ? AppColors.primary : AppColors.textHint,
+                  color:
+                      _folder.isEmpty ? AppColors.primary : AppColors.textHint,
                 ),
                 title: const Text('未分类'),
-                trailing: _folder.isEmpty
-                    ? const Icon(Icons.check_rounded, color: AppColors.primary, size: 20)
-                    : null,
+                trailing:
+                    _folder.isEmpty
+                        ? const Icon(
+                          Icons.check_rounded,
+                          color: AppColors.primary,
+                          size: 20,
+                        )
+                        : null,
                 onTap: () {
                   setState(() => _folder = '');
                   Navigator.pop(ctx);
                 },
               ),
-              ...folders.map((name) => ListTile(
-                    leading: Icon(
-                      Icons.folder_rounded,
-                      color: _folder == name ? AppColors.primary : AppColors.textHint,
-                    ),
-                    title: Text(name),
-                    trailing: _folder == name
-                        ? const Icon(Icons.check_rounded, color: AppColors.primary, size: 20)
-                        : null,
-                    onTap: () {
-                      setState(() => _folder = name);
-                      Navigator.pop(ctx);
-                    },
-                  )),
+              ...folders.map(
+                (name) => ListTile(
+                  leading: Icon(
+                    Icons.folder_rounded,
+                    color:
+                        _folder == name
+                            ? AppColors.primary
+                            : AppColors.textHint,
+                  ),
+                  title: Text(name),
+                  trailing:
+                      _folder == name
+                          ? const Icon(
+                            Icons.check_rounded,
+                            color: AppColors.primary,
+                            size: 20,
+                          )
+                          : null,
+                  onTap: () {
+                    setState(() => _folder = name);
+                    Navigator.pop(ctx);
+                  },
+                ),
+              ),
               const Divider(height: 1),
               ListTile(
-                leading: const Icon(Icons.add_rounded, color: AppColors.primary),
-                title: const Text('新建分类',
-                    style: TextStyle(color: AppColors.primary, fontWeight: FontWeight.w600)),
+                leading: const Icon(
+                  Icons.add_rounded,
+                  color: AppColors.primary,
+                ),
+                title: const Text(
+                  '新建分类',
+                  style: TextStyle(
+                    color: AppColors.primary,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
                 onTap: () {
                   Navigator.pop(ctx);
                   _createUploadFolder();
@@ -2256,12 +2385,14 @@ class _AdminNativeWorkbenchPageState extends State<AdminNativeWorkbenchPage> {
 
   Widget _buildUploadFolderGrid() {
     // 构建文件夹列表：有名字的分类 + 未分类
-    final namedFolders = _assetFolders
-        .where((item) => (item['folder'] ?? '').toString().isNotEmpty)
-        .toList();
-    final uncategorized = _assetFolders
-        .where((item) => (item['folder'] ?? '').toString().isEmpty)
-        .toList();
+    final namedFolders =
+        _assetFolders
+            .where((item) => (item['folder'] ?? '').toString().isNotEmpty)
+            .toList();
+    final uncategorized =
+        _assetFolders
+            .where((item) => (item['folder'] ?? '').toString().isEmpty)
+            .toList();
     final allFolders = <Map<String, dynamic>>[
       ...namedFolders,
       if (uncategorized.isNotEmpty) uncategorized.first,
@@ -2287,7 +2418,10 @@ class _AdminNativeWorkbenchPageState extends State<AdminNativeWorkbenchPage> {
               GestureDetector(
                 onTap: _createAssetFolder,
                 child: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 12,
+                    vertical: 7,
+                  ),
                   decoration: BoxDecoration(
                     color: AppColors.primary,
                     borderRadius: BorderRadius.circular(12),
@@ -2314,64 +2448,69 @@ class _AdminNativeWorkbenchPageState extends State<AdminNativeWorkbenchPage> {
         ),
         // 文件夹网格
         Expanded(
-          child: allFolders.isEmpty
-              ? Center(
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Container(
-                        width: 64,
-                        height: 64,
-                        decoration: BoxDecoration(
-                          color: AppColors.primary.withValues(alpha: 0.08),
-                          borderRadius: BorderRadius.circular(20),
+          child:
+              allFolders.isEmpty
+                  ? Center(
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Container(
+                          width: 64,
+                          height: 64,
+                          decoration: BoxDecoration(
+                            color: AppColors.primary.withValues(alpha: 0.08),
+                            borderRadius: BorderRadius.circular(20),
+                          ),
+                          child: const Icon(
+                            Icons.photo_album_rounded,
+                            color: AppColors.primary,
+                            size: 32,
+                          ),
                         ),
-                        child: const Icon(
-                          Icons.photo_album_rounded,
-                          color: AppColors.primary,
-                          size: 32,
+                        const SizedBox(height: 14),
+                        const Text(
+                          '还没有分类',
+                          style: TextStyle(
+                            fontSize: 15,
+                            fontWeight: FontWeight.w600,
+                            color: AppColors.textSecondary,
+                          ),
                         ),
-                      ),
-                      const SizedBox(height: 14),
-                      const Text(
-                        '还没有分类',
-                        style: TextStyle(
-                          fontSize: 15,
-                          fontWeight: FontWeight.w600,
-                          color: AppColors.textSecondary,
+                        const SizedBox(height: 6),
+                        const Text(
+                          '点击右上角新建一个分类开始上传',
+                          style: TextStyle(
+                            fontSize: 12,
+                            color: AppColors.textHint,
+                          ),
                         ),
-                      ),
-                      const SizedBox(height: 6),
-                      const Text(
-                        '点击右上角新建一个分类开始上传',
-                        style: TextStyle(fontSize: 12, color: AppColors.textHint),
-                      ),
-                    ],
+                      ],
+                    ),
+                  )
+                  : GridView.builder(
+                    padding: const EdgeInsets.fromLTRB(14, 8, 14, 20),
+                    itemCount: allFolders.length,
+                    gridDelegate:
+                        const SliverGridDelegateWithFixedCrossAxisCount(
+                          crossAxisCount: 2,
+                          mainAxisSpacing: 12,
+                          crossAxisSpacing: 12,
+                          childAspectRatio: 0.82,
+                        ),
+                    itemBuilder: (context, index) {
+                      final item = allFolders[index];
+                      final folderName = (item['folder'] ?? '').toString();
+                      final label = folderName.isEmpty ? '未分类' : folderName;
+                      final count = (item['count'] as num?)?.toInt() ?? 0;
+                      final thumb = _folderThumbnails[folderName] ?? '';
+                      return _buildFolderCard(
+                        label: label,
+                        folderValue: folderName,
+                        count: count,
+                        thumbUrl: thumb,
+                      );
+                    },
                   ),
-                )
-              : GridView.builder(
-                  padding: const EdgeInsets.fromLTRB(14, 8, 14, 20),
-                  itemCount: allFolders.length,
-                  gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                    crossAxisCount: 2,
-                    mainAxisSpacing: 12,
-                    crossAxisSpacing: 12,
-                    childAspectRatio: 0.82,
-                  ),
-                  itemBuilder: (context, index) {
-                    final item = allFolders[index];
-                    final folderName = (item['folder'] ?? '').toString();
-                    final label = folderName.isEmpty ? '未分类' : folderName;
-                    final count = (item['count'] as num?)?.toInt() ?? 0;
-                    final thumb = _folderThumbnails[folderName] ?? '';
-                    return _buildFolderCard(
-                      label: label,
-                      folderValue: folderName,
-                      count: count,
-                      thumbUrl: thumb,
-                    );
-                  },
-                ),
         ),
       ],
     );
@@ -2385,9 +2524,10 @@ class _AdminNativeWorkbenchPageState extends State<AdminNativeWorkbenchPage> {
   }) {
     return GestureDetector(
       onTap: () => _enterUploadFolder(folderValue),
-      onLongPress: folderValue.isNotEmpty
-          ? () => _showFolderActions(folderValue, label)
-          : null,
+      onLongPress:
+          folderValue.isNotEmpty
+              ? () => _showFolderActions(folderValue, label)
+              : null,
       child: Container(
         clipBehavior: Clip.antiAlias,
         decoration: BoxDecoration(
@@ -2422,7 +2562,10 @@ class _AdminNativeWorkbenchPageState extends State<AdminNativeWorkbenchPage> {
                     right: 8,
                     bottom: 8,
                     child: Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 8,
+                        vertical: 3,
+                      ),
                       decoration: BoxDecoration(
                         color: Colors.black.withValues(alpha: 0.55),
                         borderRadius: BorderRadius.circular(10),
@@ -2476,44 +2619,46 @@ class _AdminNativeWorkbenchPageState extends State<AdminNativeWorkbenchPage> {
   void _showFolderActions(String folderValue, String label) {
     showCupertinoModalPopup(
       context: context,
-      builder: (ctx) => CupertinoActionSheet(
-        title: Text(label),
-        actions: [
-          CupertinoActionSheetAction(
-            isDestructiveAction: true,
-            onPressed: () {
-              Navigator.pop(ctx);
-              _deleteFolder(folderValue, label);
-            },
-            child: const Text('删除分类'),
+      builder:
+          (ctx) => CupertinoActionSheet(
+            title: Text(label),
+            actions: [
+              CupertinoActionSheetAction(
+                isDestructiveAction: true,
+                onPressed: () {
+                  Navigator.pop(ctx);
+                  _deleteFolder(folderValue, label);
+                },
+                child: const Text('删除分类'),
+              ),
+            ],
+            cancelButton: CupertinoActionSheetAction(
+              onPressed: () => Navigator.pop(ctx),
+              child: const Text('取消'),
+            ),
           ),
-        ],
-        cancelButton: CupertinoActionSheetAction(
-          onPressed: () => Navigator.pop(ctx),
-          child: const Text('取消'),
-        ),
-      ),
     );
   }
 
   Future<void> _deleteFolder(String folderValue, String label) async {
     final confirmed = await showCupertinoDialog<bool>(
       context: context,
-      builder: (ctx) => CupertinoAlertDialog(
-        title: const Text('删除分类'),
-        content: Text('确定删除「$label」吗？\n该分类下的素材将移入未分类。'),
-        actions: [
-          CupertinoDialogAction(
-            onPressed: () => Navigator.pop(ctx, false),
-            child: const Text('取消'),
+      builder:
+          (ctx) => CupertinoAlertDialog(
+            title: const Text('删除分类'),
+            content: Text('确定删除「$label」吗？\n该分类下的素材将移入未分类。'),
+            actions: [
+              CupertinoDialogAction(
+                onPressed: () => Navigator.pop(ctx, false),
+                child: const Text('取消'),
+              ),
+              CupertinoDialogAction(
+                isDestructiveAction: true,
+                onPressed: () => Navigator.pop(ctx, true),
+                child: const Text('删除'),
+              ),
+            ],
           ),
-          CupertinoDialogAction(
-            isDestructiveAction: true,
-            onPressed: () => Navigator.pop(ctx, true),
-            child: const Text('删除'),
-          ),
-        ],
-      ),
     );
     if (confirmed != true) return;
     try {
@@ -2526,15 +2671,15 @@ class _AdminNativeWorkbenchPageState extends State<AdminNativeWorkbenchPage> {
         throw Exception((data['message'] ?? '删除失败').toString());
       }
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('分类「$label」已删除')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('分类「$label」已删除')));
       await _loadCurrent();
     } catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('删除失败：$e')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('删除失败：$e')));
     }
   }
 
@@ -2572,7 +2717,8 @@ class _AdminNativeWorkbenchPageState extends State<AdminNativeWorkbenchPage> {
       );
       final liveData = liveResp.data as Map<String, dynamic>;
       if ((liveData['code'] ?? -1) == 0) {
-        final livePayload = (liveData['data'] as Map?)?.cast<String, dynamic>() ?? {};
+        final livePayload =
+            (liveData['data'] as Map?)?.cast<String, dynamic>() ?? {};
         final liveList = List<dynamic>.from(livePayload['list'] ?? const []);
         if (mounted) {
           setState(() {
@@ -2632,11 +2778,7 @@ class _AdminNativeWorkbenchPageState extends State<AdminNativeWorkbenchPage> {
 
   Widget _buildAssetsVisual() {
     final chips = <Widget>[
-      _folderChip(
-        value: _allFoldersValue,
-        label: '全部',
-        count: null,
-      ),
+      _folderChip(value: _allFoldersValue, label: '全部', count: null),
     ];
     for (final item in _assetFolders) {
       final raw = (item['folder'] ?? '').toString();
@@ -2657,11 +2799,12 @@ class _AdminNativeWorkbenchPageState extends State<AdminNativeWorkbenchPage> {
       if (imgId != null && imgId > 0) liveAssetIds.add(imgId);
       if (vidId != null && vidId > 0) liveAssetIds.add(vidId);
     }
-    final filteredAssets = _assets.where((raw) {
-      final item = (raw as Map).cast<String, dynamic>();
-      final id = (item['id'] as num?)?.toInt() ?? 0;
-      return !liveAssetIds.contains(id);
-    }).toList();
+    final filteredAssets =
+        _assets.where((raw) {
+          final item = (raw as Map).cast<String, dynamic>();
+          final id = (item['id'] as num?)?.toInt() ?? 0;
+          return !liveAssetIds.contains(id);
+        }).toList();
     final assetCount = filteredAssets.length;
     final liveCount = _assetLivePacks.length;
     return Column(
@@ -2706,7 +2849,10 @@ class _AdminNativeWorkbenchPageState extends State<AdminNativeWorkbenchPage> {
                     if (assetCount > 0) ...[
                       const SizedBox(width: 6),
                       Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 6,
+                          vertical: 1,
+                        ),
                         decoration: BoxDecoration(
                           color: AppColors.imageBadge.withValues(alpha: 0.12),
                           borderRadius: BorderRadius.circular(8),
@@ -2745,7 +2891,10 @@ class _AdminNativeWorkbenchPageState extends State<AdminNativeWorkbenchPage> {
                     if (liveCount > 0) ...[
                       const SizedBox(width: 6),
                       Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 6,
+                          vertical: 1,
+                        ),
                         decoration: BoxDecoration(
                           color: AppColors.liveBadge.withValues(alpha: 0.12),
                           borderRadius: BorderRadius.circular(8),
@@ -2829,7 +2978,8 @@ class _AdminNativeWorkbenchPageState extends State<AdminNativeWorkbenchPage> {
   String _assetSourceName(Map<String, dynamic> item) =>
       (item['original_name'] ?? item['title'] ?? '未命名素材').toString();
 
-  String _assetSourceUrl(Map<String, dynamic> item) => (item['url'] ?? '').toString();
+  String _assetSourceUrl(Map<String, dynamic> item) =>
+      (item['url'] ?? '').toString();
 
   String _assetSourceType(Map<String, dynamic> item) =>
       (item['file_type'] ?? item['type'] ?? '').toString().toLowerCase();
@@ -2870,12 +3020,6 @@ class _AdminNativeWorkbenchPageState extends State<AdminNativeWorkbenchPage> {
     return _isVideoUrl(_assetSourceUrl(item));
   }
 
-  String _assetTypeLabel(Map<String, dynamic> item) {
-    if (_assetIsVideo(item)) return '视频';
-    if (_assetIsImage(item)) return '图片';
-    return '其他';
-  }
-
   List<Map<String, dynamic>> _selectedPublishAssets() {
     if (_selectedPublishAssetIds.isEmpty) return const [];
     return _publishSourceAssets
@@ -2886,7 +3030,9 @@ class _AdminNativeWorkbenchPageState extends State<AdminNativeWorkbenchPage> {
   List<Map<String, dynamic>> _selectedPublishLivePacks() {
     if (_selectedPublishLivePackIds.isEmpty) return const [];
     return _publishSourceLivePacks
-        .where((item) => _selectedPublishLivePackIds.contains(_livePackId(item)))
+        .where(
+          (item) => _selectedPublishLivePackIds.contains(_livePackId(item)),
+        )
         .toList(growable: false);
   }
 
@@ -2909,7 +3055,6 @@ class _AdminNativeWorkbenchPageState extends State<AdminNativeWorkbenchPage> {
     final tempSelectedAssets = Set<int>.from(_selectedPublishAssetIds);
     final tempSelectedLivePacks = Set<int>.from(_selectedPublishLivePackIds);
 
-    // 按 folder 分组
     final folderAssetMap = <String, List<Map<String, dynamic>>>{};
     for (final asset in _publishSourceAssets) {
       final folder = (asset['folder'] ?? '').toString();
@@ -2924,277 +3069,740 @@ class _AdminNativeWorkbenchPageState extends State<AdminNativeWorkbenchPage> {
       ...folderAssetMap.keys,
       ...folderLiveMap.keys,
     };
-    // 命名分类排前面，未分类排最后
-    final sortedFolders = allFolderKeys.toList()
-      ..sort((a, b) {
-        if (a.isEmpty && b.isNotEmpty) return 1;
-        if (a.isNotEmpty && b.isEmpty) return -1;
-        return a.compareTo(b);
-      });
+    final sortedFolders =
+        allFolderKeys.toList()..sort((a, b) {
+          if (a.isEmpty && b.isNotEmpty) return 1;
+          if (a.isNotEmpty && b.isEmpty) return -1;
+          return a.compareTo(b);
+        });
 
-    // 每个文件夹的封面
-    final folderCoverMap = <String, String>{};
-    for (final key in sortedFolders) {
-      final assets = folderAssetMap[key] ?? [];
-      for (final a in assets) {
-        final u = _assetThumbUrl(a);
-        if (u.isNotEmpty) {
-          folderCoverMap[key] = u;
-          break;
-        }
-      }
-      if (!folderCoverMap.containsKey(key)) {
-        final packs = folderLiveMap[key] ?? [];
-        for (final p in packs) {
-          final u = _livePackImageDisplayUrl(p);
-          if (u.isNotEmpty) {
-            folderCoverMap[key] = u;
-            break;
-          }
-        }
-      }
-    }
-
+    final searchController = TextEditingController();
     final confirmed = await showModalBottomSheet<bool>(
       context: context,
       isScrollControlled: true,
       useSafeArea: true,
       backgroundColor: Colors.white,
       shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+        borderRadius: BorderRadius.vertical(top: Radius.circular(26)),
       ),
       builder: (sheetCtx) {
-        // 局部状态
         String? pickerFolder;
         var typeFilter = 'all';
+        var searchQuery = '';
+
         return StatefulBuilder(
           builder: (innerCtx, setSheetState) {
             final totalSelected =
                 tempSelectedAssets.length + tempSelectedLivePacks.length;
+            final normalizedQuery = searchQuery.trim().toLowerCase();
 
-            // === 底部确认栏 ===
+            bool matchText(String value) {
+              if (normalizedQuery.isEmpty) return true;
+              return value.toLowerCase().contains(normalizedQuery);
+            }
+
+            bool folderMatches(String key) {
+              final folderLabel = key.isEmpty ? '未分类' : key;
+              if (matchText(folderLabel)) return true;
+              for (final asset
+                  in folderAssetMap[key] ?? const <Map<String, dynamic>>[]) {
+                if (matchText(_assetSourceName(asset))) return true;
+              }
+              for (final pack
+                  in folderLiveMap[key] ?? const <Map<String, dynamic>>[]) {
+                if (matchText(_livePackName(pack))) return true;
+              }
+              return false;
+            }
+
+            bool folderHasVisibleContent(String key) {
+              final assets =
+                  folderAssetMap[key] ?? const <Map<String, dynamic>>[];
+              final lives =
+                  folderLiveMap[key] ?? const <Map<String, dynamic>>[];
+              switch (typeFilter) {
+                case 'image':
+                  return assets.any(_assetIsImage);
+                case 'video':
+                  return assets.any(_assetIsVideo);
+                case 'live':
+                  return lives.isNotEmpty;
+                default:
+                  return assets.isNotEmpty || lives.isNotEmpty;
+              }
+            }
+
+            int visibleFolderCount(String key) {
+              final assets =
+                  folderAssetMap[key] ?? const <Map<String, dynamic>>[];
+              final lives =
+                  folderLiveMap[key] ?? const <Map<String, dynamic>>[];
+              switch (typeFilter) {
+                case 'image':
+                  return assets.where(_assetIsImage).length;
+                case 'video':
+                  return assets.where(_assetIsVideo).length;
+                case 'live':
+                  return lives.length;
+                default:
+                  return assets.length + lives.length;
+              }
+            }
+
+            String folderCover(String key) {
+              final assets =
+                  folderAssetMap[key] ?? const <Map<String, dynamic>>[];
+              final lives =
+                  folderLiveMap[key] ?? const <Map<String, dynamic>>[];
+              Iterable<Map<String, dynamic>> visibleAssets;
+              switch (typeFilter) {
+                case 'image':
+                  visibleAssets = assets.where(_assetIsImage);
+                  break;
+                case 'video':
+                  visibleAssets = assets.where(_assetIsVideo);
+                  break;
+                default:
+                  visibleAssets = assets;
+              }
+              for (final asset in visibleAssets) {
+                final thumb = _assetThumbUrl(asset);
+                if (thumb.isNotEmpty) return thumb;
+                final source = UrlUtils.absolute(_assetSourceUrl(asset));
+                if (_assetIsVideo(asset) && source.isNotEmpty) return source;
+              }
+              if (typeFilter == 'all' || typeFilter == 'live') {
+                for (final pack in lives) {
+                  final imageUrl = _livePackImageDisplayUrl(pack);
+                  if (imageUrl.isNotEmpty) return imageUrl;
+                  final movUrl = UrlUtils.absolute(
+                    _livePackVideoSourceUrl(pack),
+                  );
+                  if (movUrl.isNotEmpty) return movUrl;
+                }
+              }
+              return '';
+            }
+
+            Widget pickerHeader({
+              required Widget leading,
+              required String title,
+              String? subtitle,
+            }) {
+              return Padding(
+                padding: const EdgeInsets.fromLTRB(12, 8, 12, 8),
+                child: Row(
+                  children: [
+                    leading,
+                    Expanded(
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Text(
+                            title,
+                            style: const TextStyle(
+                              fontSize: 17,
+                              fontWeight: FontWeight.w700,
+                              color: AppColors.textPrimary,
+                            ),
+                          ),
+                          if (subtitle != null) ...[
+                            const SizedBox(height: 2),
+                            Text(
+                              subtitle,
+                              style: const TextStyle(
+                                fontSize: 12,
+                                color: AppColors.textSecondary,
+                              ),
+                            ),
+                          ],
+                        ],
+                      ),
+                    ),
+                    if (totalSelected > 0)
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 10,
+                          vertical: 5,
+                        ),
+                        decoration: BoxDecoration(
+                          color: AppColors.primary.withValues(alpha: 0.10),
+                          borderRadius: BorderRadius.circular(999),
+                        ),
+                        child: Text(
+                          '已选 $totalSelected',
+                          style: const TextStyle(
+                            fontSize: 12,
+                            fontWeight: FontWeight.w700,
+                            color: AppColors.primary,
+                          ),
+                        ),
+                      )
+                    else
+                      const SizedBox(width: 48),
+                  ],
+                ),
+              );
+            }
+
+            Widget searchBar(String placeholder) {
+              return Padding(
+                padding: const EdgeInsets.fromLTRB(16, 2, 16, 10),
+                child: CupertinoSearchTextField(
+                  controller: searchController,
+                  placeholder: placeholder,
+                  onChanged:
+                      (value) => setSheetState(() => searchQuery = value),
+                ),
+              );
+            }
+
+            Widget segmentedFilter() {
+              const items = <String, String>{
+                'all': '全部',
+                'image': '图片',
+                'video': '视频',
+                'live': 'Live',
+              };
+              return Padding(
+                padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
+                child: CupertinoSlidingSegmentedControl<String>(
+                  groupValue: typeFilter,
+                  children: {
+                    for (final entry in items.entries)
+                      entry.key: Padding(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 10,
+                          vertical: 8,
+                        ),
+                        child: Text(
+                          entry.value,
+                          style: const TextStyle(
+                            fontSize: 13,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      ),
+                  },
+                  onValueChanged: (value) {
+                    if (value == null) return;
+                    setSheetState(() => typeFilter = value);
+                  },
+                ),
+              );
+            }
+
             Widget bottomBar() {
+              final detail =
+                  tempSelectedLivePacks.isNotEmpty
+                      ? 'Live ${tempSelectedLivePacks.length} 项'
+                      : tempSelectedAssets.isNotEmpty
+                      ? '${tempSelectedAssets.length} 项素材'
+                      : '尚未选择素材';
               return Container(
                 padding: EdgeInsets.fromLTRB(
-                  16, 10, 16, MediaQuery.of(innerCtx).padding.bottom + 10,
+                  16,
+                  12,
+                  16,
+                  MediaQuery.of(innerCtx).padding.bottom + 12,
                 ),
                 decoration: BoxDecoration(
                   color: Colors.white,
                   border: Border(
-                    top: BorderSide(color: AppColors.border.withValues(alpha: 0.5)),
+                    top: BorderSide(
+                      color: AppColors.border.withValues(alpha: 0.55),
+                    ),
                   ),
                 ),
                 child: Row(
                   children: [
                     Expanded(
-                      child: Text(
-                        '已选 $totalSelected 项',
-                        style: const TextStyle(
-                          fontSize: 14,
-                          fontWeight: FontWeight.w600,
-                          color: AppColors.textSecondary,
-                        ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Text(
+                            '已选 $totalSelected 项',
+                            style: const TextStyle(
+                              fontSize: 15,
+                              fontWeight: FontWeight.w700,
+                              color: AppColors.textPrimary,
+                            ),
+                          ),
+                          const SizedBox(height: 2),
+                          Text(
+                            detail,
+                            style: const TextStyle(
+                              fontSize: 12,
+                              color: AppColors.textSecondary,
+                            ),
+                          ),
+                        ],
                       ),
                     ),
-                    TextButton(
+                    CupertinoButton(
+                      padding: EdgeInsets.zero,
+                      minSize: 0,
                       onPressed: () => Navigator.pop(innerCtx, false),
                       child: const Text('取消'),
                     ),
-                    const SizedBox(width: 8),
-                    ElevatedButton(
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: AppColors.primary,
-                        foregroundColor: Colors.white,
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(12),
-                        ),
+                    const SizedBox(width: 10),
+                    CupertinoButton.filled(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 18,
+                        vertical: 10,
                       ),
-                      onPressed: totalSelected > 0
-                          ? () => Navigator.pop(innerCtx, true)
-                          : null,
-                      child: const Text('确认选择'),
+                      borderRadius: BorderRadius.circular(18),
+                      onPressed:
+                          totalSelected > 0
+                              ? () => Navigator.pop(innerCtx, true)
+                              : null,
+                      child: const Text('添加到已选'),
                     ),
                   ],
                 ),
               );
             }
 
-            // === 第一级：文件夹网格 ===
+            final visibleFolders = sortedFolders
+                .where((key) {
+                  return folderHasVisibleContent(key) && folderMatches(key);
+                })
+                .toList(growable: false);
+
             if (pickerFolder == null) {
               return SizedBox(
-                height: MediaQuery.of(innerCtx).size.height * 0.85,
+                height: MediaQuery.of(innerCtx).size.height * 0.92,
                 child: Column(
                   children: [
-                    // 拖拽指示条
-                    Center(
-                      child: Container(
-                        margin: const EdgeInsets.only(top: 10, bottom: 6),
-                        width: 36,
-                        height: 4,
-                        decoration: BoxDecoration(
-                          color: AppColors.textHint.withValues(alpha: 0.3),
-                          borderRadius: BorderRadius.circular(2),
-                        ),
+                    const SizedBox(height: 4),
+                    Container(
+                      width: 36,
+                      height: 5,
+                      decoration: BoxDecoration(
+                        color: AppColors.textHint.withValues(alpha: 0.28),
+                        borderRadius: BorderRadius.circular(999),
                       ),
                     ),
-                    // 标题
-                    Padding(
-                      padding: const EdgeInsets.fromLTRB(16, 4, 16, 10),
-                      child: Row(
-                        children: [
-                          const Expanded(
-                            child: Text(
-                              '选择素材 — 我的相簿',
-                              style: TextStyle(
-                                fontSize: 18,
-                                fontWeight: FontWeight.w800,
-                                color: AppColors.textPrimary,
-                              ),
-                            ),
-                          ),
-                          if (totalSelected > 0)
-                            Container(
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 10, vertical: 4,
-                              ),
-                              decoration: BoxDecoration(
-                                color: AppColors.primary.withValues(alpha: 0.12),
-                                borderRadius: BorderRadius.circular(12),
-                              ),
-                              child: Text(
-                                '已选 $totalSelected',
-                                style: const TextStyle(
-                                  fontSize: 12,
-                                  fontWeight: FontWeight.w700,
-                                  color: AppColors.primary,
-                                ),
-                              ),
-                            ),
-                        ],
+                    pickerHeader(
+                      leading: CupertinoButton(
+                        padding: EdgeInsets.zero,
+                        minSize: 0,
+                        onPressed: () => Navigator.pop(innerCtx, false),
+                        child: const Text('取消'),
                       ),
+                      title: '选择素材',
+                      subtitle: '像相册一样从分组中挑选内容',
                     ),
-                    // 文件夹网格
+                    searchBar('搜索相簿或素材'),
+                    segmentedFilter(),
                     Expanded(
-                      child: sortedFolders.isEmpty
-                          ? Center(child: _emptyHint('暂无素材分类'))
-                          : GridView.builder(
-                              padding: const EdgeInsets.fromLTRB(14, 4, 14, 20),
-                              itemCount: sortedFolders.length,
-                              gridDelegate:
-                                  const SliverGridDelegateWithFixedCrossAxisCount(
-                                crossAxisCount: 2,
-                                mainAxisSpacing: 12,
-                                crossAxisSpacing: 12,
-                                childAspectRatio: 0.82,
-                              ),
-                              itemBuilder: (context, index) {
-                                final key = sortedFolders[index];
-                                final label = key.isEmpty ? '未分类' : key;
-                                final assetCount =
-                                    (folderAssetMap[key]?.length ?? 0) +
-                                    (folderLiveMap[key]?.length ?? 0);
-                                final cover = folderCoverMap[key] ?? '';
-                                // 该文件夹内已选数
-                                final folderSelectedCount = () {
-                                  var c = 0;
-                                  for (final a in folderAssetMap[key] ?? []) {
-                                    if (tempSelectedAssets.contains(_assetId(a))) c++;
-                                  }
-                                  for (final p in folderLiveMap[key] ?? []) {
-                                    if (tempSelectedLivePacks.contains(_livePackId(p))) c++;
-                                  }
-                                  return c;
-                                }();
-                                return GestureDetector(
-                                  onTap: () => setSheetState(
-                                    () => pickerFolder = key,
-                                  ),
-                                  child: Container(
-                                    clipBehavior: Clip.antiAlias,
-                                    decoration: BoxDecoration(
-                                      borderRadius: BorderRadius.circular(16),
-                                      color: Colors.white,
-                                      boxShadow: [
-                                        BoxShadow(
-                                          color: Colors.black
-                                              .withValues(alpha: 0.06),
-                                          blurRadius: 10,
-                                          offset: const Offset(0, 3),
-                                        ),
-                                      ],
+                      child:
+                          visibleFolders.isEmpty
+                              ? Center(
+                                child: _emptyHint(
+                                  normalizedQuery.isEmpty
+                                      ? '暂无可选相簿'
+                                      : '没有找到相关相簿',
+                                ),
+                              )
+                              : GridView.builder(
+                                padding: const EdgeInsets.fromLTRB(
+                                  16,
+                                  0,
+                                  16,
+                                  20,
+                                ),
+                                itemCount: visibleFolders.length,
+                                gridDelegate:
+                                    const SliverGridDelegateWithFixedCrossAxisCount(
+                                      crossAxisCount: 2,
+                                      mainAxisSpacing: 12,
+                                      crossAxisSpacing: 12,
+                                      childAspectRatio: 0.82,
                                     ),
-                                    child: Column(
-                                      crossAxisAlignment:
-                                          CrossAxisAlignment.start,
-                                      children: [
-                                        Expanded(
-                                          child: Stack(
-                                            fit: StackFit.expand,
-                                            children: [
-                                              if (cover.isNotEmpty)
-                                                Image.network(
-                                                  cover,
-                                                  fit: BoxFit.cover,
-                                                  errorBuilder:
-                                                      (_, __, ___) =>
-                                                          _folderPlaceholder(),
-                                                )
-                                              else
-                                                _folderPlaceholder(),
-                                              // 计数角标
-                                              Positioned(
-                                                right: 8,
-                                                bottom: 8,
-                                                child: Container(
-                                                  padding:
-                                                      const EdgeInsets
-                                                          .symmetric(
-                                                    horizontal: 8,
-                                                    vertical: 3,
-                                                  ),
-                                                  decoration: BoxDecoration(
-                                                    color: Colors.black
-                                                        .withValues(
-                                                      alpha: 0.55,
+                                itemBuilder: (context, index) {
+                                  final key = visibleFolders[index];
+                                  final label = key.isEmpty ? '未分类' : key;
+                                  final count = visibleFolderCount(key);
+                                  final cover = folderCover(key);
+                                  final folderSelectedCount = () {
+                                    var current = 0;
+                                    for (final item
+                                        in folderAssetMap[key] ??
+                                            const <Map<String, dynamic>>[]) {
+                                      if (tempSelectedAssets.contains(
+                                        _assetId(item),
+                                      )) {
+                                        current++;
+                                      }
+                                    }
+                                    for (final pack
+                                        in folderLiveMap[key] ??
+                                            const <Map<String, dynamic>>[]) {
+                                      if (tempSelectedLivePacks.contains(
+                                        _livePackId(pack),
+                                      )) {
+                                        current++;
+                                      }
+                                    }
+                                    return current;
+                                  }();
+                                  return GestureDetector(
+                                    onTap:
+                                        () => setSheetState(() {
+                                          pickerFolder = key;
+                                          searchQuery = '';
+                                          searchController.clear();
+                                        }),
+                                    child: Container(
+                                      clipBehavior: Clip.antiAlias,
+                                      decoration: BoxDecoration(
+                                        color: Colors.white,
+                                        borderRadius: BorderRadius.circular(20),
+                                        border: Border.all(
+                                          color: AppColors.border,
+                                        ),
+                                        boxShadow: [
+                                          BoxShadow(
+                                            color: Colors.black.withValues(
+                                              alpha: 0.05,
+                                            ),
+                                            blurRadius: 12,
+                                            offset: const Offset(0, 4),
+                                          ),
+                                        ],
+                                      ),
+                                      child: Column(
+                                        crossAxisAlignment:
+                                            CrossAxisAlignment.start,
+                                        children: [
+                                          Expanded(
+                                            child: Stack(
+                                              fit: StackFit.expand,
+                                              children: [
+                                                ClipRRect(
+                                                  borderRadius:
+                                                      const BorderRadius.vertical(
+                                                        top: Radius.circular(
+                                                          19,
+                                                        ),
+                                                      ),
+                                                  child:
+                                                      cover.isNotEmpty
+                                                          ? _buildPublishPoster(
+                                                            imageUrl: cover,
+                                                            fallbackVideoUrl:
+                                                                _isVideoUrl(
+                                                                      cover,
+                                                                    )
+                                                                    ? cover
+                                                                    : null,
+                                                            isVideo:
+                                                                _isVideoUrl(
+                                                                  cover,
+                                                                ),
+                                                          )
+                                                          : _folderPlaceholder(),
+                                                ),
+                                                Positioned(
+                                                  right: 8,
+                                                  bottom: 8,
+                                                  child: Container(
+                                                    padding:
+                                                        const EdgeInsets.symmetric(
+                                                          horizontal: 8,
+                                                          vertical: 4,
+                                                        ),
+                                                    decoration: BoxDecoration(
+                                                      color: Colors.black
+                                                          .withValues(
+                                                            alpha: 0.58,
+                                                          ),
+                                                      borderRadius:
+                                                          BorderRadius.circular(
+                                                            999,
+                                                          ),
                                                     ),
-                                                    borderRadius:
-                                                        BorderRadius.circular(
-                                                      10,
-                                                    ),
-                                                  ),
-                                                  child: Text(
-                                                    '$assetCount',
-                                                    style: const TextStyle(
-                                                      color: Colors.white,
-                                                      fontSize: 12,
-                                                      fontWeight:
-                                                          FontWeight.w700,
+                                                    child: Text(
+                                                      '$count 项',
+                                                      style: const TextStyle(
+                                                        color: Colors.white,
+                                                        fontSize: 11,
+                                                        fontWeight:
+                                                            FontWeight.w700,
+                                                      ),
                                                     ),
                                                   ),
                                                 ),
-                                              ),
-                                              // 已选角标
-                                              if (folderSelectedCount > 0)
-                                                Positioned(
-                                                  left: 8,
-                                                  top: 8,
-                                                  child: Container(
-                                                    padding:
-                                                        const EdgeInsets
-                                                            .symmetric(
-                                                      horizontal: 7,
-                                                      vertical: 3,
-                                                    ),
-                                                    decoration: BoxDecoration(
-                                                      color: AppColors.primary,
-                                                      borderRadius:
-                                                          BorderRadius.circular(
-                                                        10,
+                                                if (folderSelectedCount > 0)
+                                                  Positioned(
+                                                    left: 8,
+                                                    top: 8,
+                                                    child: Container(
+                                                      padding:
+                                                          const EdgeInsets.symmetric(
+                                                            horizontal: 8,
+                                                            vertical: 4,
+                                                          ),
+                                                      decoration: BoxDecoration(
+                                                        color:
+                                                            AppColors.primary,
+                                                        borderRadius:
+                                                            BorderRadius.circular(
+                                                              999,
+                                                            ),
+                                                      ),
+                                                      child: Text(
+                                                        '已选 $folderSelectedCount',
+                                                        style: const TextStyle(
+                                                          color: Colors.white,
+                                                          fontSize: 10,
+                                                          fontWeight:
+                                                              FontWeight.w700,
+                                                        ),
                                                       ),
                                                     ),
-                                                    child: Text(
-                                                      '已选$folderSelectedCount',
-                                                      style: const TextStyle(
+                                                  ),
+                                              ],
+                                            ),
+                                          ),
+                                          Padding(
+                                            padding: const EdgeInsets.fromLTRB(
+                                              12,
+                                              10,
+                                              12,
+                                              12,
+                                            ),
+                                            child: Column(
+                                              crossAxisAlignment:
+                                                  CrossAxisAlignment.start,
+                                              children: [
+                                                Text(
+                                                  label,
+                                                  maxLines: 1,
+                                                  overflow:
+                                                      TextOverflow.ellipsis,
+                                                  style: const TextStyle(
+                                                    fontSize: 15,
+                                                    fontWeight: FontWeight.w700,
+                                                    color:
+                                                        AppColors.textPrimary,
+                                                  ),
+                                                ),
+                                                const SizedBox(height: 3),
+                                                Text(
+                                                  typeFilter == 'all'
+                                                      ? '相簿'
+                                                      : '筛选：${typeFilter == 'image'
+                                                          ? '图片'
+                                                          : typeFilter == 'video'
+                                                          ? '视频'
+                                                          : 'Live'}',
+                                                  style: const TextStyle(
+                                                    fontSize: 12,
+                                                    color:
+                                                        AppColors.textSecondary,
+                                                  ),
+                                                ),
+                                              ],
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                    ),
+                                  );
+                                },
+                              ),
+                    ),
+                    bottomBar(),
+                  ],
+                ),
+              );
+            }
+
+            final folderLabel = pickerFolder!.isEmpty ? '未分类' : pickerFolder!;
+            final folderAssets =
+                folderAssetMap[pickerFolder] ?? const <Map<String, dynamic>>[];
+            final folderLives =
+                folderLiveMap[pickerFolder] ?? const <Map<String, dynamic>>[];
+
+            final filteredAssets = folderAssets
+                .where((item) {
+                  if (!matchText(_assetSourceName(item))) return false;
+                  if (typeFilter == 'live') return false;
+                  if (typeFilter == 'image') return _assetIsImage(item);
+                  if (typeFilter == 'video') return _assetIsVideo(item);
+                  return true;
+                })
+                .toList(growable: false);
+            final filteredLives = folderLives
+                .where((item) {
+                  if (!matchText(_livePackName(item))) return false;
+                  if (typeFilter == 'image' || typeFilter == 'video') {
+                    return false;
+                  }
+                  return true;
+                })
+                .toList(growable: false);
+
+            return SizedBox(
+              height: MediaQuery.of(innerCtx).size.height * 0.92,
+              child: Column(
+                children: [
+                  const SizedBox(height: 4),
+                  Container(
+                    width: 36,
+                    height: 5,
+                    decoration: BoxDecoration(
+                      color: AppColors.textHint.withValues(alpha: 0.28),
+                      borderRadius: BorderRadius.circular(999),
+                    ),
+                  ),
+                  pickerHeader(
+                    leading: CupertinoButton(
+                      padding: EdgeInsets.zero,
+                      minSize: 0,
+                      onPressed:
+                          () => setSheetState(() {
+                            pickerFolder = null;
+                            typeFilter = 'all';
+                            searchQuery = '';
+                            searchController.clear();
+                          }),
+                      child: const Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(CupertinoIcons.back, size: 18),
+                          SizedBox(width: 2),
+                          Text('相簿'),
+                        ],
+                      ),
+                    ),
+                    title: folderLabel,
+                    subtitle: '选择要加入本次发布的素材',
+                  ),
+                  searchBar('搜索素材'),
+                  segmentedFilter(),
+                  Expanded(
+                    child:
+                        (filteredAssets.isEmpty && filteredLives.isEmpty)
+                            ? Center(
+                              child: _emptyHint(
+                                normalizedQuery.isEmpty
+                                    ? '该相簿下暂无素材'
+                                    : '没有找到相关素材',
+                              ),
+                            )
+                            : ListView(
+                              padding: const EdgeInsets.fromLTRB(16, 0, 16, 20),
+                              children: [
+                                if (filteredAssets.isNotEmpty) ...[
+                                  const Padding(
+                                    padding: EdgeInsets.only(bottom: 8),
+                                    child: Text(
+                                      '素材文件',
+                                      style: TextStyle(
+                                        fontSize: 13,
+                                        fontWeight: FontWeight.w700,
+                                        color: AppColors.textSecondary,
+                                      ),
+                                    ),
+                                  ),
+                                  GridView.builder(
+                                    shrinkWrap: true,
+                                    physics:
+                                        const NeverScrollableScrollPhysics(),
+                                    itemCount: filteredAssets.length,
+                                    gridDelegate:
+                                        const SliverGridDelegateWithFixedCrossAxisCount(
+                                          crossAxisCount: 3,
+                                          mainAxisSpacing: 8,
+                                          crossAxisSpacing: 8,
+                                          childAspectRatio: 1,
+                                        ),
+                                    itemBuilder: (context, index) {
+                                      final item = filteredAssets[index];
+                                      final id = _assetId(item);
+                                      final selected = tempSelectedAssets
+                                          .contains(id);
+                                      final isVideo = _assetIsVideo(item);
+                                      final thumb = _assetThumbUrl(item);
+                                      final sourceUrl = UrlUtils.absolute(
+                                        _assetSourceUrl(item),
+                                      );
+                                      return GestureDetector(
+                                        onTap: () {
+                                          setSheetState(() {
+                                            if (selected) {
+                                              tempSelectedAssets.remove(id);
+                                            } else if (id > 0) {
+                                              tempSelectedAssets.add(id);
+                                              tempSelectedLivePacks.clear();
+                                            }
+                                          });
+                                        },
+                                        child: AnimatedContainer(
+                                          duration: const Duration(
+                                            milliseconds: 180,
+                                          ),
+                                          clipBehavior: Clip.antiAlias,
+                                          decoration: BoxDecoration(
+                                            borderRadius: BorderRadius.circular(
+                                              14,
+                                            ),
+                                            border: Border.all(
+                                              color:
+                                                  selected
+                                                      ? AppColors.primary
+                                                      : AppColors.border,
+                                              width: selected ? 2 : 1,
+                                            ),
+                                          ),
+                                          child: Stack(
+                                            fit: StackFit.expand,
+                                            children: [
+                                              _buildPublishPoster(
+                                                imageUrl: thumb,
+                                                fallbackVideoUrl:
+                                                    isVideo ? sourceUrl : null,
+                                                isVideo: isVideo,
+                                              ),
+                                              if (isVideo)
+                                                Center(
+                                                  child: Icon(
+                                                    Icons
+                                                        .play_circle_fill_rounded,
+                                                    color: Colors.white
+                                                        .withValues(
+                                                          alpha: 0.88,
+                                                        ),
+                                                    size: 30,
+                                                  ),
+                                                ),
+                                              if (isVideo)
+                                                Positioned(
+                                                  left: 6,
+                                                  bottom: 6,
+                                                  child: Container(
+                                                    padding:
+                                                        const EdgeInsets.symmetric(
+                                                          horizontal: 6,
+                                                          vertical: 2,
+                                                        ),
+                                                    decoration: BoxDecoration(
+                                                      color: Colors.black
+                                                          .withValues(
+                                                            alpha: 0.55,
+                                                          ),
+                                                      borderRadius:
+                                                          BorderRadius.circular(
+                                                            999,
+                                                          ),
+                                                    ),
+                                                    child: const Text(
+                                                      '视频',
+                                                      style: TextStyle(
                                                         color: Colors.white,
                                                         fontSize: 10,
                                                         fontWeight:
@@ -3203,458 +3811,277 @@ class _AdminNativeWorkbenchPageState extends State<AdminNativeWorkbenchPage> {
                                                     ),
                                                   ),
                                                 ),
-                                            ],
-                                          ),
-                                        ),
-                                        Padding(
-                                          padding: const EdgeInsets.fromLTRB(
-                                            10, 8, 10, 10,
-                                          ),
-                                          child: Column(
-                                            crossAxisAlignment:
-                                                CrossAxisAlignment.start,
-                                            children: [
-                                              Text(
-                                                label,
-                                                maxLines: 1,
-                                                overflow:
-                                                    TextOverflow.ellipsis,
-                                                style: const TextStyle(
-                                                  fontSize: 14,
-                                                  fontWeight: FontWeight.w700,
-                                                  color:
-                                                      AppColors.textPrimary,
-                                                ),
-                                              ),
-                                              const SizedBox(height: 2),
-                                              Text(
-                                                '$assetCount 项素材',
-                                                style: const TextStyle(
-                                                  fontSize: 11,
-                                                  color:
-                                                      AppColors.textSecondary,
-                                                ),
-                                              ),
-                                            ],
-                                          ),
-                                        ),
-                                      ],
-                                    ),
-                                  ),
-                                );
-                              },
-                            ),
-                    ),
-                    bottomBar(),
-                  ],
-                ),
-              );
-            }
-
-            // === 第二级：文件夹内素材选择 ===
-            final folderLabel =
-                pickerFolder!.isEmpty ? '未分类' : pickerFolder!;
-            final folderAssets = folderAssetMap[pickerFolder] ?? [];
-            final folderLives = folderLiveMap[pickerFolder] ?? [];
-
-            final filteredAssets = folderAssets.where((item) {
-              if (typeFilter == 'live') return false;
-              if (typeFilter == 'image') return _assetIsImage(item);
-              if (typeFilter == 'video') return _assetIsVideo(item);
-              return true;
-            }).toList(growable: false);
-            final filteredLives = folderLives.where((item) {
-              if (typeFilter == 'image' || typeFilter == 'video') return false;
-              return true;
-            }).toList(growable: false);
-
-            return SizedBox(
-              height: MediaQuery.of(innerCtx).size.height * 0.85,
-              child: Column(
-                children: [
-                  // 拖拽指示条
-                  Center(
-                    child: Container(
-                      margin: const EdgeInsets.only(top: 10, bottom: 6),
-                      width: 36,
-                      height: 4,
-                      decoration: BoxDecoration(
-                        color: AppColors.textHint.withValues(alpha: 0.3),
-                        borderRadius: BorderRadius.circular(2),
-                      ),
-                    ),
-                  ),
-                  // 顶栏：返回 + 文件夹名
-                  Padding(
-                    padding: const EdgeInsets.fromLTRB(8, 0, 16, 4),
-                    child: Row(
-                      children: [
-                        IconButton(
-                          icon: const Icon(Icons.arrow_back_rounded),
-                          onPressed: () => setSheetState(() {
-                            pickerFolder = null;
-                            typeFilter = 'all';
-                          }),
-                        ),
-                        const SizedBox(width: 4),
-                        Expanded(
-                          child: Text(
-                            folderLabel,
-                            style: const TextStyle(
-                              fontSize: 18,
-                              fontWeight: FontWeight.w800,
-                              color: AppColors.textPrimary,
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                  // 类型筛选
-                  Padding(
-                    padding: const EdgeInsets.fromLTRB(14, 0, 14, 6),
-                    child: SingleChildScrollView(
-                      scrollDirection: Axis.horizontal,
-                      child: Row(
-                        children: [
-                          _pickerChip('全部', 'all', typeFilter, (v) {
-                            setSheetState(() => typeFilter = v);
-                          }),
-                          const SizedBox(width: 8),
-                          _pickerChip('图片', 'image', typeFilter, (v) {
-                            setSheetState(() => typeFilter = v);
-                          }),
-                          const SizedBox(width: 8),
-                          _pickerChip('视频', 'video', typeFilter, (v) {
-                            setSheetState(() => typeFilter = v);
-                          }),
-                          const SizedBox(width: 8),
-                          _pickerChip('Live', 'live', typeFilter, (v) {
-                            setSheetState(() => typeFilter = v);
-                          }),
-                        ],
-                      ),
-                    ),
-                  ),
-                  // 素材列表
-                  Expanded(
-                    child: (filteredAssets.isEmpty && filteredLives.isEmpty)
-                        ? Center(child: _emptyHint('该分类下暂无素材'))
-                        : ListView(
-                            padding: const EdgeInsets.fromLTRB(10, 4, 10, 16),
-                            children: [
-                              if (filteredAssets.isNotEmpty)
-                                GridView.builder(
-                                  shrinkWrap: true,
-                                  physics:
-                                      const NeverScrollableScrollPhysics(),
-                                  itemCount: filteredAssets.length,
-                                  gridDelegate:
-                                      const SliverGridDelegateWithFixedCrossAxisCount(
-                                    crossAxisCount: 3,
-                                    mainAxisSpacing: 2,
-                                    crossAxisSpacing: 2,
-                                  ),
-                                  itemBuilder: (context, index) {
-                                    final item = filteredAssets[index];
-                                    final id = _assetId(item);
-                                    final selected =
-                                        tempSelectedAssets.contains(id);
-                                    final thumb = _assetThumbUrl(item);
-                                    return GestureDetector(
-                                      onTap: () {
-                                        setSheetState(() {
-                                          if (selected) {
-                                            tempSelectedAssets.remove(id);
-                                          } else if (id > 0) {
-                                            tempSelectedAssets.add(id);
-                                          }
-                                        });
-                                      },
-                                      child: Stack(
-                                        fit: StackFit.expand,
-                                        children: [
-                                          thumb.isNotEmpty
-                                              ? Image.network(
-                                                  thumb,
-                                                  fit: BoxFit.cover,
-                                                  errorBuilder:
-                                                      (_, __, ___) =>
-                                                          _thumbPlaceholder(
-                                                    _assetIsVideo(item),
+                                              Positioned(
+                                                right: 6,
+                                                top: 6,
+                                                child: AnimatedContainer(
+                                                  duration: const Duration(
+                                                    milliseconds: 180,
                                                   ),
-                                                )
-                                              : _thumbPlaceholder(
-                                                  _assetIsVideo(item),
-                                                ),
-                                          // 类型标签
-                                          Positioned(
-                                            left: 4,
-                                            top: 4,
-                                            child: Container(
-                                              padding:
-                                                  const EdgeInsets.symmetric(
-                                                horizontal: 5,
-                                                vertical: 2,
-                                              ),
-                                              decoration: BoxDecoration(
-                                                color: Colors.black
-                                                    .withValues(alpha: 0.55),
-                                                borderRadius:
-                                                    BorderRadius.circular(6),
-                                              ),
-                                              child: Text(
-                                                _assetTypeLabel(item),
-                                                style: const TextStyle(
-                                                  color: Colors.white,
-                                                  fontSize: 9,
-                                                  fontWeight: FontWeight.w600,
-                                                ),
-                                              ),
-                                            ),
-                                          ),
-                                          // 视频播放图标
-                                          if (_assetIsVideo(item))
-                                            Center(
-                                              child: Icon(
-                                                Icons
-                                                    .play_circle_fill_rounded,
-                                                color: Colors.white
-                                                    .withValues(alpha: 0.8),
-                                                size: 28,
-                                              ),
-                                            ),
-                                          // 选中勾
-                                          Positioned(
-                                            right: 4,
-                                            top: 4,
-                                            child: Container(
-                                              width: 22,
-                                              height: 22,
-                                              decoration: BoxDecoration(
-                                                color: selected
-                                                    ? AppColors.primary
-                                                    : Colors.black.withValues(
-                                                        alpha: 0.3,
-                                                      ),
-                                                borderRadius:
-                                                    BorderRadius.circular(11),
-                                                border: Border.all(
-                                                  color: Colors.white,
-                                                  width: 1.5,
-                                                ),
-                                              ),
-                                              child: selected
-                                                  ? const Icon(
-                                                      Icons.check,
-                                                      color: Colors.white,
-                                                      size: 14,
-                                                    )
-                                                  : null,
-                                            ),
-                                          ),
-                                        ],
-                                      ),
-                                    );
-                                  },
-                                ),
-                              if (filteredLives.isNotEmpty) ...[
-                                const Padding(
-                                  padding: EdgeInsets.only(
-                                    top: 12, bottom: 8,
-                                  ),
-                                  child: Text(
-                                    'Live 套件',
-                                    style: TextStyle(
-                                      fontSize: 13,
-                                      fontWeight: FontWeight.w700,
-                                      color: AppColors.textSecondary,
-                                    ),
-                                  ),
-                                ),
-                                GridView.builder(
-                                  shrinkWrap: true,
-                                  physics:
-                                      const NeverScrollableScrollPhysics(),
-                                  itemCount: filteredLives.length,
-                                  gridDelegate:
-                                      const SliverGridDelegateWithFixedCrossAxisCount(
-                                    crossAxisCount: 2,
-                                    mainAxisSpacing: 8,
-                                    crossAxisSpacing: 8,
-                                    childAspectRatio: 1.12,
-                                  ),
-                                  itemBuilder: (context, index) {
-                                    final pack = filteredLives[index];
-                                    final id = _livePackId(pack);
-                                    final selected =
-                                        tempSelectedLivePacks.contains(id);
-                                    final complete = _livePackComplete(pack);
-                                    final imageUrl =
-                                        _livePackImageDisplayUrl(pack);
-                                    return GestureDetector(
-                                      onTap: () {
-                                        if (!complete) return;
-                                        setSheetState(() {
-                                          if (selected) {
-                                            tempSelectedLivePacks.remove(id);
-                                          } else if (id > 0) {
-                                            tempSelectedLivePacks.add(id);
-                                          }
-                                        });
-                                      },
-                                      child: Opacity(
-                                        opacity: complete ? 1 : 0.55,
-                                        child: Container(
-                                          clipBehavior: Clip.antiAlias,
-                                          decoration: BoxDecoration(
-                                            borderRadius:
-                                                BorderRadius.circular(12),
-                                            border: Border.all(
-                                              color: selected
-                                                  ? AppColors.primary
-                                                  : AppColors.border,
-                                              width: selected ? 2 : 1,
-                                            ),
-                                          ),
-                                          child: Column(
-                                            children: [
-                                              Expanded(
-                                                child: Stack(
-                                                  fit: StackFit.expand,
-                                                  children: [
-                                                    imageUrl.isNotEmpty
-                                                        ? Image.network(
-                                                            imageUrl,
-                                                            fit: BoxFit.cover,
-                                                            errorBuilder:
-                                                                (_, __, ___) =>
-                                                                    _thumbPlaceholder(
-                                                              false,
-                                                            ),
-                                                          )
-                                                        : _thumbPlaceholder(
-                                                            false,
-                                                          ),
-                                                    Positioned(
-                                                      left: 6,
-                                                      top: 6,
-                                                      child: Container(
-                                                        padding:
-                                                            const EdgeInsets
-                                                                .symmetric(
-                                                          horizontal: 6,
-                                                          vertical: 2,
-                                                        ),
-                                                        decoration:
-                                                            BoxDecoration(
-                                                          color: Colors.black
-                                                              .withValues(
-                                                            alpha: 0.55,
-                                                          ),
-                                                          borderRadius:
-                                                              BorderRadius
-                                                                  .circular(
-                                                            999,
-                                                          ),
-                                                        ),
-                                                        child: const Text(
-                                                          'Live',
-                                                          style: TextStyle(
-                                                            color:
-                                                                Colors.white,
-                                                            fontSize: 10,
-                                                            fontWeight:
-                                                                FontWeight.w600,
-                                                          ),
-                                                        ),
-                                                      ),
-                                                    ),
-                                                    // 选中勾
-                                                    Positioned(
-                                                      right: 6,
-                                                      top: 6,
-                                                      child: Container(
-                                                        width: 22,
-                                                        height: 22,
-                                                        decoration:
-                                                            BoxDecoration(
-                                                          color: selected
-                                                              ? AppColors
-                                                                  .primary
-                                                              : Colors.black
-                                                                  .withValues(
-                                                                  alpha: 0.3,
+                                                  width: 22,
+                                                  height: 22,
+                                                  decoration: BoxDecoration(
+                                                    color:
+                                                        selected
+                                                            ? AppColors.primary
+                                                            : Colors.black
+                                                                .withValues(
+                                                                  alpha: 0.28,
                                                                 ),
-                                                          borderRadius:
-                                                              BorderRadius
-                                                                  .circular(
-                                                            11,
-                                                          ),
-                                                          border: Border.all(
-                                                            color:
-                                                                Colors.white,
-                                                            width: 1.5,
-                                                          ),
+                                                    borderRadius:
+                                                        BorderRadius.circular(
+                                                          11,
                                                         ),
-                                                        child: selected
-                                                            ? const Icon(
-                                                                Icons.check,
-                                                                color: Colors
-                                                                    .white,
-                                                                size: 14,
-                                                              )
-                                                            : null,
-                                                      ),
+                                                    border: Border.all(
+                                                      color: Colors.white,
+                                                      width: 1.5,
                                                     ),
-                                                  ],
-                                                ),
-                                              ),
-                                              Padding(
-                                                padding:
-                                                    const EdgeInsets.fromLTRB(
-                                                  6, 4, 6, 6,
-                                                ),
-                                                child: Column(
-                                                  children: [
-                                                    Text(
-                                                      _livePackName(pack),
-                                                      maxLines: 1,
-                                                      overflow: TextOverflow
-                                                          .ellipsis,
-                                                      style: const TextStyle(
-                                                        fontSize: 11,
-                                                        color: AppColors
-                                                            .textBody,
-                                                      ),
-                                                    ),
-                                                    const SizedBox(height: 2),
-                                                    Text(
-                                                      complete
-                                                          ? '完整套件'
-                                                          : '半成品不可选',
-                                                      style: TextStyle(
-                                                        fontSize: 10,
-                                                        color: complete
-                                                            ? AppColors
-                                                                .textSecondary
-                                                            : AppColors
-                                                                .warning,
-                                                      ),
-                                                    ),
-                                                  ],
+                                                  ),
+                                                  child:
+                                                      selected
+                                                          ? const Icon(
+                                                            Icons.check,
+                                                            color: Colors.white,
+                                                            size: 14,
+                                                          )
+                                                          : null,
                                                 ),
                                               ),
                                             ],
                                           ),
                                         ),
+                                      );
+                                    },
+                                  ),
+                                ],
+                                if (filteredLives.isNotEmpty) ...[
+                                  const Padding(
+                                    padding: EdgeInsets.only(
+                                      top: 14,
+                                      bottom: 8,
+                                    ),
+                                    child: Text(
+                                      'Live 套件',
+                                      style: TextStyle(
+                                        fontSize: 13,
+                                        fontWeight: FontWeight.w700,
+                                        color: AppColors.textSecondary,
                                       ),
-                                    );
-                                  },
-                                ),
+                                    ),
+                                  ),
+                                  GridView.builder(
+                                    shrinkWrap: true,
+                                    physics:
+                                        const NeverScrollableScrollPhysics(),
+                                    itemCount: filteredLives.length,
+                                    gridDelegate:
+                                        const SliverGridDelegateWithFixedCrossAxisCount(
+                                          crossAxisCount: 2,
+                                          mainAxisSpacing: 10,
+                                          crossAxisSpacing: 10,
+                                          childAspectRatio: 1.08,
+                                        ),
+                                    itemBuilder: (context, index) {
+                                      final pack = filteredLives[index];
+                                      final id = _livePackId(pack);
+                                      final selected = tempSelectedLivePacks
+                                          .contains(id);
+                                      final complete = _livePackComplete(pack);
+                                      final imageUrl = _livePackImageDisplayUrl(
+                                        pack,
+                                      );
+                                      final videoUrl = UrlUtils.absolute(
+                                        _livePackVideoSourceUrl(pack),
+                                      );
+                                      final missing =
+                                          (pack['missing'] as List?)?.join(
+                                            ' + ',
+                                          ) ??
+                                          '';
+                                      return GestureDetector(
+                                        onTap: () {
+                                          if (!complete) return;
+                                          setSheetState(() {
+                                            if (selected) {
+                                              tempSelectedLivePacks.remove(id);
+                                            } else if (id > 0) {
+                                              tempSelectedLivePacks.add(id);
+                                              tempSelectedAssets.clear();
+                                            }
+                                          });
+                                        },
+                                        child: Opacity(
+                                          opacity: complete ? 1 : 0.6,
+                                          child: AnimatedContainer(
+                                            duration: const Duration(
+                                              milliseconds: 180,
+                                            ),
+                                            clipBehavior: Clip.antiAlias,
+                                            decoration: BoxDecoration(
+                                              color: Colors.white,
+                                              borderRadius:
+                                                  BorderRadius.circular(14),
+                                              border: Border.all(
+                                                color:
+                                                    selected
+                                                        ? AppColors.primary
+                                                        : AppColors.border,
+                                                width: selected ? 2 : 1,
+                                              ),
+                                            ),
+                                            child: Column(
+                                              crossAxisAlignment:
+                                                  CrossAxisAlignment.start,
+                                              children: [
+                                                Expanded(
+                                                  child: Stack(
+                                                    fit: StackFit.expand,
+                                                    children: [
+                                                      _buildPublishPoster(
+                                                        imageUrl: imageUrl,
+                                                        fallbackVideoUrl:
+                                                            videoUrl,
+                                                        isVideo: false,
+                                                      ),
+                                                      Positioned(
+                                                        left: 8,
+                                                        top: 8,
+                                                        child: Container(
+                                                          padding:
+                                                              const EdgeInsets.symmetric(
+                                                                horizontal: 7,
+                                                                vertical: 3,
+                                                              ),
+                                                          decoration: BoxDecoration(
+                                                            color: Colors.black
+                                                                .withValues(
+                                                                  alpha: 0.55,
+                                                                ),
+                                                            borderRadius:
+                                                                BorderRadius.circular(
+                                                                  999,
+                                                                ),
+                                                          ),
+                                                          child: const Text(
+                                                            'LIVE',
+                                                            style: TextStyle(
+                                                              color:
+                                                                  Colors.white,
+                                                              fontSize: 10,
+                                                              fontWeight:
+                                                                  FontWeight
+                                                                      .w700,
+                                                            ),
+                                                          ),
+                                                        ),
+                                                      ),
+                                                      Positioned(
+                                                        right: 8,
+                                                        top: 8,
+                                                        child: AnimatedContainer(
+                                                          duration:
+                                                              const Duration(
+                                                                milliseconds:
+                                                                    180,
+                                                              ),
+                                                          width: 22,
+                                                          height: 22,
+                                                          decoration: BoxDecoration(
+                                                            color:
+                                                                selected
+                                                                    ? AppColors
+                                                                        .primary
+                                                                    : Colors
+                                                                        .black
+                                                                        .withValues(
+                                                                          alpha:
+                                                                              0.28,
+                                                                        ),
+                                                            borderRadius:
+                                                                BorderRadius.circular(
+                                                                  11,
+                                                                ),
+                                                            border: Border.all(
+                                                              color:
+                                                                  Colors.white,
+                                                              width: 1.5,
+                                                            ),
+                                                          ),
+                                                          child:
+                                                              selected
+                                                                  ? const Icon(
+                                                                    Icons.check,
+                                                                    color:
+                                                                        Colors
+                                                                            .white,
+                                                                    size: 14,
+                                                                  )
+                                                                  : null,
+                                                        ),
+                                                      ),
+                                                    ],
+                                                  ),
+                                                ),
+                                                Padding(
+                                                  padding:
+                                                      const EdgeInsets.fromLTRB(
+                                                        10,
+                                                        8,
+                                                        10,
+                                                        10,
+                                                      ),
+                                                  child: Column(
+                                                    crossAxisAlignment:
+                                                        CrossAxisAlignment
+                                                            .start,
+                                                    children: [
+                                                      Text(
+                                                        _livePackName(pack),
+                                                        maxLines: 1,
+                                                        overflow:
+                                                            TextOverflow
+                                                                .ellipsis,
+                                                        style: const TextStyle(
+                                                          fontSize: 13,
+                                                          fontWeight:
+                                                              FontWeight.w700,
+                                                          color:
+                                                              AppColors
+                                                                  .textPrimary,
+                                                        ),
+                                                      ),
+                                                      const SizedBox(height: 3),
+                                                      Text(
+                                                        complete
+                                                            ? '完整套件'
+                                                            : '缺少 $missing',
+                                                        maxLines: 1,
+                                                        overflow:
+                                                            TextOverflow
+                                                                .ellipsis,
+                                                        style: TextStyle(
+                                                          fontSize: 11,
+                                                          color:
+                                                              complete
+                                                                  ? AppColors
+                                                                      .textSecondary
+                                                                  : AppColors
+                                                                      .warning,
+                                                        ),
+                                                      ),
+                                                    ],
+                                                  ),
+                                                ),
+                                              ],
+                                            ),
+                                          ),
+                                        ),
+                                      );
+                                    },
+                                  ),
+                                ],
                               ],
-                            ],
-                          ),
+                            ),
                   ),
                   bottomBar(),
                 ],
@@ -3665,70 +4092,44 @@ class _AdminNativeWorkbenchPageState extends State<AdminNativeWorkbenchPage> {
       },
     );
 
-    if (confirmed != true || !mounted) return;
-    setState(() {
-      _selectedPublishAssetIds = tempSelectedAssets;
-      _selectedPublishLivePackIds = tempSelectedLivePacks;
-    });
-  }
+    searchController.dispose();
 
-  Widget _pickerChip(
-    String label,
-    String value,
-    String current,
-    ValueChanged<String> onTap,
-  ) {
-    final selected = current == value;
-    return GestureDetector(
-      onTap: () => onTap(value),
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
-        decoration: BoxDecoration(
-          color: selected
-              ? AppColors.primary
-              : AppColors.primary.withValues(alpha: 0.08),
-          borderRadius: BorderRadius.circular(20),
-        ),
-        child: Text(
-          label,
-          style: TextStyle(
-            fontSize: 13,
-            fontWeight: FontWeight.w600,
-            color: selected ? Colors.white : AppColors.textSecondary,
-          ),
-        ),
-      ),
-    );
+    if (confirmed == true && mounted) {
+      setState(() {
+        _selectedPublishAssetIds = tempSelectedAssets;
+        _selectedPublishLivePackIds = tempSelectedLivePacks;
+      });
+    }
   }
 
   Future<void> _publishMaterial() async {
     if (_publishingMaterial) return;
     final title = _publishTitleController.text.trim();
     if (title.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('请输入标题')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('请输入标题')));
       return;
     }
     if (_publishCategoryId == null || _publishCategoryId! <= 0) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('请选择二级分类')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('请选择二级分类')));
       return;
     }
 
     final selectedAssets = _selectedPublishAssets();
     final selectedLivePacks = _selectedPublishLivePacks();
     if (selectedAssets.isEmpty && selectedLivePacks.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('请先从素材库选择素材')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('请先从素材库选择素材')));
       return;
     }
     if (selectedAssets.isNotEmpty && selectedLivePacks.isNotEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('请勿混选普通素材和Live套件')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('请勿混选普通素材和Live套件')));
       return;
     }
 
@@ -3741,9 +4142,9 @@ class _AdminNativeWorkbenchPageState extends State<AdminNativeWorkbenchPage> {
         final allImage = selectedAssets.every(_assetIsImage);
         final allVideo = selectedAssets.every(_assetIsVideo);
         if (!allImage && !allVideo) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('请选择同类型素材（仅图片或仅视频）')),
-          );
+          ScaffoldMessenger.of(
+            context,
+          ).showSnackBar(const SnackBar(content: Text('请选择同类型素材（仅图片或仅视频）')));
           return;
         }
         final originalUrls = selectedAssets
@@ -3751,15 +4152,18 @@ class _AdminNativeWorkbenchPageState extends State<AdminNativeWorkbenchPage> {
             .where((u) => u.trim().isNotEmpty)
             .toList(growable: false);
         if (originalUrls.isEmpty) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('素材地址无效，请重新选择')),
-          );
+          ScaffoldMessenger.of(
+            context,
+          ).showSnackBar(const SnackBar(content: Text('素材地址无效，请重新选择')));
           return;
         }
 
         final thumb = selectedAssets
             .map(_assetThumbUrl)
-            .firstWhere((u) => u.trim().isNotEmpty, orElse: () => originalUrls.first);
+            .firstWhere(
+              (u) => u.trim().isNotEmpty,
+              orElse: () => originalUrls.first,
+            );
         final payload = <String, dynamic>{
           'title': title,
           'description': '',
@@ -3771,50 +4175,62 @@ class _AdminNativeWorkbenchPageState extends State<AdminNativeWorkbenchPage> {
           'original_urls': originalUrls,
           'thumbnail_url': thumb,
         };
-        final resp = await AdminHttpClient().dio.post('/materials', data: payload);
+        final resp = await AdminHttpClient().dio.post(
+          '/materials',
+          data: payload,
+        );
         final data = resp.data as Map<String, dynamic>;
         if ((data['code'] ?? -1) != 0) {
           throw Exception((data['message'] ?? '发布失败').toString());
         }
         successCount = 1;
       } else {
-        for (var i = 0; i < selectedLivePacks.length; i++) {
-          final pack = selectedLivePacks[i];
-          final complete = _livePackComplete(pack);
-          final imageUrl = (pack['image_url'] ?? '').toString().trim();
-          final previewUrl = _livePackImagePreviewRawUrl(pack).trim();
-          final movUrl = _livePackVideoSourceUrl(pack).trim();
-          final packName = _livePackName(pack);
-          if (!complete || imageUrl.isEmpty || movUrl.isEmpty) {
-            failed.add('$packName：套件不完整');
+        // 多个 Live 打包成一条素材（与图片行为一致）
+        final imageUrls = <String>[];
+        String firstPreview = '';
+        String firstMov = '';
+        for (final pack in selectedLivePacks) {
+          if (!_livePackComplete(pack)) {
+            failed.add('${_livePackName(pack)}：套件不完整，已跳过');
             continue;
           }
-          final payload = <String, dynamic>{
-            'title': selectedLivePacks.length == 1 ? title : '$title ${i + 1}',
-            'description': '',
-            'type': 'live_photo',
-            'category_id': _publishCategoryId,
-            'status': 'published',
-            'show_inspiration': _publishShowInspiration,
-            'show_moments': _publishShowMoments,
-            'original_urls': [imageUrl],
-            'thumbnail_url': previewUrl.isNotEmpty ? previewUrl : imageUrl,
-            'preview_mov_url': movUrl,
-          };
-          try {
-            final resp = await AdminHttpClient().dio.post('/materials', data: payload);
-            final data = resp.data as Map<String, dynamic>;
-            if ((data['code'] ?? -1) != 0) {
-              throw Exception((data['message'] ?? '发布失败').toString());
-            }
-            successCount += 1;
-          } catch (e) {
-            failed.add('$packName：$e');
+          final imgUrl = (pack['image_url'] ?? '').toString().trim();
+          final movUrl = _livePackVideoSourceUrl(pack).trim();
+          if (imgUrl.isEmpty || movUrl.isEmpty) {
+            failed.add('${_livePackName(pack)}：地址无效');
+            continue;
           }
+          imageUrls.add(imgUrl);
+          if (firstPreview.isEmpty) {
+            final pv = _livePackImagePreviewRawUrl(pack).trim();
+            firstPreview = pv.isNotEmpty ? pv : imgUrl;
+          }
+          if (firstMov.isEmpty) firstMov = movUrl;
         }
-        if (successCount == 0) {
+        if (imageUrls.isEmpty) {
           throw Exception(failed.isEmpty ? 'Live 发布失败' : failed.first);
         }
+        final payload = <String, dynamic>{
+          'title': title,
+          'description': '',
+          'type': 'live_photo',
+          'category_id': _publishCategoryId,
+          'status': 'published',
+          'show_inspiration': _publishShowInspiration,
+          'show_moments': _publishShowMoments,
+          'original_urls': imageUrls,
+          'thumbnail_url': firstPreview,
+          'preview_mov_url': firstMov,
+        };
+        final resp = await AdminHttpClient().dio.post(
+          '/materials',
+          data: payload,
+        );
+        final data = resp.data as Map<String, dynamic>;
+        if ((data['code'] ?? -1) != 0) {
+          throw Exception((data['message'] ?? '发布失败').toString());
+        }
+        successCount = 1;
       }
 
       if (failed.isNotEmpty && mounted) {
@@ -3833,14 +4249,14 @@ class _AdminNativeWorkbenchPageState extends State<AdminNativeWorkbenchPage> {
       });
       await _loadCurrent();
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('发布成功')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('发布成功')));
     } catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('发布失败：$e')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('发布失败：$e')));
     } finally {
       if (mounted) {
         setState(() => _publishingMaterial = false);
@@ -3865,142 +4281,318 @@ class _AdminNativeWorkbenchPageState extends State<AdminNativeWorkbenchPage> {
   }
 
   Widget _buildPublishSelectedAssetsStrip() {
-    final selected = _selectedPublishAssets();
+    final selectedAssets = _selectedPublishAssets();
     final selectedLivePacks = _selectedPublishLivePacks();
-    final cards = <Widget>[
-      ...selected.map(
-        (item) {
-          final id = _assetId(item);
-          final thumb = _assetThumbUrl(item);
-          return Container(
-            width: 84,
-            margin: const EdgeInsets.only(right: 8),
-            child: Stack(
-              children: [
-                ClipRRect(
-                  borderRadius: BorderRadius.circular(10),
-                  child: SizedBox(
-                    width: 84,
-                    height: 84,
-                    child: thumb.isNotEmpty
-                        ? Image.network(
-                            thumb,
-                            fit: BoxFit.cover,
-                            errorBuilder: (_, __, ___) => _thumbPlaceholder(
-                              _assetIsVideo(item),
-                            ),
-                          )
-                        : _thumbPlaceholder(_assetIsVideo(item)),
-                  ),
+    final selectedCount = selectedAssets.length + selectedLivePacks.length;
+
+    return _buildPublishSectionCard(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              const Text(
+                '已选素材',
+                style: TextStyle(
+                  fontSize: 18,
+                  fontWeight: FontWeight.w700,
+                  color: AppColors.textPrimary,
                 ),
-                Positioned(
-                  right: 4,
-                  top: 4,
-                  child: InkWell(
-                    onTap: () {
-                      setState(() => _selectedPublishAssetIds.remove(id));
-                    },
-                    child: Container(
-                      width: 20,
-                      height: 20,
-                      decoration: BoxDecoration(
-                        color: Colors.black.withValues(alpha: 0.55),
-                        borderRadius: BorderRadius.circular(999),
-                      ),
-                      child: const Icon(Icons.close, color: Colors.white, size: 14),
+              ),
+              const Spacer(),
+              if (selectedCount > 0)
+                Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 10,
+                    vertical: 5,
+                  ),
+                  decoration: BoxDecoration(
+                    color: AppColors.primary.withValues(alpha: 0.10),
+                    borderRadius: BorderRadius.circular(999),
+                  ),
+                  child: Text(
+                    '已选 $selectedCount',
+                    style: const TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w700,
+                      color: AppColors.primary,
                     ),
                   ),
                 ),
-              ],
-            ),
-          );
-        },
-      ),
-      ...selectedLivePacks.map(
-        (pack) {
-          final id = _livePackId(pack);
-          final imageUrl = _livePackImageDisplayUrl(pack);
-          return Container(
-            width: 84,
-            margin: const EdgeInsets.only(right: 8),
-            child: Stack(
-              children: [
-                ClipRRect(
-                  borderRadius: BorderRadius.circular(10),
-                  child: SizedBox(
-                    width: 84,
-                    height: 84,
-                    child: imageUrl.isNotEmpty
-                        ? Image.network(
-                            imageUrl,
-                            fit: BoxFit.cover,
-                            errorBuilder: (_, __, ___) => _thumbPlaceholder(false),
-                          )
-                        : _thumbPlaceholder(false),
-                  ),
-                ),
-                Positioned(
-                  left: 4,
-                  top: 4,
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
-                    decoration: BoxDecoration(
-                      color: Colors.black.withValues(alpha: 0.55),
-                      borderRadius: BorderRadius.circular(999),
-                    ),
-                    child: const Text(
-                      'Live',
-                      style: TextStyle(
-                        fontSize: 9,
-                        color: Colors.white,
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                  ),
-                ),
-                Positioned(
-                  right: 4,
-                  top: 4,
-                  child: InkWell(
-                    onTap: () {
-                      setState(() => _selectedPublishLivePackIds.remove(id));
-                    },
-                    child: Container(
-                      width: 20,
-                      height: 20,
-                      decoration: BoxDecoration(
-                        color: Colors.black.withValues(alpha: 0.55),
-                        borderRadius: BorderRadius.circular(999),
-                      ),
-                      child: const Icon(Icons.close, color: Colors.white, size: 14),
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          );
-        },
-      ),
-      GestureDetector(
-        onTap: _openPublishAssetSelector,
-        child: Container(
-          width: 84,
-          height: 84,
-          decoration: BoxDecoration(
-            color: AppColors.surface,
-            borderRadius: BorderRadius.circular(10),
-            border: Border.all(color: AppColors.border),
+            ],
           ),
-          child: const Icon(Icons.add, color: AppColors.textHint, size: 28),
+          const SizedBox(height: 4),
+          Text(
+            selectedCount > 0 ? '首张将作为封面，可继续添加或移除素材' : '先从相簿选择图片、视频或 Live 套件',
+            style: const TextStyle(
+              fontSize: 13,
+              color: AppColors.textSecondary,
+            ),
+          ),
+          const SizedBox(height: 14),
+          LayoutBuilder(
+            builder: (context, constraints) {
+              final cardWidth = (constraints.maxWidth - 16) / 3;
+              final children = <Widget>[
+                ...selectedAssets.asMap().entries.map(
+                  (entry) => SizedBox(
+                    width: cardWidth,
+                    child: _buildPublishSelectedAssetCard(
+                      entry.value,
+                      isCover: entry.key == 0,
+                      onRemove:
+                          () => setState(
+                            () => _selectedPublishAssetIds.remove(
+                              _assetId(entry.value),
+                            ),
+                          ),
+                    ),
+                  ),
+                ),
+                ...selectedLivePacks.asMap().entries.map(
+                  (entry) => SizedBox(
+                    width: cardWidth,
+                    child: _buildPublishSelectedLiveCard(
+                      entry.value,
+                      isCover: selectedAssets.isEmpty && entry.key == 0,
+                      onRemove:
+                          () => setState(
+                            () => _selectedPublishLivePackIds.remove(
+                              _livePackId(entry.value),
+                            ),
+                          ),
+                    ),
+                  ),
+                ),
+                SizedBox(width: cardWidth, child: _buildPublishAddCard()),
+              ];
+              return Wrap(spacing: 8, runSpacing: 8, children: children);
+            },
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildPublishSelectedAssetCard(
+    Map<String, dynamic> item, {
+    required bool isCover,
+    required VoidCallback onRemove,
+  }) {
+    final thumbUrl = _assetThumbUrl(item);
+    final sourceUrl = UrlUtils.absolute(_assetSourceUrl(item));
+    final isVideo = _assetIsVideo(item);
+    return _buildPublishSelectionCard(
+      poster: _buildPublishPoster(
+        imageUrl: thumbUrl,
+        fallbackVideoUrl: isVideo ? sourceUrl : null,
+        isVideo: isVideo,
+      ),
+      isCover: isCover,
+      bottomLabel: isVideo ? '视频' : null,
+      onRemove: onRemove,
+      showPlayIcon: isVideo,
+    );
+  }
+
+  Widget _buildPublishSelectedLiveCard(
+    Map<String, dynamic> pack, {
+    required bool isCover,
+    required VoidCallback onRemove,
+  }) {
+    final imageUrl = _livePackImageDisplayUrl(pack);
+    final videoUrl = UrlUtils.absolute(_livePackVideoSourceUrl(pack));
+    return _buildPublishSelectionCard(
+      poster: _buildPublishPoster(
+        imageUrl: imageUrl,
+        fallbackVideoUrl: videoUrl,
+        isVideo: false,
+      ),
+      isCover: isCover,
+      bottomLabel: 'LIVE',
+      onRemove: onRemove,
+    );
+  }
+
+  Widget _buildPublishSelectionCard({
+    required Widget poster,
+    required bool isCover,
+    String? bottomLabel,
+    required VoidCallback onRemove,
+    bool showPlayIcon = false,
+  }) {
+    return AspectRatio(
+      aspectRatio: 1,
+      child: Container(
+        clipBehavior: Clip.antiAlias,
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(18),
+          border: Border.all(color: AppColors.border),
+          color: AppColors.surface,
+        ),
+        child: Stack(
+          fit: StackFit.expand,
+          children: [
+            poster,
+            if (showPlayIcon)
+              Center(
+                child: Icon(
+                  Icons.play_circle_fill_rounded,
+                  color: Colors.white.withValues(alpha: 0.9),
+                  size: 30,
+                ),
+              ),
+            if (isCover)
+              Positioned(
+                left: 8,
+                top: 8,
+                child: Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 8,
+                    vertical: 4,
+                  ),
+                  decoration: BoxDecoration(
+                    color: Colors.black.withValues(alpha: 0.58),
+                    borderRadius: BorderRadius.circular(999),
+                  ),
+                  child: const Text(
+                    '封面',
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontSize: 10,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                ),
+              ),
+            if (bottomLabel != null)
+              Positioned(
+                left: 8,
+                bottom: 8,
+                child: Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 8,
+                    vertical: 4,
+                  ),
+                  decoration: BoxDecoration(
+                    color: Colors.black.withValues(alpha: 0.58),
+                    borderRadius: BorderRadius.circular(999),
+                  ),
+                  child: Text(
+                    bottomLabel,
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 10,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                ),
+              ),
+            Positioned(
+              right: 8,
+              top: 8,
+              child: InkWell(
+                onTap: onRemove,
+                child: Container(
+                  width: 24,
+                  height: 24,
+                  decoration: BoxDecoration(
+                    color: Colors.black.withValues(alpha: 0.5),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: const Icon(Icons.close, color: Colors.white, size: 14),
+                ),
+              ),
+            ),
+          ],
         ),
       ),
-    ];
-    return SizedBox(
-      height: 86,
-      child: ListView(
-        scrollDirection: Axis.horizontal,
-        children: cards,
+    );
+  }
+
+  Widget _buildPublishAddCard() {
+    return GestureDetector(
+      onTap: _openPublishAssetSelector,
+      child: AspectRatio(
+        aspectRatio: 1,
+        child: Container(
+          decoration: BoxDecoration(
+            color: AppColors.surface,
+            borderRadius: BorderRadius.circular(18),
+            border: Border.all(color: AppColors.border),
+          ),
+          child: const Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(
+                Icons.add_photo_alternate_outlined,
+                size: 28,
+                color: AppColors.textHint,
+              ),
+              SizedBox(height: 6),
+              Text(
+                '添加',
+                style: TextStyle(
+                  fontSize: 12,
+                  fontWeight: FontWeight.w600,
+                  color: AppColors.textSecondary,
+                ),
+              ),
+            ],
+          ),
+        ),
       ),
+    );
+  }
+
+  Widget _buildPublishPoster({
+    required String imageUrl,
+    String? fallbackVideoUrl,
+    required bool isVideo,
+  }) {
+    final image = imageUrl.trim();
+    final video = (fallbackVideoUrl ?? '').trim();
+    if (image.isNotEmpty && !_isVideoUrl(image)) {
+      return Image.network(
+        image,
+        fit: BoxFit.cover,
+        errorBuilder: (_, __, ___) {
+          if (video.isNotEmpty) {
+            return NetworkVideoThumbnail(
+              videoUrl: video,
+              fit: BoxFit.cover,
+              placeholder: _thumbPlaceholder(isVideo),
+              errorWidget: _thumbPlaceholder(isVideo),
+            );
+          }
+          return _thumbPlaceholder(isVideo);
+        },
+      );
+    }
+    final videoUrl = video.isNotEmpty ? video : image;
+    if (videoUrl.isNotEmpty) {
+      return NetworkVideoThumbnail(
+        videoUrl: videoUrl,
+        fit: BoxFit.cover,
+        placeholder: _thumbPlaceholder(isVideo),
+        errorWidget: _thumbPlaceholder(isVideo),
+      );
+    }
+    return _thumbPlaceholder(isVideo);
+  }
+
+  Widget _buildPublishSectionCard({
+    required Widget child,
+    EdgeInsetsGeometry padding = const EdgeInsets.all(16),
+  }) {
+    return Container(
+      padding: padding,
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: AppColors.border.withValues(alpha: 0.9)),
+      ),
+      child: child,
     );
   }
 
@@ -4039,266 +4631,331 @@ class _AdminNativeWorkbenchPageState extends State<AdminNativeWorkbenchPage> {
           ),
         ),
         Expanded(
-          child: _buildVisualCards(_materials, empty: '暂无素材数据', isMaterial: true),
+          child: _buildVisualCards(
+            _materials,
+            empty: '暂无素材数据',
+            isMaterial: true,
+          ),
         ),
       ],
     );
   }
 
   /// 沉浸式发布页（类似小红书发布）
+
   Widget _buildPublishImmersive() {
     final topInset = MediaQuery.of(context).padding.top;
     final bottomInset = MediaQuery.of(context).padding.bottom;
     final secondLevel = _secondLevelCategories();
     final selectedCount =
         _selectedPublishAssetIds.length + _selectedPublishLivePackIds.length;
+    final hasTitle = _publishTitleController.text.trim().isNotEmpty;
+    final hasCategory = _publishCategoryId != null && _publishCategoryId! > 0;
+    final hasSelection = selectedCount > 0;
+    final canPublish =
+        hasTitle && hasCategory && hasSelection && !_publishingMaterial;
 
     return Column(
       children: [
-        // === 顶部导航栏 ===
         Container(
-          padding: EdgeInsets.fromLTRB(6, topInset + 8, 12, 8),
+          padding: EdgeInsets.fromLTRB(8, topInset + 4, 8, 10),
+          color: AppColors.primaryBg,
           child: Row(
             children: [
-              // 关闭按钮
-              GestureDetector(
-                onTap: _publishingMaterial ? null : _closeMaterialComposer,
-                child: Container(
-                  width: 36,
-                  height: 36,
-                  decoration: BoxDecoration(
-                    color: AppColors.surface,
-                    borderRadius: BorderRadius.circular(18),
-                  ),
-                  child: const Icon(
-                    Icons.close_rounded,
-                    size: 20,
+              CupertinoButton(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+                minSize: 0,
+                onPressed: _publishingMaterial ? null : _closeMaterialComposer,
+                child: const Text(
+                  '取消',
+                  style: TextStyle(fontSize: 17, fontWeight: FontWeight.w500),
+                ),
+              ),
+              Expanded(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: const [
+                    Text(
+                      '新增素材',
+                      style: TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.w800,
+                        color: AppColors.textPrimary,
+                      ),
+                    ),
+                    SizedBox(height: 2),
+                    Text(
+                      '像相册一样选择与发布',
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: AppColors.textSecondary,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              CupertinoButton(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+                minSize: 0,
+                onPressed: canPublish ? _publishMaterial : null,
+                child:
+                    _publishingMaterial
+                        ? const SizedBox(
+                          width: 18,
+                          height: 18,
+                          child: CircularProgressIndicator(strokeWidth: 2.2),
+                        )
+                        : Text(
+                          '完成',
+                          style: TextStyle(
+                            fontSize: 17,
+                            fontWeight: FontWeight.w600,
+                            color:
+                                canPublish
+                                    ? AppColors.primary
+                                    : AppColors.textHint,
+                          ),
+                        ),
+              ),
+            ],
+          ),
+        ),
+        Expanded(
+          child: ListView(
+            padding: EdgeInsets.fromLTRB(16, 0, 16, bottomInset + 24),
+            children: [
+              _buildPublishSelectedAssetsStrip(),
+              const SizedBox(height: 16),
+              _buildPublishSectionCard(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text(
+                      '素材标题',
+                      style: TextStyle(
+                        fontSize: 15,
+                        fontWeight: FontWeight.w700,
+                        color: AppColors.textPrimary,
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    TextField(
+                      controller: _publishTitleController,
+                      maxLength: 50,
+                      maxLines: null,
+                      onChanged: (_) => setState(() {}),
+                      style: const TextStyle(
+                        fontSize: 19,
+                        fontWeight: FontWeight.w600,
+                        color: AppColors.textPrimary,
+                      ),
+                      decoration: const InputDecoration(
+                        hintText: '为这组素材添加标题',
+                        hintStyle: TextStyle(
+                          fontSize: 19,
+                          fontWeight: FontWeight.w400,
+                          color: AppColors.textHint,
+                        ),
+                        counterText: '',
+                        border: InputBorder.none,
+                        contentPadding: EdgeInsets.zero,
+                      ),
+                    ),
+                    if (!hasTitle)
+                      const Text(
+                        '标题会展示在客户端素材详情页',
+                        style: TextStyle(
+                          fontSize: 12,
+                          color: AppColors.textSecondary,
+                        ),
+                      ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 18),
+              const Padding(
+                padding: EdgeInsets.only(left: 4, bottom: 8),
+                child: Text(
+                  '发布设置',
+                  style: TextStyle(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w700,
                     color: AppColors.textSecondary,
                   ),
                 ),
               ),
-              const Spacer(),
-            ],
-          ),
-        ),
-        // === 内容区 ===
-        Expanded(
-          child: ListView(
-            padding: const EdgeInsets.fromLTRB(16, 0, 16, 20),
-            children: [
-              // 标题输入
-              TextField(
-                controller: _publishTitleController,
-                maxLength: 50,
-                maxLines: null,
-                style: const TextStyle(
-                  fontSize: 20,
-                  fontWeight: FontWeight.w600,
-                  color: AppColors.textPrimary,
-                ),
-                decoration: const InputDecoration(
-                  hintText: '输入素材标题...',
-                  hintStyle: TextStyle(
-                    fontSize: 20,
-                    fontWeight: FontWeight.w400,
-                    color: AppColors.textHint,
+              _buildPublishSettingsCard(secondLevel),
+              const SizedBox(height: 12),
+              Padding(
+                padding: const EdgeInsets.only(left: 4),
+                child: Text(
+                  !hasSelection
+                      ? '请先从相簿添加素材'
+                      : !hasTitle
+                      ? '请填写素材标题'
+                      : !hasCategory
+                      ? '请选择投放分类'
+                      : '准备就绪，点击右上角“完成”发布',
+                  style: const TextStyle(
+                    fontSize: 12,
+                    color: AppColors.textSecondary,
                   ),
-                  counterText: '',
-                  border: InputBorder.none,
-                  contentPadding: EdgeInsets.symmetric(vertical: 8),
                 ),
               ),
-              const SizedBox(height: 16),
-              // 素材选择横条
-              _buildPublishSelectedAssetsStrip(),
-              const SizedBox(height: 24),
-              // 设置项分割线
-              Container(height: 1, color: AppColors.border.withValues(alpha: 0.5)),
-              // 分类选择行
-              _publishSettingRow(
-                icon: Icons.category_outlined,
-                label: '投放分类',
-                trailing: secondLevel.isEmpty
-                    ? const Text(
-                        '请先创建分类',
-                        style: TextStyle(fontSize: 14, color: AppColors.textHint),
-                      )
-                    : DropdownButton<int>(
-                        value: _publishCategoryId,
-                        underline: const SizedBox.shrink(),
-                        icon: const Icon(Icons.chevron_right_rounded,
-                            color: AppColors.textHint, size: 20),
-                        hint: const Text(
-                          '选择分类',
-                          style: TextStyle(
-                            fontSize: 14,
-                            color: AppColors.textHint,
-                          ),
-                        ),
-                        style: const TextStyle(
-                          fontSize: 14,
-                          color: AppColors.textPrimary,
-                        ),
-                        items: secondLevel
-                            .map(
-                              (item) => DropdownMenuItem<int>(
-                                value: item['id'] as int,
-                                child: Text(
-                                  '${item['parent_name']} / ${item['name']}',
-                                  overflow: TextOverflow.ellipsis,
-                                ),
-                              ),
-                            )
-                            .toList(growable: false),
-                        onChanged: (value) =>
-                            setState(() => _publishCategoryId = value),
-                      ),
-              ),
-              Container(height: 1, color: AppColors.border.withValues(alpha: 0.5)),
-              // 找灵感开关
-              _publishSettingRow(
-                icon: Icons.lightbulb_outline_rounded,
-                label: '同步到找灵感',
-                trailing: CupertinoSwitch(
-                  value: _publishShowInspiration,
-                  activeTrackColor: AppColors.primary,
-                  onChanged: (v) => setState(() => _publishShowInspiration = v),
-                ),
-              ),
-              Container(height: 1, color: AppColors.border.withValues(alpha: 0.5)),
-              // 朋友圈开关
-              _publishSettingRow(
-                icon: Icons.people_outline_rounded,
-                label: '同步到朋友圈',
-                trailing: CupertinoSwitch(
-                  value: _publishShowMoments,
-                  activeTrackColor: AppColors.primary,
-                  onChanged: (v) => setState(() => _publishShowMoments = v),
-                ),
-              ),
-              Container(height: 1, color: AppColors.border.withValues(alpha: 0.5)),
             ],
-          ),
-        ),
-        // === 底部发布按钮 ===
-        Container(
-          padding: EdgeInsets.fromLTRB(16, 10, 16, bottomInset + 10),
-          child: GestureDetector(
-            onTap: _publishingMaterial ? null : _publishMaterial,
-            child: Container(
-              height: 50,
-              decoration: BoxDecoration(
-                color: _publishingMaterial
-                    ? AppColors.primary.withValues(alpha: 0.5)
-                    : AppColors.primary,
-                borderRadius: BorderRadius.circular(25),
-              ),
-              alignment: Alignment.center,
-              child: _publishingMaterial
-                  ? const SizedBox(
-                      width: 22,
-                      height: 22,
-                      child: CircularProgressIndicator(
-                        strokeWidth: 2.5,
-                        color: Colors.white,
-                      ),
-                    )
-                  : Text(
-                      selectedCount > 0 ? '发布 ($selectedCount项)' : '发布',
-                      style: const TextStyle(
-                        fontSize: 16,
-                        fontWeight: FontWeight.w700,
-                        color: Colors.white,
-                      ),
-                    ),
-            ),
           ),
         ),
       ],
     );
   }
 
-  Widget _publishSettingRow({
-    required IconData icon,
-    required String label,
-    required Widget trailing,
-  }) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 4),
-      child: Row(
+  Widget _buildPublishSettingsCard(List<Map<String, dynamic>> secondLevel) {
+    final selectedCategory = secondLevel
+        .cast<Map<String, dynamic>?>()
+        .firstWhere(
+          (item) => item?['id'] == _publishCategoryId,
+          orElse: () => null,
+        );
+    final categorySubtitle =
+        selectedCategory == null
+            ? '选择一个二级分类作为投放位置'
+            : '${selectedCategory['parent_name']} / ${selectedCategory['name']}';
+
+    return _buildPublishSectionCard(
+      padding: EdgeInsets.zero,
+      child: Column(
         children: [
-          Icon(icon, size: 20, color: AppColors.textSecondary),
-          const SizedBox(width: 10),
-          Expanded(
-            child: Text(
-              label,
-              style: const TextStyle(
-                fontSize: 15,
-                fontWeight: FontWeight.w500,
-                color: AppColors.textPrimary,
-              ),
+          _publishSettingRow(
+            icon: Icons.category_outlined,
+            label: '投放分类',
+            subtitle: categorySubtitle,
+            trailing:
+                secondLevel.isEmpty
+                    ? const Text(
+                      '请先创建分类',
+                      style: TextStyle(fontSize: 14, color: AppColors.textHint),
+                    )
+                    : ConstrainedBox(
+                      constraints: const BoxConstraints(maxWidth: 180),
+                      child: DropdownButtonHideUnderline(
+                        child: DropdownButton<int>(
+                          isExpanded: true,
+                          value: _publishCategoryId,
+                          icon: const Icon(
+                            Icons.chevron_right_rounded,
+                            color: AppColors.textHint,
+                            size: 20,
+                          ),
+                          hint: const Text(
+                            '选择分类',
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(
+                              fontSize: 14,
+                              color: AppColors.textHint,
+                            ),
+                          ),
+                          style: const TextStyle(
+                            fontSize: 14,
+                            color: AppColors.textPrimary,
+                          ),
+                          items: secondLevel
+                              .map(
+                                (item) => DropdownMenuItem<int>(
+                                  value: item['id'] as int,
+                                  child: Text(
+                                    '${item['parent_name']} / ${item['name']}',
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                                ),
+                              )
+                              .toList(growable: false),
+                          onChanged:
+                              (value) =>
+                                  setState(() => _publishCategoryId = value),
+                        ),
+                      ),
+                    ),
+          ),
+          Divider(height: 1, color: AppColors.border.withValues(alpha: 0.6)),
+          _publishSettingRow(
+            icon: Icons.lightbulb_outline_rounded,
+            label: '同步到找灵感',
+            subtitle: '开启后会出现在找灵感频道',
+            trailing: CupertinoSwitch(
+              value: _publishShowInspiration,
+              activeTrackColor: AppColors.primary,
+              onChanged: (v) => setState(() => _publishShowInspiration = v),
             ),
           ),
-          trailing,
+          Divider(height: 1, color: AppColors.border.withValues(alpha: 0.6)),
+          _publishSettingRow(
+            icon: Icons.people_outline_rounded,
+            label: '同步到朋友圈',
+            subtitle: '开启后会进入朋友圈动态流',
+            trailing: CupertinoSwitch(
+              value: _publishShowMoments,
+              activeTrackColor: AppColors.primary,
+              onChanged: (v) => setState(() => _publishShowMoments = v),
+            ),
+          ),
         ],
       ),
     );
   }
 
-  Widget _publishToggle(
-    String label,
-    IconData icon,
-    bool value,
-    ValueChanged<bool> onChanged,
-  ) {
-    return GestureDetector(
-      onTap: () => onChanged(!value),
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-        decoration: BoxDecoration(
-          color: value
-              ? AppColors.primary.withValues(alpha: 0.10)
-              : AppColors.surface,
-          borderRadius: BorderRadius.circular(12),
-          border: Border.all(
-            color: value ? AppColors.primary.withValues(alpha: 0.3) : Colors.transparent,
+  Widget _publishSettingRow({
+    required IconData icon,
+    required String label,
+    String? subtitle,
+    required Widget trailing,
+  }) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
+      child: Row(
+        crossAxisAlignment:
+            subtitle == null
+                ? CrossAxisAlignment.center
+                : CrossAxisAlignment.start,
+        children: [
+          Container(
+            width: 34,
+            height: 34,
+            decoration: BoxDecoration(
+              color: AppColors.surface,
+              borderRadius: BorderRadius.circular(12),
+            ),
+            alignment: Alignment.center,
+            child: Icon(icon, size: 18, color: AppColors.textSecondary),
           ),
-        ),
-        child: Row(
-          children: [
-            Icon(
-              icon,
-              size: 18,
-              color: value ? AppColors.primary : AppColors.textHint,
-            ),
-            const SizedBox(width: 6),
-            Expanded(
-              child: Text(
-                label,
-                style: TextStyle(
-                  fontSize: 13,
-                  fontWeight: FontWeight.w600,
-                  color: value ? AppColors.primary : AppColors.textSecondary,
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  label,
+                  style: const TextStyle(
+                    fontSize: 15,
+                    fontWeight: FontWeight.w600,
+                    color: AppColors.textPrimary,
+                  ),
                 ),
-              ),
+                if (subtitle != null) ...[
+                  const SizedBox(height: 3),
+                  Text(
+                    subtitle,
+                    style: const TextStyle(
+                      fontSize: 12,
+                      color: AppColors.textSecondary,
+                    ),
+                  ),
+                ],
+              ],
             ),
-            Container(
-              width: 18,
-              height: 18,
-              decoration: BoxDecoration(
-                color: value ? AppColors.primary : Colors.transparent,
-                borderRadius: BorderRadius.circular(9),
-                border: Border.all(
-                  color: value ? AppColors.primary : AppColors.textHint,
-                  width: 1.5,
-                ),
-              ),
-              child: value
-                  ? const Icon(Icons.check, color: Colors.white, size: 12)
-                  : null,
-            ),
-          ],
-        ),
+          ),
+          const SizedBox(width: 12),
+          trailing,
+        ],
       ),
     );
   }
@@ -4397,9 +5054,14 @@ class _AdminNativeWorkbenchPageState extends State<AdminNativeWorkbenchPage> {
                               ),
                               if (children.isNotEmpty)
                                 Container(
-                                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 6,
+                                    vertical: 1,
+                                  ),
                                   decoration: BoxDecoration(
-                                    color: AppColors.videoBadge.withValues(alpha: 0.12),
+                                    color: AppColors.videoBadge.withValues(
+                                      alpha: 0.12,
+                                    ),
                                     borderRadius: BorderRadius.circular(8),
                                   ),
                                   child: Text(
@@ -4413,14 +5075,18 @@ class _AdminNativeWorkbenchPageState extends State<AdminNativeWorkbenchPage> {
                                 ),
                               const SizedBox(width: 4),
                               GestureDetector(
-                                onTap: () => _createCategory(
-                                  parentIdPreset: (parent['id'] as num?)?.toInt(),
-                                ),
+                                onTap:
+                                    () => _createCategory(
+                                      parentIdPreset:
+                                          (parent['id'] as num?)?.toInt(),
+                                    ),
                                 child: Container(
                                   width: 28,
                                   height: 28,
                                   decoration: BoxDecoration(
-                                    color: AppColors.primary.withValues(alpha: 0.08),
+                                    color: AppColors.primary.withValues(
+                                      alpha: 0.08,
+                                    ),
                                     borderRadius: BorderRadius.circular(8),
                                   ),
                                   child: const Icon(
@@ -4447,18 +5113,26 @@ class _AdminNativeWorkbenchPageState extends State<AdminNativeWorkbenchPage> {
                               padding: EdgeInsets.only(top: 8),
                               child: Text(
                                 '暂无二级分类',
-                                style: TextStyle(fontSize: 12, color: AppColors.textSecondary),
+                                style: TextStyle(
+                                  fontSize: 12,
+                                  color: AppColors.textSecondary,
+                                ),
                               ),
                             )
                           else
                             ...children.asMap().entries.map((entry) {
                               final idx = entry.key;
-                              final node = (entry.value as Map).cast<String, dynamic>();
-                              final name = (node['name'] ?? '未命名二级分类').toString();
+                              final node =
+                                  (entry.value as Map).cast<String, dynamic>();
+                              final name =
+                                  (node['name'] ?? '未命名二级分类').toString();
                               final id = (node['id'] ?? '-').toString();
                               return Container(
                                 margin: const EdgeInsets.only(top: 6),
-                                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 10,
+                                  vertical: 8,
+                                ),
                                 decoration: BoxDecoration(
                                   color: AppColors.surface,
                                   borderRadius: BorderRadius.circular(8),
@@ -4470,7 +5144,9 @@ class _AdminNativeWorkbenchPageState extends State<AdminNativeWorkbenchPage> {
                                       width: 20,
                                       height: 20,
                                       decoration: BoxDecoration(
-                                        color: AppColors.videoBadge.withValues(alpha: 0.12),
+                                        color: AppColors.videoBadge.withValues(
+                                          alpha: 0.12,
+                                        ),
                                         shape: BoxShape.circle,
                                       ),
                                       alignment: Alignment.center,
@@ -4525,11 +5201,12 @@ class _AdminNativeWorkbenchPageState extends State<AdminNativeWorkbenchPage> {
     required String empty,
     required bool isMaterial,
   }) {
-    final widgets = _buildVisualCardItems(items, empty: empty, isMaterial: isMaterial);
-    return ListView(
-      padding: const EdgeInsets.all(12),
-      children: widgets,
+    final widgets = _buildVisualCardItems(
+      items,
+      empty: empty,
+      isMaterial: isMaterial,
     );
+    return ListView(padding: const EdgeInsets.all(12), children: widgets);
   }
 
   List<Widget> _buildVisualCardItems(
@@ -4545,65 +5222,73 @@ class _AdminNativeWorkbenchPageState extends State<AdminNativeWorkbenchPage> {
         ),
       ];
     }
-    return items.map((raw) {
-      final item = (raw as Map).cast<String, dynamic>();
-      final title = (item['title'] ?? item['original_name'] ?? '未命名').toString();
-      final type = (item['type'] ?? item['file_type'] ?? '-').toString();
-      final thumbUrl = isMaterial ? _materialThumbUrl(item) : _assetThumbUrl(item);
-      final isVideo = _isVideoType(type) || _isVideoUrl(thumbUrl);
-      final status = (item['status'] ?? '').toString();
-      return Padding(
-        padding: const EdgeInsets.only(bottom: 10),
-        child: _sectionBlock(
-          child: Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              _thumbView(thumbUrl: thumbUrl, isVideo: isVideo),
-              const SizedBox(width: 10),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      title,
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(
-                        fontSize: 14,
-                        fontWeight: FontWeight.w700,
-                        color: AppColors.textPrimary,
-                      ),
-                    ),
-                    const SizedBox(height: 6),
-                    Wrap(
-                      spacing: 6,
-                      runSpacing: 6,
+    return items
+        .map((raw) {
+          final item = (raw as Map).cast<String, dynamic>();
+          final title =
+              (item['title'] ?? item['original_name'] ?? '未命名').toString();
+          final type = (item['type'] ?? item['file_type'] ?? '-').toString();
+          final thumbUrl =
+              isMaterial ? _materialThumbUrl(item) : _assetThumbUrl(item);
+          final isVideo = _isVideoType(type) || _isVideoUrl(thumbUrl);
+          final status = (item['status'] ?? '').toString();
+          return Padding(
+            padding: const EdgeInsets.only(bottom: 10),
+            child: _sectionBlock(
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  _thumbView(thumbUrl: thumbUrl, isVideo: isVideo),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        _miniTag('ID ${item['id'] ?? '-'}'),
-                        _miniTag(type),
-                        if (status.isNotEmpty) _miniTag(status),
+                        Text(
+                          title,
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(
+                            fontSize: 14,
+                            fontWeight: FontWeight.w700,
+                            color: AppColors.textPrimary,
+                          ),
+                        ),
+                        const SizedBox(height: 6),
+                        Wrap(
+                          spacing: 6,
+                          runSpacing: 6,
+                          children: [
+                            _miniTag('ID ${item['id'] ?? '-'}'),
+                            _miniTag(type),
+                            if (status.isNotEmpty) _miniTag(status),
+                          ],
+                        ),
+                        const SizedBox(height: 6),
+                        Text(
+                          isMaterial
+                              ? '分类: ${(item['category_name'] ?? item['category']?['name'] ?? '-').toString()}'
+                              : '文件夹: ${(item['folder'] ?? '未分类').toString()}',
+                          style: const TextStyle(
+                            fontSize: 12,
+                            color: AppColors.textSecondary,
+                          ),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
                       ],
                     ),
-                    const SizedBox(height: 6),
-                    Text(
-                      isMaterial
-                          ? '分类: ${(item['category_name'] ?? item['category']?['name'] ?? '-').toString()}'
-                          : '文件夹: ${(item['folder'] ?? '未分类').toString()}',
-                      style: const TextStyle(fontSize: 12, color: AppColors.textSecondary),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                  ],
-                ),
+                  ),
+                ],
               ),
-            ],
-          ),
-        ),
-      );
-    }).toList(growable: false);
+            ),
+          );
+        })
+        .toList(growable: false);
   }
 
-  int _livePackId(Map<String, dynamic> item) => (item['id'] as num?)?.toInt() ?? 0;
+  int _livePackId(Map<String, dynamic> item) =>
+      (item['id'] as num?)?.toInt() ?? 0;
 
   String _livePackName(Map<String, dynamic> item) =>
       (item['base_name'] ?? '未命名套件').toString();
@@ -4641,65 +5326,73 @@ class _AdminNativeWorkbenchPageState extends State<AdminNativeWorkbenchPage> {
         ),
       ];
     }
-    return packs.map((pack) {
-      final imageUrl = _livePackImageDisplayUrl(pack);
-      final videoUrl = UrlUtils.absolute(_livePackVideoSourceUrl(pack));
-      // 优先使用图片缩略图，无图时 fallback 到视频占位
-      final thumbUrl = imageUrl.isNotEmpty ? imageUrl : videoUrl;
-      final showAsVideo = imageUrl.isEmpty && videoUrl.isNotEmpty;
-      final status = (pack['status'] ?? '').toString();
-      final missing = (pack['missing'] as List?)?.join(' + ') ?? '';
-      final folder = (pack['folder'] ?? '未分类').toString();
-      return Padding(
-        padding: const EdgeInsets.only(bottom: 10),
-        child: _sectionBlock(
-          child: Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              _thumbView(thumbUrl: thumbUrl, isVideo: showAsVideo),
-              const SizedBox(width: 10),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      _livePackName(pack),
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(
-                        fontSize: 14,
-                        fontWeight: FontWeight.w700,
-                        color: AppColors.textPrimary,
-                      ),
-                    ),
-                    const SizedBox(height: 6),
-                    Wrap(
-                      spacing: 6,
-                      runSpacing: 6,
+    return packs
+        .map((pack) {
+          final imageUrl = _livePackImageDisplayUrl(pack);
+          final videoUrl = UrlUtils.absolute(_livePackVideoSourceUrl(pack));
+          // 优先使用图片缩略图，无图时 fallback 到视频占位
+          final thumbUrl = imageUrl.isNotEmpty ? imageUrl : videoUrl;
+          final showAsVideo = imageUrl.isEmpty && videoUrl.isNotEmpty;
+          final status = (pack['status'] ?? '').toString();
+          final missing = (pack['missing'] as List?)?.join(' + ') ?? '';
+          final folder = (pack['folder'] ?? '未分类').toString();
+          return Padding(
+            padding: const EdgeInsets.only(bottom: 10),
+            child: _sectionBlock(
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  _thumbView(thumbUrl: thumbUrl, isVideo: showAsVideo),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        _miniTag('ID ${_livePackId(pack)}'),
-                        _miniTag('Live'),
-                        _miniTag(status == 'complete' ? '完整' : '半成品'),
+                        Text(
+                          _livePackName(pack),
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(
+                            fontSize: 14,
+                            fontWeight: FontWeight.w700,
+                            color: AppColors.textPrimary,
+                          ),
+                        ),
+                        const SizedBox(height: 6),
+                        Wrap(
+                          spacing: 6,
+                          runSpacing: 6,
+                          children: [
+                            _miniTag('ID ${_livePackId(pack)}'),
+                            _miniTag('Live'),
+                            _miniTag(status == 'complete' ? '完整' : '半成品'),
+                          ],
+                        ),
+                        const SizedBox(height: 6),
+                        Text(
+                          '文件夹: $folder',
+                          style: const TextStyle(
+                            fontSize: 12,
+                            color: AppColors.textSecondary,
+                          ),
+                        ),
+                        if (missing.isNotEmpty)
+                          Text(
+                            '缺失: $missing',
+                            style: const TextStyle(
+                              fontSize: 12,
+                              color: AppColors.warning,
+                            ),
+                          ),
                       ],
                     ),
-                    const SizedBox(height: 6),
-                    Text(
-                      '文件夹: $folder',
-                      style: const TextStyle(fontSize: 12, color: AppColors.textSecondary),
-                    ),
-                    if (missing.isNotEmpty)
-                      Text(
-                        '缺失: $missing',
-                        style: const TextStyle(fontSize: 12, color: AppColors.warning),
-                      ),
-                  ],
-                ),
+                  ),
+                ],
               ),
-            ],
-          ),
-        ),
-      );
-    }).toList(growable: false);
+            ),
+          );
+        })
+        .toList(growable: false);
   }
 
   Widget _miniTag(String text) {
@@ -4739,7 +5432,11 @@ class _AdminNativeWorkbenchPageState extends State<AdminNativeWorkbenchPage> {
             _thumbPlaceholder(isVideo),
           if (isVideo)
             const Center(
-              child: Icon(Icons.play_circle_fill_rounded, color: Colors.white, size: 30),
+              child: Icon(
+                Icons.play_circle_fill_rounded,
+                color: Colors.white,
+                size: 30,
+              ),
             ),
         ],
       ),
@@ -4884,11 +5581,18 @@ class _AdminNativeWorkbenchPageState extends State<AdminNativeWorkbenchPage> {
                           const SizedBox(width: 8),
                           Container(
                             padding: const EdgeInsets.symmetric(
-                                horizontal: 6, vertical: 2),
+                              horizontal: 6,
+                              vertical: 2,
+                            ),
                             decoration: BoxDecoration(
-                              color: isReplied
-                                  ? AppColors.liveBadge.withValues(alpha: 0.12)
-                                  : AppColors.warning.withValues(alpha: 0.12),
+                              color:
+                                  isReplied
+                                      ? AppColors.liveBadge.withValues(
+                                        alpha: 0.12,
+                                      )
+                                      : AppColors.warning.withValues(
+                                        alpha: 0.12,
+                                      ),
                               borderRadius: BorderRadius.circular(6),
                             ),
                             child: Text(
@@ -4896,9 +5600,10 @@ class _AdminNativeWorkbenchPageState extends State<AdminNativeWorkbenchPage> {
                               style: TextStyle(
                                 fontSize: 10,
                                 fontWeight: FontWeight.w700,
-                                color: isReplied
-                                    ? AppColors.liveBadge
-                                    : AppColors.warning,
+                                color:
+                                    isReplied
+                                        ? AppColors.liveBadge
+                                        : AppColors.warning,
                               ),
                             ),
                           ),
@@ -4907,10 +5612,13 @@ class _AdminNativeWorkbenchPageState extends State<AdminNativeWorkbenchPage> {
                             onTap: () => _replyQuestion(item),
                             child: Container(
                               padding: const EdgeInsets.symmetric(
-                                  horizontal: 10, vertical: 4),
+                                horizontal: 10,
+                                vertical: 4,
+                              ),
                               decoration: BoxDecoration(
-                                color:
-                                    AppColors.primary.withValues(alpha: 0.08),
+                                color: AppColors.primary.withValues(
+                                  alpha: 0.08,
+                                ),
                                 borderRadius: BorderRadius.circular(8),
                               ),
                               child: const Text(
