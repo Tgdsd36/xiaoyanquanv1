@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:dio/dio.dart';
@@ -13,6 +14,7 @@ import '../../../core/auth/auth_provider.dart';
 import '../../../core/constants/api.dart';
 import '../../../core/network/http_client.dart';
 import '../../../core/utils/url_utils.dart';
+import '../../admin_native/auth/admin_auth_storage.dart';
 import '../../home/models/favorite_group_model.dart';
 import '../../home/repositories/favorite_repository.dart';
 import '../providers/profile_refresh_provider.dart';
@@ -81,18 +83,20 @@ class _ProfilePageState extends ConsumerState<ProfilePage>
 
     if (_avatarSecretTapCount >= 7) {
       _avatarSecretTapCount = 0;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('已进入管理员隐藏入口')),
-      );
-      context.push('/admin-native/login');
+      HapticFeedback.heavyImpact();
+      // 已登录直接进工作台，无需经过 login 页
+      final adminStorage = AdminAuthStorage();
+      if (adminStorage.isLoggedIn) {
+        context.push('/admin-native/workbench');
+      } else {
+        context.push('/admin-native/login');
+      }
       return;
     }
 
-    final remain = 7 - _avatarSecretTapCount;
+    // 4 次起用触觉反馈代替 SnackBar，无延迟
     if (_avatarSecretTapCount >= 4) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('再点击 $remain 次进入管理员入口')),
-      );
+      HapticFeedback.lightImpact();
     }
 
     _avatarSecretResetTimer = Timer(const Duration(seconds: 4), () {

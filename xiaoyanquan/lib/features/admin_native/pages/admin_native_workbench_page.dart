@@ -102,7 +102,7 @@ class _AdminNativeWorkbenchPageState extends State<AdminNativeWorkbenchPage> {
     if (!_storage.isLoggedIn) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (!mounted) return;
-        context.go('/admin-native/login');
+        context.go('/profile');
       });
       return;
     }
@@ -118,7 +118,7 @@ class _AdminNativeWorkbenchPageState extends State<AdminNativeWorkbenchPage> {
   Future<void> _logout() async {
     await _storage.clear();
     if (!mounted) return;
-    context.go('/admin-native/login');
+    context.go('/profile');
   }
 
   Future<void> _loadCurrent() async {
@@ -5283,8 +5283,8 @@ class _AdminNativeWorkbenchPageState extends State<AdminNativeWorkbenchPage> {
                           runSpacing: 6,
                           children: [
                             _miniTag('ID ${item['id'] ?? '-'}'),
-                            _miniTag(type),
-                            if (status.isNotEmpty) _miniTag(status),
+                            _miniTag(_typeLabel(type)),
+                            if (status.isNotEmpty) _miniTag(_statusLabel(status)),
                           ],
                         ),
                         const SizedBox(height: 6),
@@ -5416,6 +5416,33 @@ class _AdminNativeWorkbenchPageState extends State<AdminNativeWorkbenchPage> {
           );
         })
         .toList(growable: false);
+  }
+
+  String _typeLabel(String raw) {
+    switch (raw.toLowerCase().trim()) {
+      case 'image':
+        return '图片';
+      case 'video':
+        return '视频';
+      case 'live_photo':
+      case 'live':
+        return 'Live';
+      default:
+        return raw;
+    }
+  }
+
+  String _statusLabel(String raw) {
+    switch (raw.toLowerCase().trim()) {
+      case 'published':
+        return '已发布';
+      case 'draft':
+        return '草稿';
+      case 'offline':
+        return '已下线';
+      default:
+        return raw;
+    }
   }
 
   Widget _miniTag(String text) {
