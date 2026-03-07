@@ -2,6 +2,7 @@ import 'dart:io';
 import 'dart:ui';
 
 import 'package:dio/dio.dart';
+import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:go_router/go_router.dart';
@@ -11,6 +12,7 @@ import '../../../core/utils/url_utils.dart';
 import '../auth/admin_auth_storage.dart';
 import '../network/admin_http_client.dart';
 import '../services/native_live_picker.dart';
+import '../../../shared/network_video_thumbnail.dart';
 
 class _LiveUploadPair {
   final XFile image;
@@ -40,7 +42,6 @@ class _AdminNativeWorkbenchPageState extends State<AdminNativeWorkbenchPage> {
   static const List<String> _tabTitles = [
     '看板',
     '上传',
-    '素材库',
     '素材',
     '提问',
     '分类',
@@ -48,7 +49,6 @@ class _AdminNativeWorkbenchPageState extends State<AdminNativeWorkbenchPage> {
   static const List<String> _tabSubtitles = [
     '核心数据概览与快捷入口',
     '图片 / 视频 / Live 素材上传',
-    '可视化浏览资源与分组',
     '发布素材并投放渠道',
     '用户提问与回复处理',
     '一级 / 二级分类管理',
@@ -56,7 +56,6 @@ class _AdminNativeWorkbenchPageState extends State<AdminNativeWorkbenchPage> {
   static const List<IconData> _tabIcons = [
     Icons.space_dashboard_rounded,
     Icons.upload_file_rounded,
-    Icons.folder_rounded,
     Icons.photo_library_rounded,
     Icons.forum_rounded,
     Icons.account_tree_rounded,
@@ -86,6 +85,7 @@ class _AdminNativeWorkbenchPageState extends State<AdminNativeWorkbenchPage> {
   bool _publishShowMoments = false;
   bool _publishingMaterial = false;
   bool _showMaterialComposer = false;
+  bool _publishDataLoaded = false;
 
   String _uploadMode = 'image'; // image/video/live
   String _folder = '';
@@ -141,15 +141,11 @@ class _AdminNativeWorkbenchPageState extends State<AdminNativeWorkbenchPage> {
         await _loadAssetFolders();
         await _loadFolderThumbnails();
       } else if (_index == 2) {
-        await _loadAssetFolders();
-        await _loadAssets();
-        await _loadAssetLivePacks();
-      } else if (_index == 3) {
         await _loadCategories();
         await _loadMaterials();
         await _loadPublishSourceAssets();
         await _loadPublishSourceLivePacks();
-      } else if (_index == 4) {
+      } else if (_index == 3) {
         final resp = await AdminHttpClient()
             .dio
             .get('/questions', queryParameters: {'page': 1, 'page_size': 20});
@@ -158,7 +154,7 @@ class _AdminNativeWorkbenchPageState extends State<AdminNativeWorkbenchPage> {
           final payload = (data['data'] as Map?)?.cast<String, dynamic>() ?? {};
           _questions = List<dynamic>.from(payload['list'] ?? const []);
         }
-      } else if (_index == 5) {
+      } else if (_index == 4) {
         await _loadCategories();
       }
     } catch (e) {
@@ -1496,491 +1492,327 @@ class _AdminNativeWorkbenchPageState extends State<AdminNativeWorkbenchPage> {
 
   Widget _buildVideoContent() {
     final existingVideos = _folderExistingVideos;
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        // 已有视频
-        if (existingVideos.isNotEmpty) ...[
-          ...existingVideos.map((item) {
-            final name = _assetSourceName(item);
-            return Container(
-              margin: const EdgeInsets.only(bottom: 8),
-              padding: const EdgeInsets.all(10),
-              decoration: BoxDecoration(
-                color: Colors.white,
-                borderRadius: BorderRadius.circular(12),
-                border: Border.all(color: AppColors.border),
-              ),
-              child: Row(
-                children: [
-                  Container(
-                    width: 48,
-                    height: 48,
-                    decoration: BoxDecoration(
-                      color: AppColors.surface,
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                    child: const Icon(Icons.videocam_rounded,
-                        color: AppColors.textHint, size: 24),
-                  ),
-                  const SizedBox(width: 10),
-                  Expanded(
-                    child: Text(
-                      name,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(
-                        fontSize: 13,
-                        fontWeight: FontWeight.w600,
-                        color: AppColors.textPrimary,
-                      ),
-                    ),
-                  ),
-                  Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                    decoration: BoxDecoration(
-                      color: AppColors.primary.withValues(alpha: 0.10),
-                      borderRadius: BorderRadius.circular(6),
-                    ),
-                    child: const Text(
-                      '已上传',
-                      style: TextStyle(fontSize: 10, color: AppColors.primary, fontWeight: FontWeight.w600),
-                    ),
-                  ),
-                ],
-              ),
-            );
-          }),
-        ],
-        // 本地新选 + 选择入口
-        _buildVideoCard(),
-      ],
-    );
-  }
-
-  Widget _buildVideoCard() {
-    if (_singleVideo == null) {
-      return GestureDetector(
-        onTap: _pickVideo,
-        child: Container(
-          height: 160,
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(14),
-            border: Border.all(color: AppColors.border, width: 1.5),
-          ),
-          child: const Column(
-            mainAxisAlignment: MainAxisAlignment.center,
+    final existingCount = existingVideos.length;
+    final hasLocal = _singleVideo != null;
+    final total = existingCount + (hasLocal ? 1 : 0) + 1; // +1 添加按钮
+    return GridView.builder(
+      shrinkWrap: true,
+      physics: const NeverScrollableScrollPhysics(),
+      itemCount: total,
+      gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+        crossAxisCount: 3,
+        mainAxisSpacing: 2,
+        crossAxisSpacing: 2,
+      ),
+      itemBuilder: (context, index) {
+        // 服务器已有视频
+        if (index < existingCount) {
+          final item = existingVideos[index];
+          final thumbUrl = _assetThumbUrl(item);
+          final videoUrl = UrlUtils.absolute(_assetSourceUrl(item));
+          return Stack(
+            fit: StackFit.expand,
             children: [
-              Icon(Icons.video_library_outlined,
-                  color: AppColors.textHint, size: 40),
-              SizedBox(height: 8),
-              Text(
-                '选择视频',
-                style: TextStyle(
-                  fontSize: 14,
-                  color: AppColors.textHint,
-                  fontWeight: FontWeight.w600,
+              if (thumbUrl.isNotEmpty)
+                Image.network(thumbUrl, fit: BoxFit.cover,
+                    errorBuilder: (_, __, ___) => _thumbPlaceholder(true))
+              else if (videoUrl.isNotEmpty)
+                NetworkVideoThumbnail(
+                  videoUrl: videoUrl,
+                  fit: BoxFit.cover,
+                  placeholder: _thumbPlaceholder(true),
+                  errorWidget: _thumbPlaceholder(true),
+                )
+              else
+                _thumbPlaceholder(true),
+              Center(
+                child: Icon(Icons.play_circle_fill_rounded,
+                    color: Colors.white.withValues(alpha: 0.8), size: 28),
+              ),
+            ],
+          );
+        }
+        // 本地已选视频
+        final localIndex = index - existingCount;
+        if (hasLocal && localIndex == 0) {
+          return Stack(
+            fit: StackFit.expand,
+            children: [
+              Container(
+                color: Colors.black.withValues(alpha: 0.05),
+                child: Center(
+                  child: Icon(Icons.play_circle_fill_rounded,
+                      color: AppColors.primary.withValues(alpha: 0.7), size: 36),
+                ),
+              ),
+              Positioned(
+                right: 4,
+                top: 4,
+                child: GestureDetector(
+                  onTap: () => setState(() => _singleVideo = null),
+                  child: Container(
+                    width: 22,
+                    height: 22,
+                    decoration: BoxDecoration(
+                      color: Colors.black.withValues(alpha: 0.55),
+                      borderRadius: BorderRadius.circular(999),
+                    ),
+                    child: const Icon(Icons.close, color: Colors.white, size: 14),
+                  ),
                 ),
               ),
             ],
-          ),
-        ),
-      );
-    }
-    return Container(
-      height: 160,
-      clipBehavior: Clip.antiAlias,
-      decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(14),
-        color: AppColors.surface,
-        border: Border.all(color: AppColors.border),
-      ),
-      child: Stack(
-        fit: StackFit.expand,
-        children: [
-          Container(
-            color: Colors.black.withValues(alpha: 0.05),
-            child: const Center(
-              child: Icon(Icons.play_circle_fill_rounded,
-                  color: AppColors.primary, size: 48),
-            ),
-          ),
-          Positioned(
-            left: 12,
-            bottom: 12,
-            child: Container(
-              padding: const EdgeInsets.symmetric(
-                  horizontal: 10, vertical: 6),
-              decoration: BoxDecoration(
-                color: Colors.black.withValues(alpha: 0.6),
-                borderRadius: BorderRadius.circular(8),
-              ),
-              child: Text(
-                _filename(_singleVideo!),
-                style: const TextStyle(
-                  color: Colors.white,
-                  fontSize: 12,
-                  fontWeight: FontWeight.w500,
+          );
+        }
+        // 添加按钮
+        return GestureDetector(
+          onTap: _pickVideo,
+          child: Container(
+            color: AppColors.surface,
+            child: const Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Icon(Icons.add_rounded, color: AppColors.textHint, size: 32),
+                SizedBox(height: 2),
+                Text(
+                  '添加视频',
+                  style: TextStyle(
+                    fontSize: 11,
+                    color: AppColors.textHint,
+                    fontWeight: FontWeight.w600,
+                  ),
                 ),
-              ),
+              ],
             ),
           ),
-          Positioned(
-            right: 8,
-            top: 8,
-            child: GestureDetector(
-              onTap: () => setState(() => _singleVideo = null),
-              child: Container(
-                width: 28,
-                height: 28,
-                decoration: BoxDecoration(
-                  color: Colors.black.withValues(alpha: 0.55),
-                  borderRadius: BorderRadius.circular(999),
-                ),
-                child: const Icon(Icons.close,
-                    color: Colors.white, size: 16),
-              ),
-            ),
-          ),
-        ],
-      ),
+        );
+      },
     );
   }
 
   Widget _buildLiveContent() {
     final existingPacks = _folderExistingLivePacks;
+    final existingCount = existingPacks.length;
+    final localCount = _livePairs.length;
+    final total = existingCount + localCount;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        // 已有 Live 套件
-        if (existingPacks.isNotEmpty) ...[
-          ...existingPacks.map((pack) {
-            final name = _livePackName(pack);
-            final imageUrl = _livePackImageDisplayUrl(pack);
-            final complete = _livePackComplete(pack);
-            return Container(
-              margin: const EdgeInsets.only(bottom: 8),
-              padding: const EdgeInsets.all(10),
-              decoration: BoxDecoration(
-                color: Colors.white,
-                borderRadius: BorderRadius.circular(12),
-                border: Border.all(color: AppColors.border),
-              ),
-              child: Row(
-                children: [
-                  Container(
-                    width: 48,
-                    height: 48,
-                    clipBehavior: Clip.antiAlias,
-                    decoration: BoxDecoration(
-                      color: AppColors.surface,
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                    child: imageUrl.isNotEmpty
+        // 已有 + 本地 Live 缩略图网格
+        if (total > 0)
+          GridView.builder(
+            shrinkWrap: true,
+            physics: const NeverScrollableScrollPhysics(),
+            itemCount: total,
+            gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+              crossAxisCount: 3,
+              mainAxisSpacing: 2,
+              crossAxisSpacing: 2,
+            ),
+            itemBuilder: (context, index) {
+              if (index < existingCount) {
+                // 服务器已有 Live 套件
+                final pack = existingPacks[index];
+                final imageUrl = _livePackImageDisplayUrl(pack);
+                return Stack(
+                  fit: StackFit.expand,
+                  children: [
+                    imageUrl.isNotEmpty
                         ? Image.network(imageUrl, fit: BoxFit.cover,
-                            errorBuilder: (_, __, ___) => const Icon(
-                                Icons.auto_awesome, color: AppColors.textHint))
-                        : const Icon(Icons.auto_awesome, color: AppColors.textHint),
-                  ),
-                  const SizedBox(width: 10),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          name,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: const TextStyle(
-                            fontSize: 13,
-                            fontWeight: FontWeight.w600,
-                            color: AppColors.textPrimary,
-                          ),
+                            errorBuilder: (_, __, ___) => _thumbPlaceholder(false))
+                        : _thumbPlaceholder(false),
+                    Positioned(
+                      left: 4,
+                      bottom: 4,
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
+                        decoration: BoxDecoration(
+                          color: Colors.black.withValues(alpha: 0.6),
+                          borderRadius: BorderRadius.circular(4),
                         ),
-                        Text(
-                          complete ? '完整套件' : '半成品',
+                        child: const Text(
+                          'LIVE',
                           style: TextStyle(
-                            fontSize: 11,
-                            color: complete ? AppColors.textSecondary : AppColors.warning,
+                            color: Colors.white,
+                            fontSize: 9,
+                            fontWeight: FontWeight.w700,
                           ),
                         ),
-                      ],
+                      ),
+                    ),
+                  ],
+                );
+              }
+              // 本地选中的 Live 对
+              final pair = _livePairs[index - existingCount];
+              return Stack(
+                fit: StackFit.expand,
+                children: [
+                  Image.file(File(pair.image.path), fit: BoxFit.cover,
+                      errorBuilder: (_, __, ___) => _thumbPlaceholder(false)),
+                  Positioned(
+                    left: 4,
+                    bottom: 4,
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
+                      decoration: BoxDecoration(
+                        color: Colors.black.withValues(alpha: 0.6),
+                        borderRadius: BorderRadius.circular(4),
+                      ),
+                      child: const Text(
+                        'LIVE',
+                        style: TextStyle(
+                          color: Colors.white,
+                          fontSize: 9,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
                     ),
                   ),
-                  Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                    decoration: BoxDecoration(
-                      color: AppColors.primary.withValues(alpha: 0.10),
-                      borderRadius: BorderRadius.circular(6),
-                    ),
-                    child: const Text(
-                      '已上传',
-                      style: TextStyle(fontSize: 10, color: AppColors.primary, fontWeight: FontWeight.w600),
+                  Positioned(
+                    right: 4,
+                    top: 4,
+                    child: GestureDetector(
+                      onTap: () {
+                        setState(() {
+                          final list = List<_LiveUploadPair>.from(_livePairs);
+                          list.removeAt(index - existingCount);
+                          _livePairs = list;
+                        });
+                      },
+                      child: Container(
+                        width: 22,
+                        height: 22,
+                        decoration: BoxDecoration(
+                          color: Colors.black.withValues(alpha: 0.55),
+                          borderRadius: BorderRadius.circular(999),
+                        ),
+                        child: const Icon(Icons.close, color: Colors.white, size: 14),
+                      ),
                     ),
                   ),
                 ],
-              ),
-            );
-          }),
-          const SizedBox(height: 8),
-        ],
-        SizedBox(
-          width: double.infinity,
-          height: 48,
-          child: ElevatedButton.icon(
-            onPressed: _pickLiveFromSystem,
-            style: ElevatedButton.styleFrom(
-              backgroundColor: AppColors.primary,
-              foregroundColor: Colors.white,
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(14),
-              ),
-              elevation: 0,
-            ),
-            icon: const Icon(Icons.auto_awesome_rounded, size: 20),
-            label: const Text(
-              '从相册选择 Live',
-              style:
-                  TextStyle(fontSize: 15, fontWeight: FontWeight.w600),
-            ),
+              );
+            },
           ),
-        ),
-        if (_livePairs.isNotEmpty) ...[
-          const SizedBox(height: 12),
-          ..._livePairs.asMap().entries.map(
-                (entry) =>
-                    _buildLiveListCard(entry.value, entry.key),
-              ),
-          const SizedBox(height: 4),
-          Center(
-            child: TextButton.icon(
-              onPressed: _pickLiveFromSystem,
-              icon: const Icon(Icons.add, size: 16),
-              label: const Text('添加更多 Live'),
-            ),
-          ),
-        ],
-        const SizedBox(height: 12),
-        GestureDetector(
-          onTap: () =>
-              setState(() => _showManualLive = !_showManualLive),
-          child: Row(
+        // 操作按钮区域
+        Padding(
+          padding: const EdgeInsets.all(12),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Icon(
-                _showManualLive
-                    ? Icons.expand_less
-                    : Icons.expand_more,
-                size: 18,
-                color: AppColors.textSecondary,
-              ),
-              const SizedBox(width: 4),
-              const Text(
-                '手动添加',
-                style: TextStyle(
-                  fontSize: 13,
-                  color: AppColors.textSecondary,
-                  fontWeight: FontWeight.w500,
-                ),
-              ),
-            ],
-          ),
-        ),
-        if (_showManualLive) ...[
-          const SizedBox(height: 8),
-          Wrap(
-            spacing: 8,
-            runSpacing: 8,
-            children: [
-              OutlinedButton.icon(
-                style: _compactOutlinedStyle(),
-                onPressed: _pickLiveImage,
-                icon: const Icon(Icons.image_outlined, size: 16),
-                label: const Text('选择静态图 (HEIC)'),
-              ),
-              OutlinedButton.icon(
-                style: _compactOutlinedStyle(),
-                onPressed: _pickLiveVideo,
-                icon: const Icon(Icons.movie_outlined, size: 16),
-                label: const Text('选择动态视频 (MOV)'),
-              ),
-              OutlinedButton.icon(
-                style: _compactOutlinedStyle(),
-                onPressed: _pickLiveBatchFiles,
-                icon: const Icon(
-                    Icons.library_add_check_outlined,
-                    size: 16),
-                label: const Text('批量选择文件配对'),
-              ),
-            ],
-          ),
-          if (_liveImage != null || _liveVideo != null)
-            Padding(
-              padding: const EdgeInsets.only(top: 8),
-              child: Container(
+              SizedBox(
                 width: double.infinity,
-                padding: const EdgeInsets.all(10),
-                decoration: BoxDecoration(
-                  color: AppColors.surface,
-                  borderRadius: BorderRadius.circular(10),
-                ),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      '静态图：${_liveImage != null ? _filename(_liveImage!) : "未选择"}',
-                      style: const TextStyle(
-                        fontSize: 12,
-                        color: AppColors.textSecondary,
-                      ),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
+                height: 48,
+                child: ElevatedButton.icon(
+                  onPressed: _pickLiveFromSystem,
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: AppColors.primary,
+                    foregroundColor: Colors.white,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(14),
                     ),
-                    const SizedBox(height: 4),
-                    Text(
-                      '动态视频：${_liveVideo != null ? _filename(_liveVideo!) : "未选择"}',
-                      style: const TextStyle(
-                        fontSize: 12,
+                    elevation: 0,
+                  ),
+                  icon: const Icon(Icons.auto_awesome_rounded, size: 20),
+                  label: const Text(
+                    '从相册选择 Live',
+                    style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 12),
+              GestureDetector(
+                onTap: () => setState(() => _showManualLive = !_showManualLive),
+                child: Row(
+                  children: [
+                    Icon(
+                      _showManualLive ? Icons.expand_less : Icons.expand_more,
+                      size: 18,
+                      color: AppColors.textSecondary,
+                    ),
+                    const SizedBox(width: 4),
+                    const Text(
+                      '手动添加',
+                      style: TextStyle(
+                        fontSize: 13,
                         color: AppColors.textSecondary,
+                        fontWeight: FontWeight.w500,
                       ),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
                     ),
                   ],
                 ),
               ),
-            ),
-        ],
-      ],
-    );
-  }
-
-  Widget _buildLiveListCard(_LiveUploadPair pair, int index) {
-    return Container(
-      margin: const EdgeInsets.only(bottom: 8),
-      padding: const EdgeInsets.all(10),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: AppColors.border),
-      ),
-      child: Row(
-        children: [
-          Container(
-            width: 60,
-            height: 60,
-            clipBehavior: Clip.antiAlias,
-            decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(8),
-              color: AppColors.surface,
-            ),
-            child: Stack(
-              fit: StackFit.expand,
-              children: [
-                Image.file(
-                  File(pair.image.path),
-                  fit: BoxFit.cover,
-                  errorBuilder: (_, __, ___) => const Icon(
-                      Icons.image,
-                      color: AppColors.textHint),
+              if (_showManualLive) ...[
+                const SizedBox(height: 8),
+                Wrap(
+                  spacing: 8,
+                  runSpacing: 8,
+                  children: [
+                    OutlinedButton.icon(
+                      style: _compactOutlinedStyle(),
+                      onPressed: _pickLiveImage,
+                      icon: const Icon(Icons.image_outlined, size: 16),
+                      label: const Text('选择静态图 (HEIC)'),
+                    ),
+                    OutlinedButton.icon(
+                      style: _compactOutlinedStyle(),
+                      onPressed: _pickLiveVideo,
+                      icon: const Icon(Icons.movie_outlined, size: 16),
+                      label: const Text('选择动态视频 (MOV)'),
+                    ),
+                    OutlinedButton.icon(
+                      style: _compactOutlinedStyle(),
+                      onPressed: _pickLiveBatchFiles,
+                      icon: const Icon(
+                          Icons.library_add_check_outlined,
+                          size: 16),
+                      label: const Text('批量选择文件配对'),
+                    ),
+                  ],
                 ),
-                Positioned(
-                  left: 3,
-                  bottom: 3,
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 4,
-                      vertical: 1,
-                    ),
-                    decoration: BoxDecoration(
-                      color:
-                          Colors.black.withValues(alpha: 0.6),
-                      borderRadius: BorderRadius.circular(4),
-                    ),
-                    child: const Text(
-                      'LIVE',
-                      style: TextStyle(
-                        color: Colors.white,
-                        fontSize: 8,
-                        fontWeight: FontWeight.w700,
+                if (_liveImage != null || _liveVideo != null)
+                  Padding(
+                    padding: const EdgeInsets.only(top: 8),
+                    child: Container(
+                      width: double.infinity,
+                      padding: const EdgeInsets.all(10),
+                      decoration: BoxDecoration(
+                        color: AppColors.surface,
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            '静态图：${_liveImage != null ? _filename(_liveImage!) : "未选择"}',
+                            style: const TextStyle(
+                              fontSize: 12,
+                              color: AppColors.textSecondary,
+                            ),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                          const SizedBox(height: 4),
+                          Text(
+                            '动态视频：${_liveVideo != null ? _filename(_liveVideo!) : "未选择"}',
+                            style: const TextStyle(
+                              fontSize: 12,
+                              color: AppColors.textSecondary,
+                            ),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ],
                       ),
                     ),
                   ),
-                ),
               ],
-            ),
+            ],
           ),
-          const SizedBox(width: 10),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  pair.baseName,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(
-                    fontSize: 13,
-                    fontWeight: FontWeight.w600,
-                    color: AppColors.textPrimary,
-                  ),
-                ),
-                const SizedBox(height: 3),
-                Text(
-                  '${_filename(pair.image)} + ${_filename(pair.video)}',
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(
-                    fontSize: 11,
-                    color: AppColors.textSecondary,
-                  ),
-                ),
-                const SizedBox(height: 2),
-                Text(
-                  '来源：${_liveSourceLabel(pair.source)}',
-                  style: const TextStyle(
-                    fontSize: 11,
-                    color: AppColors.textHint,
-                  ),
-                ),
-              ],
-            ),
-          ),
-          GestureDetector(
-            onTap: () {
-              setState(() {
-                final list =
-                    List<_LiveUploadPair>.from(_livePairs);
-                list.removeAt(index);
-                _livePairs = list;
-              });
-            },
-            child: Container(
-              width: 24,
-              height: 24,
-              decoration: BoxDecoration(
-                color: AppColors.surface,
-                borderRadius: BorderRadius.circular(999),
-              ),
-              child: const Icon(Icons.close,
-                  size: 14, color: AppColors.textSecondary),
-            ),
-          ),
-        ],
-      ),
+        ),
+      ],
     );
-  }
-
-  String _liveSourceLabel(String source) {
-    switch (source) {
-      case 'ios_live_photo':
-        return '系统相册';
-      case 'android_motion_photo':
-        return 'Motion Photo';
-      case 'batch_gallery':
-        return '批量配对';
-      default:
-        return '手动选择';
-    }
   }
 
   Widget _buildUploadBottomBar() {
@@ -2553,6 +2385,9 @@ class _AdminNativeWorkbenchPageState extends State<AdminNativeWorkbenchPage> {
   }) {
     return GestureDetector(
       onTap: () => _enterUploadFolder(folderValue),
+      onLongPress: folderValue.isNotEmpty
+          ? () => _showFolderActions(folderValue, label)
+          : null,
       child: Container(
         clipBehavior: Clip.antiAlias,
         decoration: BoxDecoration(
@@ -2638,6 +2473,71 @@ class _AdminNativeWorkbenchPageState extends State<AdminNativeWorkbenchPage> {
     );
   }
 
+  void _showFolderActions(String folderValue, String label) {
+    showCupertinoModalPopup(
+      context: context,
+      builder: (ctx) => CupertinoActionSheet(
+        title: Text(label),
+        actions: [
+          CupertinoActionSheetAction(
+            isDestructiveAction: true,
+            onPressed: () {
+              Navigator.pop(ctx);
+              _deleteFolder(folderValue, label);
+            },
+            child: const Text('删除分类'),
+          ),
+        ],
+        cancelButton: CupertinoActionSheetAction(
+          onPressed: () => Navigator.pop(ctx),
+          child: const Text('取消'),
+        ),
+      ),
+    );
+  }
+
+  Future<void> _deleteFolder(String folderValue, String label) async {
+    final confirmed = await showCupertinoDialog<bool>(
+      context: context,
+      builder: (ctx) => CupertinoAlertDialog(
+        title: const Text('删除分类'),
+        content: Text('确定删除「$label」吗？\n该分类下的素材将移入未分类。'),
+        actions: [
+          CupertinoDialogAction(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('取消'),
+          ),
+          CupertinoDialogAction(
+            isDestructiveAction: true,
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('删除'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true) return;
+    try {
+      final resp = await AdminHttpClient().dio.post(
+        '/assets/folders/delete',
+        data: {'folder': folderValue},
+      );
+      final data = resp.data as Map<String, dynamic>;
+      if ((data['code'] ?? -1) != 0) {
+        throw Exception((data['message'] ?? '删除失败').toString());
+      }
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('分类「$label」已删除')),
+      );
+      await _loadCurrent();
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('删除失败：$e')),
+      );
+    }
+  }
+
   Future<void> _enterUploadFolder(String folderValue) async {
     setState(() {
       _uploadSelectedFolder = folderValue;
@@ -2716,16 +2616,8 @@ class _AdminNativeWorkbenchPageState extends State<AdminNativeWorkbenchPage> {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       if (_uploadMode == 'image') _buildImageGrid(),
-              if (_uploadMode == 'video')
-                        Padding(
-                          padding: const EdgeInsets.all(12),
-                          child: _buildVideoContent(),
-                        ),
-                      if (_uploadMode == 'live')
-                        Padding(
-                          padding: const EdgeInsets.all(12),
-                          child: _buildLiveContent(),
-                        ),
+                      if (_uploadMode == 'video') _buildVideoContent(),
+                      if (_uploadMode == 'live') _buildLiveContent(),
                     ],
                   ),
                 ),
@@ -2999,10 +2891,11 @@ class _AdminNativeWorkbenchPageState extends State<AdminNativeWorkbenchPage> {
   }
 
   Future<void> _openPublishAssetSelector() async {
-    if (_publishSourceAssets.isEmpty || _publishSourceLivePacks.isEmpty) {
+    if (!_publishDataLoaded) {
       try {
         await _loadPublishSourceAssets();
         await _loadPublishSourceLivePacks();
+        _publishDataLoaded = true;
       } catch (e) {
         if (!mounted) return;
         ScaffoldMessenger.of(
@@ -3015,113 +2908,462 @@ class _AdminNativeWorkbenchPageState extends State<AdminNativeWorkbenchPage> {
 
     final tempSelectedAssets = Set<int>.from(_selectedPublishAssetIds);
     final tempSelectedLivePacks = Set<int>.from(_selectedPublishLivePackIds);
-    var keyword = '';
-    var typeFilter = 'all';
 
-    final confirmed = await showDialog<bool>(
+    // 按 folder 分组
+    final folderAssetMap = <String, List<Map<String, dynamic>>>{};
+    for (final asset in _publishSourceAssets) {
+      final folder = (asset['folder'] ?? '').toString();
+      folderAssetMap.putIfAbsent(folder, () => []).add(asset);
+    }
+    final folderLiveMap = <String, List<Map<String, dynamic>>>{};
+    for (final pack in _publishSourceLivePacks) {
+      final folder = (pack['folder'] ?? '').toString();
+      folderLiveMap.putIfAbsent(folder, () => []).add(pack);
+    }
+    final allFolderKeys = <String>{
+      ...folderAssetMap.keys,
+      ...folderLiveMap.keys,
+    };
+    // 命名分类排前面，未分类排最后
+    final sortedFolders = allFolderKeys.toList()
+      ..sort((a, b) {
+        if (a.isEmpty && b.isNotEmpty) return 1;
+        if (a.isNotEmpty && b.isEmpty) return -1;
+        return a.compareTo(b);
+      });
+
+    // 每个文件夹的封面
+    final folderCoverMap = <String, String>{};
+    for (final key in sortedFolders) {
+      final assets = folderAssetMap[key] ?? [];
+      for (final a in assets) {
+        final u = _assetThumbUrl(a);
+        if (u.isNotEmpty) {
+          folderCoverMap[key] = u;
+          break;
+        }
+      }
+      if (!folderCoverMap.containsKey(key)) {
+        final packs = folderLiveMap[key] ?? [];
+        for (final p in packs) {
+          final u = _livePackImageDisplayUrl(p);
+          if (u.isNotEmpty) {
+            folderCoverMap[key] = u;
+            break;
+          }
+        }
+      }
+    }
+
+    final confirmed = await showModalBottomSheet<bool>(
       context: context,
-      builder: (ctx) => StatefulBuilder(
-        builder: (ctx, setDialogState) {
-          final filteredAssets = _publishSourceAssets.where((item) {
-            final name = _assetSourceName(item).toLowerCase();
-            final hitKeyword =
-                keyword.trim().isEmpty || name.contains(keyword.trim().toLowerCase());
-            if (!hitKeyword) return false;
-            if (typeFilter == 'live') return false;
-            if (typeFilter == 'image') return _assetIsImage(item);
-            if (typeFilter == 'video') return _assetIsVideo(item);
-            return true;
-          }).toList(growable: false);
-          final filteredLivePacks = _publishSourceLivePacks.where((item) {
-            final name = _livePackName(item).toLowerCase();
-            final hitKeyword =
-                keyword.trim().isEmpty || name.contains(keyword.trim().toLowerCase());
-            if (!hitKeyword) return false;
-            if (typeFilter == 'image' || typeFilter == 'video') return false;
-            return true;
-          }).toList(growable: false);
+      isScrollControlled: true,
+      useSafeArea: true,
+      backgroundColor: Colors.white,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (sheetCtx) {
+        // 局部状态
+        String? pickerFolder;
+        var typeFilter = 'all';
+        return StatefulBuilder(
+          builder: (innerCtx, setSheetState) {
+            final totalSelected =
+                tempSelectedAssets.length + tempSelectedLivePacks.length;
 
-          return AlertDialog(
-            title: const Text('从素材库选择'),
-            content: SizedBox(
-              width: 420,
-              height: 480,
-              child: Column(
-                children: [
-                  TextField(
-                    decoration: const InputDecoration(
-                      hintText: '搜索素材名称',
-                      prefixIcon: Icon(Icons.search),
+            // === 底部确认栏 ===
+            Widget bottomBar() {
+              return Container(
+                padding: EdgeInsets.fromLTRB(
+                  16, 10, 16, MediaQuery.of(innerCtx).padding.bottom + 10,
+                ),
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  border: Border(
+                    top: BorderSide(color: AppColors.border.withValues(alpha: 0.5)),
+                  ),
+                ),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: Text(
+                        '已选 $totalSelected 项',
+                        style: const TextStyle(
+                          fontSize: 14,
+                          fontWeight: FontWeight.w600,
+                          color: AppColors.textSecondary,
+                        ),
+                      ),
                     ),
-                    onChanged: (v) {
-                      setDialogState(() => keyword = v);
-                    },
-                  ),
-                  const SizedBox(height: 8),
-                  Wrap(
-                    spacing: 8,
-                    runSpacing: 8,
-                    children: [
-                      ChoiceChip(
-                        label: const Text('全部'),
-                        selected: typeFilter == 'all',
-                        onSelected: (_) => setDialogState(() => typeFilter = 'all'),
+                    TextButton(
+                      onPressed: () => Navigator.pop(innerCtx, false),
+                      child: const Text('取消'),
+                    ),
+                    const SizedBox(width: 8),
+                    ElevatedButton(
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: AppColors.primary,
+                        foregroundColor: Colors.white,
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12),
+                        ),
                       ),
-                      ChoiceChip(
-                        label: const Text('图片'),
-                        selected: typeFilter == 'image',
-                        onSelected: (_) => setDialogState(() => typeFilter = 'image'),
+                      onPressed: totalSelected > 0
+                          ? () => Navigator.pop(innerCtx, true)
+                          : null,
+                      child: const Text('确认选择'),
+                    ),
+                  ],
+                ),
+              );
+            }
+
+            // === 第一级：文件夹网格 ===
+            if (pickerFolder == null) {
+              return SizedBox(
+                height: MediaQuery.of(innerCtx).size.height * 0.85,
+                child: Column(
+                  children: [
+                    // 拖拽指示条
+                    Center(
+                      child: Container(
+                        margin: const EdgeInsets.only(top: 10, bottom: 6),
+                        width: 36,
+                        height: 4,
+                        decoration: BoxDecoration(
+                          color: AppColors.textHint.withValues(alpha: 0.3),
+                          borderRadius: BorderRadius.circular(2),
+                        ),
                       ),
-                      ChoiceChip(
-                        label: const Text('视频'),
-                        selected: typeFilter == 'video',
-                        onSelected: (_) => setDialogState(() => typeFilter = 'video'),
+                    ),
+                    // 标题
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(16, 4, 16, 10),
+                      child: Row(
+                        children: [
+                          const Expanded(
+                            child: Text(
+                              '选择素材 — 我的相簿',
+                              style: TextStyle(
+                                fontSize: 18,
+                                fontWeight: FontWeight.w800,
+                                color: AppColors.textPrimary,
+                              ),
+                            ),
+                          ),
+                          if (totalSelected > 0)
+                            Container(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 10, vertical: 4,
+                              ),
+                              decoration: BoxDecoration(
+                                color: AppColors.primary.withValues(alpha: 0.12),
+                                borderRadius: BorderRadius.circular(12),
+                              ),
+                              child: Text(
+                                '已选 $totalSelected',
+                                style: const TextStyle(
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.w700,
+                                  color: AppColors.primary,
+                                ),
+                              ),
+                            ),
+                        ],
                       ),
-                      ChoiceChip(
-                        label: const Text('Live套件'),
-                        selected: typeFilter == 'live',
-                        onSelected: (_) => setDialogState(() => typeFilter = 'live'),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 8),
-                  Expanded(
-                    child: (filteredAssets.isEmpty && filteredLivePacks.isEmpty)
-                        ? _emptyHint('暂无可选素材')
-                        : ListView(
-                            children: [
-                              if (filteredAssets.isNotEmpty) ...[
-                                const Padding(
-                                  padding: EdgeInsets.only(bottom: 8),
-                                  child: Text(
-                                    '素材文件',
-                                    style: TextStyle(
-                                      fontSize: 12,
-                                      fontWeight: FontWeight.w700,
-                                      color: AppColors.textSecondary,
+                    ),
+                    // 文件夹网格
+                    Expanded(
+                      child: sortedFolders.isEmpty
+                          ? Center(child: _emptyHint('暂无素材分类'))
+                          : GridView.builder(
+                              padding: const EdgeInsets.fromLTRB(14, 4, 14, 20),
+                              itemCount: sortedFolders.length,
+                              gridDelegate:
+                                  const SliverGridDelegateWithFixedCrossAxisCount(
+                                crossAxisCount: 2,
+                                mainAxisSpacing: 12,
+                                crossAxisSpacing: 12,
+                                childAspectRatio: 0.82,
+                              ),
+                              itemBuilder: (context, index) {
+                                final key = sortedFolders[index];
+                                final label = key.isEmpty ? '未分类' : key;
+                                final assetCount =
+                                    (folderAssetMap[key]?.length ?? 0) +
+                                    (folderLiveMap[key]?.length ?? 0);
+                                final cover = folderCoverMap[key] ?? '';
+                                // 该文件夹内已选数
+                                final folderSelectedCount = () {
+                                  var c = 0;
+                                  for (final a in folderAssetMap[key] ?? []) {
+                                    if (tempSelectedAssets.contains(_assetId(a))) c++;
+                                  }
+                                  for (final p in folderLiveMap[key] ?? []) {
+                                    if (tempSelectedLivePacks.contains(_livePackId(p))) c++;
+                                  }
+                                  return c;
+                                }();
+                                return GestureDetector(
+                                  onTap: () => setSheetState(
+                                    () => pickerFolder = key,
+                                  ),
+                                  child: Container(
+                                    clipBehavior: Clip.antiAlias,
+                                    decoration: BoxDecoration(
+                                      borderRadius: BorderRadius.circular(16),
+                                      color: Colors.white,
+                                      boxShadow: [
+                                        BoxShadow(
+                                          color: Colors.black
+                                              .withValues(alpha: 0.06),
+                                          blurRadius: 10,
+                                          offset: const Offset(0, 3),
+                                        ),
+                                      ],
+                                    ),
+                                    child: Column(
+                                      crossAxisAlignment:
+                                          CrossAxisAlignment.start,
+                                      children: [
+                                        Expanded(
+                                          child: Stack(
+                                            fit: StackFit.expand,
+                                            children: [
+                                              if (cover.isNotEmpty)
+                                                Image.network(
+                                                  cover,
+                                                  fit: BoxFit.cover,
+                                                  errorBuilder:
+                                                      (_, __, ___) =>
+                                                          _folderPlaceholder(),
+                                                )
+                                              else
+                                                _folderPlaceholder(),
+                                              // 计数角标
+                                              Positioned(
+                                                right: 8,
+                                                bottom: 8,
+                                                child: Container(
+                                                  padding:
+                                                      const EdgeInsets
+                                                          .symmetric(
+                                                    horizontal: 8,
+                                                    vertical: 3,
+                                                  ),
+                                                  decoration: BoxDecoration(
+                                                    color: Colors.black
+                                                        .withValues(
+                                                      alpha: 0.55,
+                                                    ),
+                                                    borderRadius:
+                                                        BorderRadius.circular(
+                                                      10,
+                                                    ),
+                                                  ),
+                                                  child: Text(
+                                                    '$assetCount',
+                                                    style: const TextStyle(
+                                                      color: Colors.white,
+                                                      fontSize: 12,
+                                                      fontWeight:
+                                                          FontWeight.w700,
+                                                    ),
+                                                  ),
+                                                ),
+                                              ),
+                                              // 已选角标
+                                              if (folderSelectedCount > 0)
+                                                Positioned(
+                                                  left: 8,
+                                                  top: 8,
+                                                  child: Container(
+                                                    padding:
+                                                        const EdgeInsets
+                                                            .symmetric(
+                                                      horizontal: 7,
+                                                      vertical: 3,
+                                                    ),
+                                                    decoration: BoxDecoration(
+                                                      color: AppColors.primary,
+                                                      borderRadius:
+                                                          BorderRadius.circular(
+                                                        10,
+                                                      ),
+                                                    ),
+                                                    child: Text(
+                                                      '已选$folderSelectedCount',
+                                                      style: const TextStyle(
+                                                        color: Colors.white,
+                                                        fontSize: 10,
+                                                        fontWeight:
+                                                            FontWeight.w700,
+                                                      ),
+                                                    ),
+                                                  ),
+                                                ),
+                                            ],
+                                          ),
+                                        ),
+                                        Padding(
+                                          padding: const EdgeInsets.fromLTRB(
+                                            10, 8, 10, 10,
+                                          ),
+                                          child: Column(
+                                            crossAxisAlignment:
+                                                CrossAxisAlignment.start,
+                                            children: [
+                                              Text(
+                                                label,
+                                                maxLines: 1,
+                                                overflow:
+                                                    TextOverflow.ellipsis,
+                                                style: const TextStyle(
+                                                  fontSize: 14,
+                                                  fontWeight: FontWeight.w700,
+                                                  color:
+                                                      AppColors.textPrimary,
+                                                ),
+                                              ),
+                                              const SizedBox(height: 2),
+                                              Text(
+                                                '$assetCount 项素材',
+                                                style: const TextStyle(
+                                                  fontSize: 11,
+                                                  color:
+                                                      AppColors.textSecondary,
+                                                ),
+                                              ),
+                                            ],
+                                          ),
+                                        ),
+                                      ],
                                     ),
                                   ),
-                                ),
+                                );
+                              },
+                            ),
+                    ),
+                    bottomBar(),
+                  ],
+                ),
+              );
+            }
+
+            // === 第二级：文件夹内素材选择 ===
+            final folderLabel =
+                pickerFolder!.isEmpty ? '未分类' : pickerFolder!;
+            final folderAssets = folderAssetMap[pickerFolder] ?? [];
+            final folderLives = folderLiveMap[pickerFolder] ?? [];
+
+            final filteredAssets = folderAssets.where((item) {
+              if (typeFilter == 'live') return false;
+              if (typeFilter == 'image') return _assetIsImage(item);
+              if (typeFilter == 'video') return _assetIsVideo(item);
+              return true;
+            }).toList(growable: false);
+            final filteredLives = folderLives.where((item) {
+              if (typeFilter == 'image' || typeFilter == 'video') return false;
+              return true;
+            }).toList(growable: false);
+
+            return SizedBox(
+              height: MediaQuery.of(innerCtx).size.height * 0.85,
+              child: Column(
+                children: [
+                  // 拖拽指示条
+                  Center(
+                    child: Container(
+                      margin: const EdgeInsets.only(top: 10, bottom: 6),
+                      width: 36,
+                      height: 4,
+                      decoration: BoxDecoration(
+                        color: AppColors.textHint.withValues(alpha: 0.3),
+                        borderRadius: BorderRadius.circular(2),
+                      ),
+                    ),
+                  ),
+                  // 顶栏：返回 + 文件夹名
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(8, 0, 16, 4),
+                    child: Row(
+                      children: [
+                        IconButton(
+                          icon: const Icon(Icons.arrow_back_rounded),
+                          onPressed: () => setSheetState(() {
+                            pickerFolder = null;
+                            typeFilter = 'all';
+                          }),
+                        ),
+                        const SizedBox(width: 4),
+                        Expanded(
+                          child: Text(
+                            folderLabel,
+                            style: const TextStyle(
+                              fontSize: 18,
+                              fontWeight: FontWeight.w800,
+                              color: AppColors.textPrimary,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  // 类型筛选
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(14, 0, 14, 6),
+                    child: SingleChildScrollView(
+                      scrollDirection: Axis.horizontal,
+                      child: Row(
+                        children: [
+                          _pickerChip('全部', 'all', typeFilter, (v) {
+                            setSheetState(() => typeFilter = v);
+                          }),
+                          const SizedBox(width: 8),
+                          _pickerChip('图片', 'image', typeFilter, (v) {
+                            setSheetState(() => typeFilter = v);
+                          }),
+                          const SizedBox(width: 8),
+                          _pickerChip('视频', 'video', typeFilter, (v) {
+                            setSheetState(() => typeFilter = v);
+                          }),
+                          const SizedBox(width: 8),
+                          _pickerChip('Live', 'live', typeFilter, (v) {
+                            setSheetState(() => typeFilter = v);
+                          }),
+                        ],
+                      ),
+                    ),
+                  ),
+                  // 素材列表
+                  Expanded(
+                    child: (filteredAssets.isEmpty && filteredLives.isEmpty)
+                        ? Center(child: _emptyHint('该分类下暂无素材'))
+                        : ListView(
+                            padding: const EdgeInsets.fromLTRB(10, 4, 10, 16),
+                            children: [
+                              if (filteredAssets.isNotEmpty)
                                 GridView.builder(
                                   shrinkWrap: true,
-                                  physics: const NeverScrollableScrollPhysics(),
+                                  physics:
+                                      const NeverScrollableScrollPhysics(),
                                   itemCount: filteredAssets.length,
                                   gridDelegate:
                                       const SliverGridDelegateWithFixedCrossAxisCount(
                                     crossAxisCount: 3,
-                                    mainAxisSpacing: 8,
-                                    crossAxisSpacing: 8,
-                                    childAspectRatio: 0.82,
+                                    mainAxisSpacing: 2,
+                                    crossAxisSpacing: 2,
                                   ),
                                   itemBuilder: (context, index) {
                                     final item = filteredAssets[index];
                                     final id = _assetId(item);
-                                    final selected = tempSelectedAssets.contains(id);
+                                    final selected =
+                                        tempSelectedAssets.contains(id);
                                     final thumb = _assetThumbUrl(item);
-                                    return InkWell(
-                                      borderRadius: BorderRadius.circular(10),
+                                    return GestureDetector(
                                       onTap: () {
-                                        setDialogState(() {
+                                        setSheetState(() {
                                           if (selected) {
                                             tempSelectedAssets.remove(id);
                                           } else if (id > 0) {
@@ -3129,97 +3371,102 @@ class _AdminNativeWorkbenchPageState extends State<AdminNativeWorkbenchPage> {
                                           }
                                         });
                                       },
-                                      child: Container(
-                                        decoration: BoxDecoration(
-                                          borderRadius: BorderRadius.circular(10),
-                                          border: Border.all(
-                                            color: selected ? AppColors.primary : AppColors.border,
-                                            width: selected ? 2 : 1,
-                                          ),
-                                        ),
-                                        child: Column(
-                                          children: [
-                                            Expanded(
-                                              child: Stack(
-                                                fit: StackFit.expand,
-                                                children: [
-                                                  ClipRRect(
-                                                    borderRadius: const BorderRadius.vertical(
-                                                      top: Radius.circular(9),
-                                                    ),
-                                                    child: thumb.isNotEmpty
-                                                        ? Image.network(
-                                                            thumb,
-                                                            fit: BoxFit.cover,
-                                                            errorBuilder: (_, __, ___) =>
-                                                                _thumbPlaceholder(
-                                                              _assetIsVideo(item),
-                                                            ),
-                                                          )
-                                                        : _thumbPlaceholder(_assetIsVideo(item)),
+                                      child: Stack(
+                                        fit: StackFit.expand,
+                                        children: [
+                                          thumb.isNotEmpty
+                                              ? Image.network(
+                                                  thumb,
+                                                  fit: BoxFit.cover,
+                                                  errorBuilder:
+                                                      (_, __, ___) =>
+                                                          _thumbPlaceholder(
+                                                    _assetIsVideo(item),
                                                   ),
-                                                  Positioned(
-                                                    left: 6,
-                                                    top: 6,
-                                                    child: Container(
-                                                      padding: const EdgeInsets.symmetric(
-                                                        horizontal: 6,
-                                                        vertical: 2,
-                                                      ),
-                                                      decoration: BoxDecoration(
-                                                        color: Colors.black.withValues(alpha: 0.55),
-                                                        borderRadius: BorderRadius.circular(999),
-                                                      ),
-                                                      child: Text(
-                                                        _assetTypeLabel(item),
-                                                        style: const TextStyle(
-                                                          color: Colors.white,
-                                                          fontSize: 10,
-                                                          fontWeight: FontWeight.w600,
-                                                        ),
-                                                      ),
-                                                    ),
-                                                  ),
-                                                  if (selected)
-                                                    const Positioned(
-                                                      right: 6,
-                                                      top: 6,
-                                                      child: Icon(
-                                                        Icons.check_circle,
-                                                        color: AppColors.primary,
-                                                        size: 18,
-                                                      ),
-                                                    ),
-                                                ],
+                                                )
+                                              : _thumbPlaceholder(
+                                                  _assetIsVideo(item),
+                                                ),
+                                          // 类型标签
+                                          Positioned(
+                                            left: 4,
+                                            top: 4,
+                                            child: Container(
+                                              padding:
+                                                  const EdgeInsets.symmetric(
+                                                horizontal: 5,
+                                                vertical: 2,
                                               ),
-                                            ),
-                                            Padding(
-                                              padding: const EdgeInsets.fromLTRB(6, 4, 6, 6),
+                                              decoration: BoxDecoration(
+                                                color: Colors.black
+                                                    .withValues(alpha: 0.55),
+                                                borderRadius:
+                                                    BorderRadius.circular(6),
+                                              ),
                                               child: Text(
-                                                _assetSourceName(item),
-                                                maxLines: 1,
-                                                overflow: TextOverflow.ellipsis,
+                                                _assetTypeLabel(item),
                                                 style: const TextStyle(
-                                                  fontSize: 11,
-                                                  color: AppColors.textBody,
+                                                  color: Colors.white,
+                                                  fontSize: 9,
+                                                  fontWeight: FontWeight.w600,
                                                 ),
                                               ),
                                             ),
-                                          ],
-                                        ),
+                                          ),
+                                          // 视频播放图标
+                                          if (_assetIsVideo(item))
+                                            Center(
+                                              child: Icon(
+                                                Icons
+                                                    .play_circle_fill_rounded,
+                                                color: Colors.white
+                                                    .withValues(alpha: 0.8),
+                                                size: 28,
+                                              ),
+                                            ),
+                                          // 选中勾
+                                          Positioned(
+                                            right: 4,
+                                            top: 4,
+                                            child: Container(
+                                              width: 22,
+                                              height: 22,
+                                              decoration: BoxDecoration(
+                                                color: selected
+                                                    ? AppColors.primary
+                                                    : Colors.black.withValues(
+                                                        alpha: 0.3,
+                                                      ),
+                                                borderRadius:
+                                                    BorderRadius.circular(11),
+                                                border: Border.all(
+                                                  color: Colors.white,
+                                                  width: 1.5,
+                                                ),
+                                              ),
+                                              child: selected
+                                                  ? const Icon(
+                                                      Icons.check,
+                                                      color: Colors.white,
+                                                      size: 14,
+                                                    )
+                                                  : null,
+                                            ),
+                                          ),
+                                        ],
                                       ),
                                     );
                                   },
                                 ),
-                              ],
-                              if (filteredLivePacks.isNotEmpty) ...[
-                                const SizedBox(height: 10),
+                              if (filteredLives.isNotEmpty) ...[
                                 const Padding(
-                                  padding: EdgeInsets.only(bottom: 8),
+                                  padding: EdgeInsets.only(
+                                    top: 12, bottom: 8,
+                                  ),
                                   child: Text(
-                                    'Live套件',
+                                    'Live 套件',
                                     style: TextStyle(
-                                      fontSize: 12,
+                                      fontSize: 13,
                                       fontWeight: FontWeight.w700,
                                       color: AppColors.textSecondary,
                                     ),
@@ -3227,8 +3474,9 @@ class _AdminNativeWorkbenchPageState extends State<AdminNativeWorkbenchPage> {
                                 ),
                                 GridView.builder(
                                   shrinkWrap: true,
-                                  physics: const NeverScrollableScrollPhysics(),
-                                  itemCount: filteredLivePacks.length,
+                                  physics:
+                                      const NeverScrollableScrollPhysics(),
+                                  itemCount: filteredLives.length,
                                   gridDelegate:
                                       const SliverGridDelegateWithFixedCrossAxisCount(
                                     crossAxisCount: 2,
@@ -3237,16 +3485,17 @@ class _AdminNativeWorkbenchPageState extends State<AdminNativeWorkbenchPage> {
                                     childAspectRatio: 1.12,
                                   ),
                                   itemBuilder: (context, index) {
-                                    final pack = filteredLivePacks[index];
+                                    final pack = filteredLives[index];
                                     final id = _livePackId(pack);
-                                    final selected = tempSelectedLivePacks.contains(id);
+                                    final selected =
+                                        tempSelectedLivePacks.contains(id);
                                     final complete = _livePackComplete(pack);
-                                    final imageUrl = _livePackImageDisplayUrl(pack);
-                                    return InkWell(
-                                      borderRadius: BorderRadius.circular(10),
+                                    final imageUrl =
+                                        _livePackImageDisplayUrl(pack);
+                                    return GestureDetector(
                                       onTap: () {
                                         if (!complete) return;
-                                        setDialogState(() {
+                                        setSheetState(() {
                                           if (selected) {
                                             tempSelectedLivePacks.remove(id);
                                           } else if (id > 0) {
@@ -3257,10 +3506,14 @@ class _AdminNativeWorkbenchPageState extends State<AdminNativeWorkbenchPage> {
                                       child: Opacity(
                                         opacity: complete ? 1 : 0.55,
                                         child: Container(
+                                          clipBehavior: Clip.antiAlias,
                                           decoration: BoxDecoration(
-                                            borderRadius: BorderRadius.circular(10),
+                                            borderRadius:
+                                                BorderRadius.circular(12),
                                             border: Border.all(
-                                              color: selected ? AppColors.primary : AppColors.border,
+                                              color: selected
+                                                  ? AppColors.primary
+                                                  : AppColors.border,
                                               width: selected ? 2 : 1,
                                             ),
                                           ),
@@ -3270,75 +3523,123 @@ class _AdminNativeWorkbenchPageState extends State<AdminNativeWorkbenchPage> {
                                                 child: Stack(
                                                   fit: StackFit.expand,
                                                   children: [
-                                                    ClipRRect(
-                                                      borderRadius: const BorderRadius.vertical(
-                                                        top: Radius.circular(9),
-                                                      ),
-                                                      child: imageUrl.isNotEmpty
-                                                          ? Image.network(
-                                                              imageUrl,
-                                                              fit: BoxFit.cover,
-                                                              errorBuilder: (_, __, ___) =>
-                                                                  _thumbPlaceholder(false),
-                                                            )
-                                                          : _thumbPlaceholder(false),
-                                                    ),
+                                                    imageUrl.isNotEmpty
+                                                        ? Image.network(
+                                                            imageUrl,
+                                                            fit: BoxFit.cover,
+                                                            errorBuilder:
+                                                                (_, __, ___) =>
+                                                                    _thumbPlaceholder(
+                                                              false,
+                                                            ),
+                                                          )
+                                                        : _thumbPlaceholder(
+                                                            false,
+                                                          ),
                                                     Positioned(
                                                       left: 6,
                                                       top: 6,
                                                       child: Container(
-                                                        padding: const EdgeInsets.symmetric(
+                                                        padding:
+                                                            const EdgeInsets
+                                                                .symmetric(
                                                           horizontal: 6,
                                                           vertical: 2,
                                                         ),
-                                                        decoration: BoxDecoration(
-                                                          color: Colors.black.withValues(alpha: 0.55),
-                                                          borderRadius: BorderRadius.circular(999),
+                                                        decoration:
+                                                            BoxDecoration(
+                                                          color: Colors.black
+                                                              .withValues(
+                                                            alpha: 0.55,
+                                                          ),
+                                                          borderRadius:
+                                                              BorderRadius
+                                                                  .circular(
+                                                            999,
+                                                          ),
                                                         ),
                                                         child: const Text(
                                                           'Live',
                                                           style: TextStyle(
-                                                            color: Colors.white,
+                                                            color:
+                                                                Colors.white,
                                                             fontSize: 10,
-                                                            fontWeight: FontWeight.w600,
+                                                            fontWeight:
+                                                                FontWeight.w600,
                                                           ),
                                                         ),
                                                       ),
                                                     ),
-                                                    if (selected)
-                                                      const Positioned(
-                                                        right: 6,
-                                                        top: 6,
-                                                        child: Icon(
-                                                          Icons.check_circle,
-                                                          color: AppColors.primary,
-                                                          size: 18,
+                                                    // 选中勾
+                                                    Positioned(
+                                                      right: 6,
+                                                      top: 6,
+                                                      child: Container(
+                                                        width: 22,
+                                                        height: 22,
+                                                        decoration:
+                                                            BoxDecoration(
+                                                          color: selected
+                                                              ? AppColors
+                                                                  .primary
+                                                              : Colors.black
+                                                                  .withValues(
+                                                                  alpha: 0.3,
+                                                                ),
+                                                          borderRadius:
+                                                              BorderRadius
+                                                                  .circular(
+                                                            11,
+                                                          ),
+                                                          border: Border.all(
+                                                            color:
+                                                                Colors.white,
+                                                            width: 1.5,
+                                                          ),
                                                         ),
+                                                        child: selected
+                                                            ? const Icon(
+                                                                Icons.check,
+                                                                color: Colors
+                                                                    .white,
+                                                                size: 14,
+                                                              )
+                                                            : null,
                                                       ),
+                                                    ),
                                                   ],
                                                 ),
                                               ),
                                               Padding(
-                                                padding: const EdgeInsets.fromLTRB(6, 4, 6, 6),
+                                                padding:
+                                                    const EdgeInsets.fromLTRB(
+                                                  6, 4, 6, 6,
+                                                ),
                                                 child: Column(
                                                   children: [
                                                     Text(
                                                       _livePackName(pack),
                                                       maxLines: 1,
-                                                      overflow: TextOverflow.ellipsis,
+                                                      overflow: TextOverflow
+                                                          .ellipsis,
                                                       style: const TextStyle(
                                                         fontSize: 11,
-                                                        color: AppColors.textBody,
+                                                        color: AppColors
+                                                            .textBody,
                                                       ),
                                                     ),
                                                     const SizedBox(height: 2),
                                                     Text(
-                                                      complete ? '完整套件' : '半成品不可选',
+                                                      complete
+                                                          ? '完整套件'
+                                                          : '半成品不可选',
                                                       style: TextStyle(
                                                         fontSize: 10,
                                                         color: complete
-                                                            ? AppColors.textSecondary
-                                                            : AppColors.warning,
+                                                            ? AppColors
+                                                                .textSecondary
+                                                            : AppColors
+                                                                .warning,
                                                       ),
                                                     ),
                                                   ],
@@ -3355,22 +3656,13 @@ class _AdminNativeWorkbenchPageState extends State<AdminNativeWorkbenchPage> {
                             ],
                           ),
                   ),
+                  bottomBar(),
                 ],
               ),
-            ),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.pop(ctx, false),
-                child: const Text('取消'),
-              ),
-              TextButton(
-                onPressed: () => Navigator.pop(ctx, true),
-                child: const Text('确认选择'),
-              ),
-            ],
-          );
-        },
-      ),
+            );
+          },
+        );
+      },
     );
 
     if (confirmed != true || !mounted) return;
@@ -3378,6 +3670,35 @@ class _AdminNativeWorkbenchPageState extends State<AdminNativeWorkbenchPage> {
       _selectedPublishAssetIds = tempSelectedAssets;
       _selectedPublishLivePackIds = tempSelectedLivePacks;
     });
+  }
+
+  Widget _pickerChip(
+    String label,
+    String value,
+    String current,
+    ValueChanged<String> onTap,
+  ) {
+    final selected = current == value;
+    return GestureDetector(
+      onTap: () => onTap(value),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
+        decoration: BoxDecoration(
+          color: selected
+              ? AppColors.primary
+              : AppColors.primary.withValues(alpha: 0.08),
+          borderRadius: BorderRadius.circular(20),
+        ),
+        child: Text(
+          label,
+          style: TextStyle(
+            fontSize: 13,
+            fontWeight: FontWeight.w600,
+            color: selected ? Colors.white : AppColors.textSecondary,
+          ),
+        ),
+      ),
+    );
   }
 
   Future<void> _publishMaterial() async {
@@ -3684,172 +4005,301 @@ class _AdminNativeWorkbenchPageState extends State<AdminNativeWorkbenchPage> {
   }
 
   Widget _buildMaterialsVisual() {
-    final secondLevel = _secondLevelCategories();
+    if (_showMaterialComposer) {
+      return _buildPublishImmersive();
+    }
     return Column(
       children: [
-        _toolbarShell(
-          children: [
-            if (!_showMaterialComposer)
-              ElevatedButton.icon(
-                style: _compactElevatedStyle(),
-                onPressed: _openMaterialComposer,
-                icon: const Icon(Icons.add),
-                label: const Text('新增素材'),
-              ),
-            if (_showMaterialComposer) ...[
-              ElevatedButton.icon(
-                style: _compactElevatedStyle(),
-                onPressed: _publishingMaterial ? null : _publishMaterial,
-                icon: _publishingMaterial
-                    ? const SizedBox(
-                        width: 16,
-                        height: 16,
-                        child: CircularProgressIndicator(strokeWidth: 2),
-                      )
-                    : const Icon(Icons.publish_rounded),
-                label: Text(_publishingMaterial ? '发布中...' : '发布'),
-              ),
-              OutlinedButton.icon(
-                style: _compactOutlinedStyle(),
-                onPressed: _publishingMaterial ? null : _closeMaterialComposer,
-                icon: const Icon(Icons.close),
-                label: const Text('取消新增'),
-              ),
-            ],
-          ],
-        ),
-        if (_showMaterialComposer)
-          Padding(
-            padding: const EdgeInsets.fromLTRB(12, 2, 12, 8),
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
+          child: GestureDetector(
+            onTap: _openMaterialComposer,
             child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
               decoration: BoxDecoration(
-                color: Colors.white,
-                borderRadius: BorderRadius.circular(16),
-                border: Border.all(color: AppColors.border),
+                color: AppColors.primary,
+                borderRadius: BorderRadius.circular(14),
               ),
-              clipBehavior: Clip.antiAlias,
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
+              child: const Row(
+                mainAxisAlignment: MainAxisAlignment.center,
                 children: [
-                  Container(
-                    width: double.infinity,
-                    height: 4,
-                    color: AppColors.primary,
-                  ),
-                  Padding(
-                    padding: const EdgeInsets.fromLTRB(12, 10, 12, 0),
-                    child: Row(
-                      children: [
-                        Container(
-                          width: 28,
-                          height: 28,
-                          decoration: BoxDecoration(
-                            color: AppColors.primary.withValues(alpha: 0.10),
-                            borderRadius: BorderRadius.circular(8),
-                          ),
-                          child: const Icon(Icons.edit_note_rounded, color: AppColors.primary, size: 16),
-                        ),
-                        const SizedBox(width: 8),
-                        const Text(
-                          '新增素材',
-                          style: TextStyle(
-                            fontSize: 15,
-                            fontWeight: FontWeight.w700,
-                            color: AppColors.textPrimary,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                  Padding(
-                    padding: const EdgeInsets.fromLTRB(12, 10, 12, 12),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        TextField(
-                          controller: _publishTitleController,
-                          maxLength: 50,
-                          decoration: const InputDecoration(
-                            labelText: '标题',
-                            hintText: '请输入素材标题',
-                            counterText: '',
-                          ),
-                        ),
-                        const SizedBox(height: 8),
-                        Row(
-                          children: [
-                            const Expanded(
-                              child: Text(
-                                '素材选择（来自素材库）',
-                                style: TextStyle(
-                                  fontSize: 12,
-                                  fontWeight: FontWeight.w600,
-                                  color: AppColors.textSecondary,
-                                ),
-                              ),
-                            ),
-                            TextButton(
-                              onPressed: _openPublishAssetSelector,
-                              child: const Text('打开选择器'),
-                            ),
-                          ],
-                        ),
-                        _buildPublishSelectedAssetsStrip(),
-                        const SizedBox(height: 10),
-                        DropdownButtonFormField<int>(
-                          value: _publishCategoryId,
-                          isExpanded: true,
-                          decoration: const InputDecoration(labelText: '二级分类'),
-                          hint: const Text('请选择二级分类'),
-                          items: secondLevel
-                              .map(
-                                (item) => DropdownMenuItem<int>(
-                                  value: item['id'] as int,
-                                  child: Text(
-                                    '${item['parent_name']} / ${item['name']}',
-                                    overflow: TextOverflow.ellipsis,
-                                  ),
-                                ),
-                              )
-                              .toList(growable: false),
-                          onChanged: secondLevel.isEmpty
-                              ? null
-                              : (value) => setState(() => _publishCategoryId = value),
-                        ),
-                        if (secondLevel.isEmpty)
-                          const Padding(
-                            padding: EdgeInsets.only(top: 6),
-                            child: Text(
-                              '暂无二级分类，请先到“分类”菜单创建后再发布。',
-                              style: TextStyle(fontSize: 12, color: AppColors.textSecondary),
-                            ),
-                          ),
-                        const SizedBox(height: 8),
-                        CheckboxListTile(
-                          dense: true,
-                          contentPadding: EdgeInsets.zero,
-                          value: _publishShowInspiration,
-                          title: const Text('同步投放到找灵感'),
-                          onChanged: (v) => setState(() => _publishShowInspiration = v ?? false),
-                        ),
-                        CheckboxListTile(
-                          dense: true,
-                          contentPadding: EdgeInsets.zero,
-                          value: _publishShowMoments,
-                          title: const Text('同步投放到朋友圈'),
-                          onChanged: (v) => setState(() => _publishShowMoments = v ?? false),
-                        ),
-                      ],
+                  Icon(Icons.add_rounded, color: Colors.white, size: 20),
+                  SizedBox(width: 6),
+                  Text(
+                    '新增素材',
+                    style: TextStyle(
+                      fontSize: 15,
+                      fontWeight: FontWeight.w700,
+                      color: Colors.white,
                     ),
                   ),
                 ],
               ),
             ),
           ),
+        ),
         Expanded(
           child: _buildVisualCards(_materials, empty: '暂无素材数据', isMaterial: true),
         ),
       ],
+    );
+  }
+
+  /// 沉浸式发布页（类似小红书发布）
+  Widget _buildPublishImmersive() {
+    final topInset = MediaQuery.of(context).padding.top;
+    final bottomInset = MediaQuery.of(context).padding.bottom;
+    final secondLevel = _secondLevelCategories();
+    final selectedCount =
+        _selectedPublishAssetIds.length + _selectedPublishLivePackIds.length;
+
+    return Column(
+      children: [
+        // === 顶部导航栏 ===
+        Container(
+          padding: EdgeInsets.fromLTRB(6, topInset + 8, 12, 8),
+          child: Row(
+            children: [
+              // 关闭按钮
+              GestureDetector(
+                onTap: _publishingMaterial ? null : _closeMaterialComposer,
+                child: Container(
+                  width: 36,
+                  height: 36,
+                  decoration: BoxDecoration(
+                    color: AppColors.surface,
+                    borderRadius: BorderRadius.circular(18),
+                  ),
+                  child: const Icon(
+                    Icons.close_rounded,
+                    size: 20,
+                    color: AppColors.textSecondary,
+                  ),
+                ),
+              ),
+              const Spacer(),
+            ],
+          ),
+        ),
+        // === 内容区 ===
+        Expanded(
+          child: ListView(
+            padding: const EdgeInsets.fromLTRB(16, 0, 16, 20),
+            children: [
+              // 标题输入
+              TextField(
+                controller: _publishTitleController,
+                maxLength: 50,
+                maxLines: null,
+                style: const TextStyle(
+                  fontSize: 20,
+                  fontWeight: FontWeight.w600,
+                  color: AppColors.textPrimary,
+                ),
+                decoration: const InputDecoration(
+                  hintText: '输入素材标题...',
+                  hintStyle: TextStyle(
+                    fontSize: 20,
+                    fontWeight: FontWeight.w400,
+                    color: AppColors.textHint,
+                  ),
+                  counterText: '',
+                  border: InputBorder.none,
+                  contentPadding: EdgeInsets.symmetric(vertical: 8),
+                ),
+              ),
+              const SizedBox(height: 16),
+              // 素材选择横条
+              _buildPublishSelectedAssetsStrip(),
+              const SizedBox(height: 24),
+              // 设置项分割线
+              Container(height: 1, color: AppColors.border.withValues(alpha: 0.5)),
+              // 分类选择行
+              _publishSettingRow(
+                icon: Icons.category_outlined,
+                label: '投放分类',
+                trailing: secondLevel.isEmpty
+                    ? const Text(
+                        '请先创建分类',
+                        style: TextStyle(fontSize: 14, color: AppColors.textHint),
+                      )
+                    : DropdownButton<int>(
+                        value: _publishCategoryId,
+                        underline: const SizedBox.shrink(),
+                        icon: const Icon(Icons.chevron_right_rounded,
+                            color: AppColors.textHint, size: 20),
+                        hint: const Text(
+                          '选择分类',
+                          style: TextStyle(
+                            fontSize: 14,
+                            color: AppColors.textHint,
+                          ),
+                        ),
+                        style: const TextStyle(
+                          fontSize: 14,
+                          color: AppColors.textPrimary,
+                        ),
+                        items: secondLevel
+                            .map(
+                              (item) => DropdownMenuItem<int>(
+                                value: item['id'] as int,
+                                child: Text(
+                                  '${item['parent_name']} / ${item['name']}',
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                              ),
+                            )
+                            .toList(growable: false),
+                        onChanged: (value) =>
+                            setState(() => _publishCategoryId = value),
+                      ),
+              ),
+              Container(height: 1, color: AppColors.border.withValues(alpha: 0.5)),
+              // 找灵感开关
+              _publishSettingRow(
+                icon: Icons.lightbulb_outline_rounded,
+                label: '同步到找灵感',
+                trailing: CupertinoSwitch(
+                  value: _publishShowInspiration,
+                  activeTrackColor: AppColors.primary,
+                  onChanged: (v) => setState(() => _publishShowInspiration = v),
+                ),
+              ),
+              Container(height: 1, color: AppColors.border.withValues(alpha: 0.5)),
+              // 朋友圈开关
+              _publishSettingRow(
+                icon: Icons.people_outline_rounded,
+                label: '同步到朋友圈',
+                trailing: CupertinoSwitch(
+                  value: _publishShowMoments,
+                  activeTrackColor: AppColors.primary,
+                  onChanged: (v) => setState(() => _publishShowMoments = v),
+                ),
+              ),
+              Container(height: 1, color: AppColors.border.withValues(alpha: 0.5)),
+            ],
+          ),
+        ),
+        // === 底部发布按钮 ===
+        Container(
+          padding: EdgeInsets.fromLTRB(16, 10, 16, bottomInset + 10),
+          child: GestureDetector(
+            onTap: _publishingMaterial ? null : _publishMaterial,
+            child: Container(
+              height: 50,
+              decoration: BoxDecoration(
+                color: _publishingMaterial
+                    ? AppColors.primary.withValues(alpha: 0.5)
+                    : AppColors.primary,
+                borderRadius: BorderRadius.circular(25),
+              ),
+              alignment: Alignment.center,
+              child: _publishingMaterial
+                  ? const SizedBox(
+                      width: 22,
+                      height: 22,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2.5,
+                        color: Colors.white,
+                      ),
+                    )
+                  : Text(
+                      selectedCount > 0 ? '发布 ($selectedCount项)' : '发布',
+                      style: const TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.w700,
+                        color: Colors.white,
+                      ),
+                    ),
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _publishSettingRow({
+    required IconData icon,
+    required String label,
+    required Widget trailing,
+  }) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 4),
+      child: Row(
+        children: [
+          Icon(icon, size: 20, color: AppColors.textSecondary),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Text(
+              label,
+              style: const TextStyle(
+                fontSize: 15,
+                fontWeight: FontWeight.w500,
+                color: AppColors.textPrimary,
+              ),
+            ),
+          ),
+          trailing,
+        ],
+      ),
+    );
+  }
+
+  Widget _publishToggle(
+    String label,
+    IconData icon,
+    bool value,
+    ValueChanged<bool> onChanged,
+  ) {
+    return GestureDetector(
+      onTap: () => onChanged(!value),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+        decoration: BoxDecoration(
+          color: value
+              ? AppColors.primary.withValues(alpha: 0.10)
+              : AppColors.surface,
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(
+            color: value ? AppColors.primary.withValues(alpha: 0.3) : Colors.transparent,
+          ),
+        ),
+        child: Row(
+          children: [
+            Icon(
+              icon,
+              size: 18,
+              color: value ? AppColors.primary : AppColors.textHint,
+            ),
+            const SizedBox(width: 6),
+            Expanded(
+              child: Text(
+                label,
+                style: TextStyle(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w600,
+                  color: value ? AppColors.primary : AppColors.textSecondary,
+                ),
+              ),
+            ),
+            Container(
+              width: 18,
+              height: 18,
+              decoration: BoxDecoration(
+                color: value ? AppColors.primary : Colors.transparent,
+                borderRadius: BorderRadius.circular(9),
+                border: Border.all(
+                  color: value ? AppColors.primary : AppColors.textHint,
+                  width: 1.5,
+                ),
+              ),
+              child: value
+                  ? const Icon(Icons.check, color: Colors.white, size: 12)
+                  : null,
+            ),
+          ],
+        ),
+      ),
     );
   }
 
@@ -4486,12 +4936,20 @@ class _AdminNativeWorkbenchPageState extends State<AdminNativeWorkbenchPage> {
     );
   }
 
-  bool get _isImmersive => _index == 1 && _uploadSelectedFolder != null;
+  bool get _isImmersive =>
+      (_index == 1 && _uploadSelectedFolder != null) ||
+      (_index == 2 && _showMaterialComposer);
 
   @override
   Widget build(BuildContext context) {
-    // 沉浸式：进入分类上传时全屏，隐藏顶部和底部导航
+    // 沉浸式：进入分类上传 或 素材发布时全屏，隐藏顶部和底部导航
     if (_isImmersive) {
+      if (_index == 2 && _showMaterialComposer) {
+        return Scaffold(
+          backgroundColor: Colors.white,
+          body: _buildPublishImmersive(),
+        );
+      }
       return Scaffold(
         backgroundColor: Colors.black,
         body: _buildUploadFolderDetail(),
@@ -4501,7 +4959,6 @@ class _AdminNativeWorkbenchPageState extends State<AdminNativeWorkbenchPage> {
     final pages = [
       _buildDashboard(),
       _buildUpload(),
-      _buildAssetsVisual(),
       _buildMaterialsVisual(),
       _buildQuestions(),
       _buildCategoryManager(),
