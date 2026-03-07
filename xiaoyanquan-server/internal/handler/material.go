@@ -35,6 +35,24 @@ func fullURL(baseURL, path string) string {
 	return baseURL + path
 }
 
+// parseOriginalURLs 解析 jsonb 中的 original_urls 并补全域名
+func parseOriginalURLs(baseURL string, raw model.JSON) []string {
+	if len(raw) == 0 {
+		return []string{}
+	}
+	var urls []string
+	if err := json.Unmarshal(raw, &urls); err != nil {
+		return []string{}
+	}
+	result := make([]string, 0, len(urls))
+	for _, u := range urls {
+		if fu := fullURL(baseURL, u); fu != "" {
+			result = append(result, fu)
+		}
+	}
+	return result
+}
+
 // ==================== 响应结构 ====================
 
 type MaterialListItem struct {
@@ -43,6 +61,7 @@ type MaterialListItem struct {
 	Type          string   `json:"type"`
 	ThumbnailURL  string   `json:"thumbnail_url"`
 	WatermarkURL  string   `json:"watermark_url,omitempty"`
+	OriginalURLs  []string `json:"original_urls"`
 	Width         int      `json:"width"`
 	Height        int      `json:"height"`
 	Duration      float64  `json:"duration,omitempty"`
@@ -147,6 +166,7 @@ func (h *MaterialHandler) List(c *gin.Context) {
 			Type:          m.Type,
 			ThumbnailURL:  fullURL(h.BaseURL, m.ThumbnailURL),
 			WatermarkURL:  fullURL(h.BaseURL, m.WatermarkURL),
+			OriginalURLs:  parseOriginalURLs(h.BaseURL, m.OriginalURLs),
 			Width:         m.Width,
 			Height:        m.Height,
 			Duration:      m.Duration,

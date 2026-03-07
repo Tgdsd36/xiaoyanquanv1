@@ -266,7 +266,6 @@ func (h *AdminHandler) MaterialCreate(c *gin.Context) {
 			response.BadRequest(c, 400, "Live Photo 必须上传动态视频")
 			return
 		}
-		req.OriginalURLs = req.OriginalURLs[:1]
 		if req.ThumbnailURL == "" {
 			req.ThumbnailURL = req.OriginalURLs[0]
 		}

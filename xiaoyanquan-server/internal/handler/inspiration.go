@@ -76,6 +76,7 @@ func (h *InspirationHandler) Feed(c *gin.Context) {
 			Type:          m.Type,
 			ThumbnailURL:  fullURL(h.BaseURL, m.ThumbnailURL),
 			WatermarkURL:  fullURL(h.BaseURL, m.WatermarkURL),
+			OriginalURLs:  parseOriginalURLs(h.BaseURL, m.OriginalURLs),
 			Width:         m.Width,
 			Height:        m.Height,
 			Duration:      m.Duration,
