@@ -1090,7 +1090,7 @@ func (h *AdminHandler) AssetInspect(c *gin.Context) {
 	if liveRole == "image" {
 		suggestion = "识别为 Live 静态图候选（还需要同名 MOV）"
 	} else if liveRole == "video" {
-		suggestion = "识别为 Live 动态视频候选（还需要同名 HEIC/HEIF）"
+		suggestion = "识别为 Live 动态视频候选（还需要同名图片文件）"
 	}
 
 	response.Success(c, gin.H{
@@ -1711,7 +1711,8 @@ func resolveLiveRole(rawRole, ext string) string {
 	if role != "" {
 		switch role {
 		case "image", "static", "photo":
-			if isHEICExt(normalizedExt) {
+			// 有明确 live_role 时，接受任何图片格式（JPG/PNG/HEIC 等）
+			if isImageExt(normalizedExt) {
 				return "image"
 			}
 			return ""
@@ -1724,6 +1725,7 @@ func resolveLiveRole(rawRole, ext string) string {
 			return ""
 		}
 	}
+	// 无 hint 时仅自动识别 HEIC/MOV，避免普通 JPG 被误判
 	if isHEICExt(normalizedExt) {
 		return "image"
 	}
@@ -1738,7 +1740,15 @@ func liveRoleFromAssetURL(url string) string {
 	if idx := strings.Index(cleanURL, "?"); idx >= 0 {
 		cleanURL = cleanURL[:idx]
 	}
-	return resolveLiveRole("", filepath.Ext(cleanURL))
+	ext := strings.ToLower(filepath.Ext(cleanURL))
+	// 自动扫描时：HEIC/HEIF → image, MOV → video, JPG/JPEG → image（用于历史数据兼容）
+	if isHEICExt(ext) || ext == ".jpg" || ext == ".jpeg" {
+		return "image"
+	}
+	if ext == ".mov" {
+		return "video"
+	}
+	return ""
 }
 
 func livePackStatus(imageAssetID, videoAssetID *uint) string {
@@ -2017,6 +2027,8 @@ func (h *AdminHandler) ensureLegacyLivePacks() error {
 	if err := h.DB.Where(`
 		lower(coalesce(url, '')) LIKE '%.heic' OR
 		lower(coalesce(url, '')) LIKE '%.heif' OR
+		lower(coalesce(url, '')) LIKE '%.jpg' OR
+		lower(coalesce(url, '')) LIKE '%.jpeg' OR
 		lower(coalesce(url, '')) LIKE '%.mov'
 	`).Order("created_at ASC, id ASC").Find(&assets).Error; err != nil {
 		return err

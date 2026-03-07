@@ -193,8 +193,9 @@ class LivePhotoPlugin: NSObject, FlutterPlugin, PHPickerViewControllerDelegate {
 
     private func exportLiveAsset(asset: PHAsset, completion: @escaping (Result<[String: Any], Error>) -> Void) {
         let resources = PHAssetResource.assetResources(for: asset)
-        let photoResource = resources.first { $0.type == .photo || $0.type == .fullSizePhoto }
-        let videoResource = resources.first { $0.type == .pairedVideo || $0.type == .video || $0.type == .fullSizeVideo }
+        // 优先取 fullSizePhoto（原始 HEIC），fallback 到 photo（JPG 降级版本）
+        let photoResource = resources.first { $0.type == .fullSizePhoto } ?? resources.first { $0.type == .photo }
+        let videoResource = resources.first { $0.type == .pairedVideo } ?? resources.first { $0.type == .fullSizeVideo } ?? resources.first { $0.type == .video }
 
         guard let imageRes = photoResource, let videoRes = videoResource else {
             completion(.failure(NSError(domain: "LivePhotoPlugin", code: -1001, userInfo: [NSLocalizedDescriptionKey: "未找到 Live 必需资源（静态图或动态视频）"])))

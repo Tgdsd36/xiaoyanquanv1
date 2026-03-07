@@ -546,7 +546,7 @@ class _AdminNativeWorkbenchPageState extends State<AdminNativeWorkbenchPage> {
 
   bool _isLiveImageCandidate(XFile file) {
     final ext = _fileExt(file);
-    return ext == 'heic' || ext == 'heif';
+    return ext == 'heic' || ext == 'heif' || ext == 'jpg' || ext == 'jpeg' || ext == 'png';
   }
 
   bool _isLiveVideoCandidate(XFile file) {
@@ -603,7 +603,7 @@ class _AdminNativeWorkbenchPageState extends State<AdminNativeWorkbenchPage> {
 
       if (pairs.isEmpty) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('未识别到可配对的 Live（需 HEIC/HEIF + MOV）')),
+          const SnackBar(content: Text('未识别到可配对的 Live（需图片 + MOV 同名配对）')),
         );
         return;
       }
