@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:go_router/go_router.dart';
@@ -608,7 +609,7 @@ class _DetailContentState extends ConsumerState<_DetailContent> {
       detail.thumbnailUrl,
       detail.previewMovUrl,
     ];
-    await MaterialDownloadHelper.downloadToAlbum(
+    final saved = await MaterialDownloadHelper.downloadToAlbum(
       context,
       materialId: detail.id,
       materialType: detail.type,
@@ -616,6 +617,14 @@ class _DetailContentState extends ConsumerState<_DetailContent> {
       fallbackVideoUrl: detail.bestVideoUrl,
       fallbackLiveVideoUrl: detail.previewMovUrl,
     );
+    if (saved && detail.title.isNotEmpty && mounted) {
+      await Clipboard.setData(ClipboardData(text: detail.title));
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('标题已复制到剪贴板')),
+        );
+      }
+    }
   }
 
   /// 微信九宫格缩略图

@@ -846,7 +846,7 @@ class _MomentCardState extends ConsumerState<_MomentCard> {
 
     final mediaType =
         moment.mediaType == 'live' ? 'live_photo' : moment.mediaType;
-    await MaterialDownloadHelper.downloadToAlbum(
+    final saved = await MaterialDownloadHelper.downloadToAlbum(
       context,
       materialId: moment.id,
       materialType: mediaType,
@@ -860,6 +860,14 @@ class _MomentCardState extends ConsumerState<_MomentCard> {
         orElse: () => '',
       ),
     );
+    if (saved && moment.contentText.isNotEmpty && mounted) {
+      await Clipboard.setData(ClipboardData(text: moment.contentText));
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('标题已复制到剪贴板')),
+        );
+      }
+    }
   }
 
   @override
@@ -986,6 +994,7 @@ class _MomentCardState extends ConsumerState<_MomentCard> {
   Widget _buildMedia(BuildContext context) {
     final urls = moment.mediaUrls;
     final isVideo = moment.mediaType == 'video';
+    final isLive = moment.mediaType == 'live_photo';
     // live_photo / image 类型只展示图片 URL，过滤掉 .mov
     final imageOnlyUrls = isVideo
         ? urls
@@ -1174,27 +1183,52 @@ class _MomentCardState extends ConsumerState<_MomentCard> {
         onTap: () => context.push('/material/${moment.id}/preview'),
         child: ClipRRect(
           borderRadius: BorderRadius.circular(8),
-          child: ConstrainedBox(
-            constraints: const BoxConstraints(maxHeight: 240),
-            child: CachedNetworkImage(
-              imageUrl: imageOnlyUrls[0],
-              width: double.infinity,
-              fit: BoxFit.cover,
-              placeholder:
-                  (_, __) => Container(height: 180, color: AppColors.shimmer),
-              errorWidget:
-                  (_, __, ___) => Container(
-                    height: 180,
-                    color: AppColors.shimmer,
-                    child: const Center(
-                      child: Icon(
-                        Icons.broken_image_outlined,
-                        color: AppColors.textDisabled,
-                        size: 32,
+          child: Stack(
+            children: [
+              ConstrainedBox(
+                constraints: const BoxConstraints(maxHeight: 240),
+                child: CachedNetworkImage(
+                  imageUrl: imageOnlyUrls[0],
+                  width: double.infinity,
+                  fit: BoxFit.cover,
+                  placeholder:
+                      (_, __) => Container(height: 180, color: AppColors.shimmer),
+                  errorWidget:
+                      (_, __, ___) => Container(
+                        height: 180,
+                        color: AppColors.shimmer,
+                        child: const Center(
+                          child: Icon(
+                            Icons.broken_image_outlined,
+                            color: AppColors.textDisabled,
+                            size: 32,
+                          ),
+                        ),
+                      ),
+                ),
+              ),
+              if (isLive)
+                Positioned(
+                  top: 6,
+                  left: 6,
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                    decoration: BoxDecoration(
+                      color: Colors.black.withValues(alpha: 0.55),
+                      borderRadius: BorderRadius.circular(4),
+                    ),
+                    child: const Text(
+                      'LIVE',
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontSize: 10,
+                        fontWeight: FontWeight.w600,
+                        letterSpacing: 0.5,
                       ),
                     ),
                   ),
-            ),
+                ),
+            ],
           ),
         ),
       );
@@ -1209,41 +1243,66 @@ class _MomentCardState extends ConsumerState<_MomentCard> {
         (screenWidth - outerPadding - spacing * (columns - 1)) / columns;
     final displayCount = imageOnlyUrls.length > 9 ? 9 : imageOnlyUrls.length;
 
-    return Wrap(
-      spacing: spacing,
-      runSpacing: spacing,
-      children: List.generate(displayCount, (i) {
-        return GestureDetector(
-          onTap: () => context.push(
-            '/material/${moment.id}/preview',
-            extra: MaterialPreviewArgs(
-              imageUrls: imageOnlyUrls,
-              initialIndex: i,
-            ),
-          ),
-          child: ClipRRect(
-            borderRadius: BorderRadius.circular(4),
-            child: SizedBox(
-              width: cellSize,
-              height: cellSize,
-              child: CachedNetworkImage(
-                imageUrl: imageOnlyUrls[i],
-                fit: BoxFit.cover,
-                placeholder: (_, __) => Container(color: AppColors.shimmer),
-                errorWidget:
-                    (_, __, ___) => Container(
-                      color: AppColors.shimmer,
-                      child: const Icon(
-                        Icons.broken_image_outlined,
-                        color: AppColors.textDisabled,
-                        size: 20,
-                      ),
-                    ),
+    return Stack(
+      children: [
+        Wrap(
+          spacing: spacing,
+          runSpacing: spacing,
+          children: List.generate(displayCount, (i) {
+            return GestureDetector(
+              onTap: () => context.push(
+                '/material/${moment.id}/preview',
+                extra: MaterialPreviewArgs(
+                  imageUrls: imageOnlyUrls,
+                  initialIndex: i,
+                ),
+              ),
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(4),
+                child: SizedBox(
+                  width: cellSize,
+                  height: cellSize,
+                  child: CachedNetworkImage(
+                    imageUrl: imageOnlyUrls[i],
+                    fit: BoxFit.cover,
+                    placeholder: (_, __) => Container(color: AppColors.shimmer),
+                    errorWidget:
+                        (_, __, ___) => Container(
+                          color: AppColors.shimmer,
+                          child: const Icon(
+                            Icons.broken_image_outlined,
+                            color: AppColors.textDisabled,
+                            size: 20,
+                          ),
+                        ),
+                  ),
+                ),
+              ),
+            );
+          }),
+        ),
+        if (isLive)
+          Positioned(
+            top: 2,
+            left: 2,
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+              decoration: BoxDecoration(
+                color: Colors.black.withValues(alpha: 0.55),
+                borderRadius: BorderRadius.circular(4),
+              ),
+              child: const Text(
+                'LIVE',
+                style: TextStyle(
+                  color: Colors.white,
+                  fontSize: 10,
+                  fontWeight: FontWeight.w600,
+                  letterSpacing: 0.5,
+                ),
               ),
             ),
           ),
-        );
-      }),
+      ],
     );
   }
 }

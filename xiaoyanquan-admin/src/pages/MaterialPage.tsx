@@ -698,6 +698,14 @@ export default function MaterialPage() {
               <MultiAssetPicker max={9} fileType="image" />
             </Form.Item>
           )}
+          <Form.Item name="tags" label="标签">
+            <Select
+              mode="tags"
+              style={{ width: '100%' }}
+              placeholder="输入标签后按回车添加"
+              tokenSeparators={[',', '，', ' ']}
+            />
+          </Form.Item>
           <Space size={32}>
             <Form.Item name="show_inspiration" label="投放找灵感" valuePropName="checked">
               <Switch />
