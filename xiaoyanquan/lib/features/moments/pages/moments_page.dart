@@ -986,6 +986,10 @@ class _MomentCardState extends ConsumerState<_MomentCard> {
   Widget _buildMedia(BuildContext context) {
     final urls = moment.mediaUrls;
     final isVideo = moment.mediaType == 'video';
+    // live_photo / image 类型只展示图片 URL，过滤掉 .mov
+    final imageOnlyUrls = isVideo
+        ? urls
+        : urls.where((u) => !UrlUtils.isVideoUrl(u)).toList();
 
     // 视频
     if (isVideo && urls.isNotEmpty) {
@@ -1165,7 +1169,7 @@ class _MomentCardState extends ConsumerState<_MomentCard> {
     }
 
     // 单张图片
-    if (urls.length == 1) {
+    if (imageOnlyUrls.length == 1) {
       return GestureDetector(
         onTap: () => context.push('/material/${moment.id}/preview'),
         child: ClipRRect(
@@ -1173,7 +1177,7 @@ class _MomentCardState extends ConsumerState<_MomentCard> {
           child: ConstrainedBox(
             constraints: const BoxConstraints(maxHeight: 240),
             child: CachedNetworkImage(
-              imageUrl: urls[0],
+              imageUrl: imageOnlyUrls[0],
               width: double.infinity,
               fit: BoxFit.cover,
               placeholder:
@@ -1200,10 +1204,10 @@ class _MomentCardState extends ConsumerState<_MomentCard> {
     final screenWidth = MediaQuery.of(context).size.width;
     const outerPadding = 12.0 * 2 + 12.0 * 2;
     const spacing = 4.0;
-    final columns = urls.length == 4 ? 2 : 3;
+    final columns = imageOnlyUrls.length == 4 ? 2 : 3;
     final cellSize =
         (screenWidth - outerPadding - spacing * (columns - 1)) / columns;
-    final displayCount = urls.length > 9 ? 9 : urls.length;
+    final displayCount = imageOnlyUrls.length > 9 ? 9 : imageOnlyUrls.length;
 
     return Wrap(
       spacing: spacing,
@@ -1213,7 +1217,7 @@ class _MomentCardState extends ConsumerState<_MomentCard> {
           onTap: () => context.push(
             '/material/${moment.id}/preview',
             extra: MaterialPreviewArgs(
-              imageUrls: urls.where((u) => !UrlUtils.isVideoUrl(u)).toList(),
+              imageUrls: imageOnlyUrls,
               initialIndex: i,
             ),
           ),
@@ -1223,7 +1227,7 @@ class _MomentCardState extends ConsumerState<_MomentCard> {
               width: cellSize,
               height: cellSize,
               child: CachedNetworkImage(
-                imageUrl: urls[i],
+                imageUrl: imageOnlyUrls[i],
                 fit: BoxFit.cover,
                 placeholder: (_, __) => Container(color: AppColors.shimmer),
                 errorWidget:
