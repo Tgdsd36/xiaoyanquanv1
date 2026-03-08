@@ -320,7 +320,7 @@ export default function MobileMaterialsPage() {
         message.warning('请选择Live套件');
         return;
       }
-      payload.original_urls = [selected.image_url];
+      payload.original_urls = [selected.image_url, selected.video_url].filter(Boolean);
       payload.thumbnail_url = selected.image_preview_url || selected.image_url;
       payload.preview_mov_url = selected.video_url;
     }

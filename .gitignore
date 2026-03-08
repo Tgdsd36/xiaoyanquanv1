@@ -38,6 +38,34 @@ Thumbs.db
 .vscode/
 *.iml
 
+# === iOS Build Artifacts & Certs ===
+ios/build/
+ios/xiaoyanquan*/
+ios/*.mobileprovision
+ios/*.p12
+ios/cert*/
+ios/000/
+
+# === Root media files ===
+*.HEIC
+*.MOV
+*.heic
+*.mov
+
+# === Server binaries & env ===
+xiaoyanquan-server/dist/
+xiaoyanquan-server/xiaoyanquan-server
+xiaoyanquan-server/xiaoyanquan-server-linux
+xiaoyanquan-server/xyqapi-server*
+xiaoyanquan-server/static/uploads/
+xiaoyanquan-server/.env.*
+
+# === Admin env ===
+xiaoyanquan-admin/.env.*
+
+# === Claude ===
+.claude/
+
 # === Misc ===
 memory/
 ui-ux-pro-max/

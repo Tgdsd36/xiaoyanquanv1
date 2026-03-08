@@ -37,6 +37,10 @@ class _FavoriteGroupDetailPageState extends State<FavoriteGroupDetailPage> {
   bool _isEditing = false;
   final _nameController = TextEditingController();
 
+  // 多选模式
+  bool _isSelectMode = false;
+  final Set<int> _selectedIds = {};
+
   @override
   void initState() {
     super.initState();
@@ -110,6 +114,88 @@ class _FavoriteGroupDetailPageState extends State<FavoriteGroupDetailPage> {
     }
   }
 
+  void _enterSelectMode(int firstId) {
+    setState(() {
+      _isSelectMode = true;
+      _selectedIds.add(firstId);
+    });
+  }
+
+  void _exitSelectMode() {
+    setState(() {
+      _isSelectMode = false;
+      _selectedIds.clear();
+    });
+  }
+
+  void _toggleSelect(int id) {
+    setState(() {
+      if (_selectedIds.contains(id)) {
+        _selectedIds.remove(id);
+      } else {
+        _selectedIds.add(id);
+      }
+    });
+  }
+
+  void _selectAll() {
+    setState(() {
+      if (_selectedIds.length == _items.length) {
+        _selectedIds.clear();
+      } else {
+        _selectedIds.addAll(_items.map((e) => e['id'] as int));
+      }
+    });
+  }
+
+  Future<void> _batchDelete() async {
+    if (_selectedIds.isEmpty) return;
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('批量取消收藏'),
+        content: Text('确定取消收藏已选的 ${_selectedIds.length} 个素材吗？'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('取消'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(context, true),
+            style: TextButton.styleFrom(foregroundColor: AppColors.error),
+            child: const Text('确定'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) return;
+
+    try {
+      final resp = await _http.post(
+        Api.favoriteBatchDelete,
+        data: {'ids': _selectedIds.toList()},
+      );
+      if (!mounted) return;
+      if (resp.isSuccess) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('已取消 ${_selectedIds.length} 个收藏')),
+        );
+        _exitSelectMode();
+        _load();
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(resp.message.isNotEmpty ? resp.message : '操作失败')),
+        );
+      }
+    } catch (_) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('网络错误，请重试')),
+        );
+      }
+    }
+  }
+
   Future<void> _deleteGroup() async {
     final confirmed = await showDialog<bool>(
       context: context,
@@ -147,101 +233,195 @@ class _FavoriteGroupDetailPageState extends State<FavoriteGroupDetailPage> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title:
-            _isEditing
+        leading: _isSelectMode
+            ? IconButton(
+                icon: const Icon(Icons.close),
+                onPressed: _exitSelectMode,
+              )
+            : null,
+        title: _isSelectMode
+            ? Text('已选 ${_selectedIds.length} 项')
+            : _isEditing
                 ? TextField(
-                  controller: _nameController,
-                  autofocus: true,
-                  style: const TextStyle(fontSize: 17),
-                  decoration: const InputDecoration(
-                    border: InputBorder.none,
-                    hintText: '分组名称',
-                  ),
-                  onSubmitted: (_) => _renameGroup(),
-                )
+                    controller: _nameController,
+                    autofocus: true,
+                    style: const TextStyle(fontSize: 17),
+                    decoration: const InputDecoration(
+                      border: InputBorder.none,
+                      hintText: '分组名称',
+                    ),
+                    onSubmitted: (_) => _renameGroup(),
+                  )
                 : Text(_nameController.text),
         centerTitle: true,
-        actions: [
-          PopupMenuButton<String>(
-            onSelected: (value) {
-              if (value == 'rename') {
-                setState(() => _isEditing = true);
-              } else if (value == 'delete') {
-                _deleteGroup();
-              }
-            },
-            itemBuilder:
-                (context) => [
-                  const PopupMenuItem(
-                    value: 'rename',
-                    child: Row(
-                      children: [
-                        Icon(
-                          Icons.edit_outlined,
-                          size: 18,
-                          color: AppColors.textSecondary,
-                        ),
-                        SizedBox(width: 8),
-                        Text('重命名'),
-                      ],
+        actions: _isSelectMode
+            ? [
+                TextButton(
+                  onPressed: _selectAll,
+                  child: Text(
+                    _selectedIds.length == _items.length ? '取消全选' : '全选',
+                    style: const TextStyle(color: AppColors.primary),
+                  ),
+                ),
+              ]
+            : [
+                PopupMenuButton<String>(
+                  onSelected: (value) {
+                    if (value == 'rename') {
+                      setState(() => _isEditing = true);
+                    } else if (value == 'delete') {
+                      _deleteGroup();
+                    } else if (value == 'batch') {
+                      setState(() => _isSelectMode = true);
+                    }
+                  },
+                  itemBuilder: (context) => [
+                    const PopupMenuItem(
+                      value: 'batch',
+                      child: Row(
+                        children: [
+                          Icon(
+                            Icons.checklist_rounded,
+                            size: 18,
+                            color: AppColors.textSecondary,
+                          ),
+                          SizedBox(width: 8),
+                          Text('批量管理'),
+                        ],
+                      ),
+                    ),
+                    const PopupMenuItem(
+                      value: 'rename',
+                      child: Row(
+                        children: [
+                          Icon(
+                            Icons.edit_outlined,
+                            size: 18,
+                            color: AppColors.textSecondary,
+                          ),
+                          SizedBox(width: 8),
+                          Text('重命名'),
+                        ],
+                      ),
+                    ),
+                    const PopupMenuItem(
+                      value: 'delete',
+                      child: Row(
+                        children: [
+                          Icon(
+                            Icons.delete_outline,
+                            size: 18,
+                            color: AppColors.error,
+                          ),
+                          SizedBox(width: 8),
+                          Text('删除分组',
+                              style: TextStyle(color: AppColors.error)),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+      ),
+      body: _isLoading
+          ? const Center(child: CircularProgressIndicator(strokeWidth: 2))
+          : _items.isEmpty
+              ? const Center(
+                  child: Text('暂无收藏',
+                      style: TextStyle(color: AppColors.textHint)),
+                )
+              : NotificationListener<ScrollNotification>(
+                  onNotification: (notification) {
+                    if (notification.metrics.pixels >=
+                        notification.metrics.maxScrollExtent - 200) {
+                      _loadMore();
+                    }
+                    return false;
+                  },
+                  child: RefreshIndicator(
+                    onRefresh: _load,
+                    child: ListView.separated(
+                      padding: EdgeInsets.fromLTRB(
+                          12, 12, 12, _isSelectMode ? 80 : 12),
+                      itemCount: _items.length,
+                      separatorBuilder: (_, __) => const SizedBox(height: 8),
+                      itemBuilder: (context, index) {
+                        final item = _items[index];
+                        final favId = item['id'] as int;
+                        return _FavoriteItemTile(
+                          item: item,
+                          isSelectMode: _isSelectMode,
+                          isSelected: _selectedIds.contains(favId),
+                          onTap: () {
+                            if (_isSelectMode) {
+                              _toggleSelect(favId);
+                            } else {
+                              final targetId = item['target_id'];
+                              if (targetId != null) {
+                                context.push('/material/$targetId/preview');
+                              }
+                            }
+                          },
+                          onLongPress: () {
+                            if (!_isSelectMode) _enterSelectMode(favId);
+                          },
+                        );
+                      },
                     ),
                   ),
-                  const PopupMenuItem(
-                    value: 'delete',
-                    child: Row(
-                      children: [
-                        Icon(
-                          Icons.delete_outline,
-                          size: 18,
-                          color: AppColors.error,
-                        ),
-                        SizedBox(width: 8),
-                        Text('删除分组', style: TextStyle(color: AppColors.error)),
-                      ],
-                    ),
+                ),
+      bottomSheet: _isSelectMode
+          ? Container(
+              padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
+              decoration: BoxDecoration(
+                color: Theme.of(context).scaffoldBackgroundColor,
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withValues(alpha: 0.06),
+                    blurRadius: 6,
+                    offset: const Offset(0, -2),
                   ),
                 ],
-          ),
-        ],
-      ),
-      body:
-          _isLoading
-              ? const Center(child: CircularProgressIndicator(strokeWidth: 2))
-              : _items.isEmpty
-              ? const Center(
-                child: Text(
-                  '暂无收藏',
-                  style: TextStyle(color: AppColors.textHint),
-                ),
-              )
-              : NotificationListener<ScrollNotification>(
-                onNotification: (notification) {
-                  if (notification.metrics.pixels >=
-                      notification.metrics.maxScrollExtent - 200) {
-                    _loadMore();
-                  }
-                  return false;
-                },
-                child: RefreshIndicator(
-                  onRefresh: _load,
-                  child: ListView.separated(
-                    padding: const EdgeInsets.all(12),
-                    itemCount: _items.length,
-                    separatorBuilder: (_, __) => const SizedBox(height: 8),
-                    itemBuilder: (context, index) {
-                      final item = _items[index];
-                      return _FavoriteItemTile(item: item);
-                    },
+              ),
+              child: SafeArea(
+                child: SizedBox(
+                  width: double.infinity,
+                  height: 44,
+                  child: FilledButton.icon(
+                    onPressed: _selectedIds.isEmpty ? null : _batchDelete,
+                    icon: const Icon(Icons.delete_outline, size: 18),
+                    label: Text(
+                      _selectedIds.isEmpty
+                          ? '取消收藏'
+                          : '取消收藏 (${_selectedIds.length})',
+                    ),
+                    style: FilledButton.styleFrom(
+                      backgroundColor: AppColors.error,
+                      disabledBackgroundColor: AppColors.border,
+                    ),
                   ),
                 ),
               ),
+            )
+          : null,
     );
   }
 }
 
 class _FavoriteItemTile extends StatelessWidget {
   final Map<String, dynamic> item;
-  const _FavoriteItemTile({required this.item});
+  final bool isSelectMode;
+  final bool isSelected;
+  final VoidCallback onTap;
+  final VoidCallback onLongPress;
+
+  const _FavoriteItemTile({
+    required this.item,
+    required this.isSelectMode,
+    required this.isSelected,
+    required this.onTap,
+    required this.onLongPress,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -254,47 +434,61 @@ class _FavoriteItemTile extends StatelessWidget {
         (item['created_at'] ?? item['favorited_at'])?.toString() ?? '';
 
     return ListTile(
-      leading: ClipRRect(
-        borderRadius: BorderRadius.circular(6),
-        child: SizedBox(
-          width: 50,
-          height: 50,
-          child:
-              canShowImage
+      leading: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          if (isSelectMode) ...[
+            Icon(
+              isSelected
+                  ? Icons.check_circle_rounded
+                  : Icons.radio_button_unchecked,
+              color: isSelected ? AppColors.primary : AppColors.textHint,
+              size: 22,
+            ),
+            const SizedBox(width: 8),
+          ],
+          ClipRRect(
+            borderRadius: BorderRadius.circular(6),
+            child: SizedBox(
+              width: 50,
+              height: 50,
+              child: canShowImage
                   ? CachedNetworkImage(
-                    imageUrl: thumbnailUrl,
-                    fit: BoxFit.cover,
-                  )
+                      imageUrl: thumbnailUrl,
+                      fit: BoxFit.cover,
+                    )
                   : (thumbnailUrl.isNotEmpty &&
-                      UrlUtils.isVideoUrl(thumbnailUrl))
-                  ? NetworkVideoThumbnail(
-                    videoUrl: thumbnailUrl,
-                    fit: BoxFit.cover,
-                    placeholder: Container(
-                      color: AppColors.shimmer,
-                      child: const Icon(
-                        Icons.play_circle_outline_rounded,
-                        color: AppColors.textDisabled,
-                      ),
-                    ),
-                    errorWidget: Container(
-                      color: AppColors.shimmer,
-                      child: const Icon(
-                        Icons.broken_image_outlined,
-                        color: AppColors.textDisabled,
-                      ),
-                    ),
-                  )
-                  : Container(
-                    color: AppColors.shimmer,
-                    child: Icon(
-                      thumbnailUrl.isNotEmpty
-                          ? Icons.play_circle_outline_rounded
-                          : Icons.image,
-                      color: AppColors.textDisabled,
-                    ),
-                  ),
-        ),
+                          UrlUtils.isVideoUrl(thumbnailUrl))
+                      ? NetworkVideoThumbnail(
+                          videoUrl: thumbnailUrl,
+                          fit: BoxFit.cover,
+                          placeholder: Container(
+                            color: AppColors.shimmer,
+                            child: const Icon(
+                              Icons.play_circle_outline_rounded,
+                              color: AppColors.textDisabled,
+                            ),
+                          ),
+                          errorWidget: Container(
+                            color: AppColors.shimmer,
+                            child: const Icon(
+                              Icons.broken_image_outlined,
+                              color: AppColors.textDisabled,
+                            ),
+                          ),
+                        )
+                      : Container(
+                          color: AppColors.shimmer,
+                          child: Icon(
+                            thumbnailUrl.isNotEmpty
+                                ? Icons.play_circle_outline_rounded
+                                : Icons.image,
+                            color: AppColors.textDisabled,
+                          ),
+                        ),
+            ),
+          ),
+        ],
       ),
       title: Text(
         item['title'] ?? '未知素材',
@@ -305,17 +499,15 @@ class _FavoriteItemTile extends StatelessWidget {
         createdAt,
         style: const TextStyle(fontSize: 12, color: AppColors.textHint),
       ),
-      trailing: const Icon(
-        Icons.chevron_right,
-        size: 18,
-        color: AppColors.textHint,
-      ),
-      onTap: () {
-        final targetId = item['target_id'];
-        if (targetId != null) {
-          context.push('/material/$targetId/preview');
-        }
-      },
+      trailing: isSelectMode
+          ? null
+          : const Icon(
+              Icons.chevron_right,
+              size: 18,
+              color: AppColors.textHint,
+            ),
+      onTap: onTap,
+      onLongPress: onLongPress,
       tileColor: Theme.of(context).cardColor,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
     );

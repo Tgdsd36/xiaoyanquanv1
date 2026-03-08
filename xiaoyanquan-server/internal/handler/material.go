@@ -446,6 +446,10 @@ func (h *MaterialHandler) Download(c *gin.Context) {
 	if len(material.OriginalURLs) > 0 {
 		json.Unmarshal(material.OriginalURLs, &urls)
 	}
+	// Live Photo 兜底：确保 preview_mov_url 也在下载列表中
+	if material.Type == "live_photo" && strings.TrimSpace(material.PreviewMovURL) != "" {
+		urls = append(urls, fullURL(h.BaseURL, material.PreviewMovURL))
+	}
 	urls = normalizeDownloadURLs(urls)
 	if material.Type == "video" {
 		urls = prioritizeVideoURLsForMobile(urls)

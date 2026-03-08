@@ -476,6 +476,53 @@ class _AdminNativeWorkbenchPageState extends State<AdminNativeWorkbenchPage> {
       );
       return;
     }
+
+    // 检测疑似 Live Photo 短 MOV：.mov 且文件 < 10MB
+    final suspectedLive = <XFile>[];
+    final normalVideos = <XFile>[];
+    for (final f in videoFiles) {
+      final ext = f.path.split('.').last.toLowerCase();
+      if (ext == 'mov') {
+        final size = await File(f.path).length();
+        if (size < 10 * 1024 * 1024) {
+          suspectedLive.add(f);
+          continue;
+        }
+      }
+      normalVideos.add(f);
+    }
+
+    if (suspectedLive.isNotEmpty && mounted) {
+      final keep = await showDialog<bool>(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          title: const Text('检测到疑似 Live Photo'),
+          content: Text(
+            '选中的 ${suspectedLive.length} 个 MOV 文件小于 10MB\uFF0C'
+            '可能是 Live Photo 的动态视频组件。\n\n'
+            '建议使用「选择 Live Photo」上传，'
+            '以正确配对图片 + 视频。\n\n'
+            '仍然作为普通视频上传吗？',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: const Text('取消，我去 Live 上传'),
+            ),
+            TextButton(
+              onPressed: () => Navigator.pop(ctx, true),
+              child: const Text('仍然作为视频'),
+            ),
+          ],
+        ),
+      );
+      if (keep != true) {
+        if (normalVideos.isEmpty) return;
+        setState(() => _videos = [..._videos, ...normalVideos]);
+        return;
+      }
+    }
+
     setState(() => _videos = [..._videos, ...videoFiles]);
   }
 
@@ -3383,7 +3430,7 @@ class _AdminNativeWorkbenchPageState extends State<AdminNativeWorkbenchPage> {
   Future<void> _loadPublishSourceAssets() async {
     final resp = await AdminHttpClient().dio.get(
       '/assets',
-      queryParameters: {'page': 1, 'page_size': 200},
+      queryParameters: {'page': 1, 'page_size': 200, 'exclude_live': 'true'},
     );
     final data = resp.data as Map<String, dynamic>;
     if ((data['code'] ?? -1) != 0) return;

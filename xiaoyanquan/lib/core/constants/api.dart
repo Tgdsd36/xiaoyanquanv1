@@ -36,6 +36,7 @@ class Api {
   // 收藏
   static const String favorites = '/favorites';
   static const String favoriteToggle = '/favorites/toggle';
+  static const String favoriteBatchDelete = '/favorites/batch-delete';
   static String favoriteDelete(int id) => '/favorites/$id';
 
   // 收藏分组

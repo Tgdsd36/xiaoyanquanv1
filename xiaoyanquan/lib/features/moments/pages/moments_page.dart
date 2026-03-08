@@ -987,91 +987,180 @@ class _MomentCardState extends ConsumerState<_MomentCard> {
     final urls = moment.mediaUrls;
     final isVideo = moment.mediaType == 'video';
 
-    // 视频：缩略图 + 播放图标
+    // 视频
     if (isVideo && urls.isNotEmpty) {
-      final coverUrl = urls.first;
-      final isVideoCover = UrlUtils.isVideoUrl(coverUrl);
-      return GestureDetector(
-        onTap: () => context.push('/material/${moment.id}/preview'),
-        child: ClipRRect(
-          borderRadius: BorderRadius.circular(8),
-          child: Stack(
-            children: [
-              ConstrainedBox(
-                constraints: const BoxConstraints(maxHeight: 240),
-                child:
-                    isVideoCover
-                        ? NetworkVideoThumbnail(
-                          videoUrl: coverUrl,
-                          fit: BoxFit.cover,
-                          placeholder: Container(
-                            height: 200,
-                            width: double.infinity,
-                            color: AppColors.shimmer,
-                            child: const Center(
-                              child: Icon(
-                                Icons.play_circle_outline_rounded,
-                                color: AppColors.textSecondary,
-                                size: 40,
-                              ),
-                            ),
-                          ),
-                          errorWidget: Container(
-                            height: 200,
-                            width: double.infinity,
-                            color: AppColors.shimmer,
-                            child: const Center(
-                              child: Icon(
-                                Icons.broken_image_outlined,
-                                color: AppColors.textDisabled,
-                                size: 32,
-                              ),
-                            ),
-                          ),
-                        )
-                        : CachedNetworkImage(
-                          imageUrl: coverUrl,
-                          width: double.infinity,
-                          fit: BoxFit.cover,
-                          placeholder:
-                              (_, __) => Container(
-                                height: 200,
-                                color: AppColors.shimmer,
-                              ),
-                          errorWidget:
-                              (_, __, ___) => Container(
-                                height: 200,
-                                color: AppColors.shimmer,
-                                child: const Center(
-                                  child: Icon(
-                                    Icons.broken_image_outlined,
-                                    color: AppColors.textDisabled,
-                                    size: 32,
-                                  ),
+      // 单条视频：大缩略图 + 播放图标
+      if (urls.length == 1) {
+        final coverUrl = urls.first;
+        final isVideoCover = UrlUtils.isVideoUrl(coverUrl);
+        return GestureDetector(
+          onTap: () => context.push('/material/${moment.id}/preview'),
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(8),
+            child: Stack(
+              children: [
+                ConstrainedBox(
+                  constraints: const BoxConstraints(maxHeight: 240),
+                  child:
+                      isVideoCover
+                          ? NetworkVideoThumbnail(
+                            videoUrl: coverUrl,
+                            fit: BoxFit.cover,
+                            placeholder: Container(
+                              height: 200,
+                              width: double.infinity,
+                              color: AppColors.shimmer,
+                              child: const Center(
+                                child: Icon(
+                                  Icons.play_circle_outline_rounded,
+                                  color: AppColors.textSecondary,
+                                  size: 40,
                                 ),
                               ),
-                        ),
-              ),
-              Positioned.fill(
-                child: Center(
-                  child: Container(
-                    width: 48,
-                    height: 48,
-                    decoration: BoxDecoration(
-                      color: Colors.black.withValues(alpha: 0.5),
-                      shape: BoxShape.circle,
-                    ),
-                    child: const Icon(
-                      Icons.play_arrow_rounded,
-                      color: Colors.white,
-                      size: 32,
+                            ),
+                            errorWidget: Container(
+                              height: 200,
+                              width: double.infinity,
+                              color: AppColors.shimmer,
+                              child: const Center(
+                                child: Icon(
+                                  Icons.broken_image_outlined,
+                                  color: AppColors.textDisabled,
+                                  size: 32,
+                                ),
+                              ),
+                            ),
+                          )
+                          : CachedNetworkImage(
+                            imageUrl: coverUrl,
+                            width: double.infinity,
+                            fit: BoxFit.cover,
+                            placeholder:
+                                (_, __) => Container(
+                                  height: 200,
+                                  color: AppColors.shimmer,
+                                ),
+                            errorWidget:
+                                (_, __, ___) => Container(
+                                  height: 200,
+                                  color: AppColors.shimmer,
+                                  child: const Center(
+                                    child: Icon(
+                                      Icons.broken_image_outlined,
+                                      color: AppColors.textDisabled,
+                                      size: 32,
+                                    ),
+                                  ),
+                                ),
+                          ),
+                ),
+                Positioned.fill(
+                  child: Center(
+                    child: Container(
+                      width: 48,
+                      height: 48,
+                      decoration: BoxDecoration(
+                        color: Colors.black.withValues(alpha: 0.5),
+                        shape: BoxShape.circle,
+                      ),
+                      child: const Icon(
+                        Icons.play_arrow_rounded,
+                        color: Colors.white,
+                        size: 32,
+                      ),
                     ),
                   ),
                 ),
-              ),
-            ],
+              ],
+            ),
           ),
-        ),
+        );
+      }
+
+      // 多条视频：网格 + 播放图标
+      final screenWidth = MediaQuery.of(context).size.width;
+      const outerPadding = 12.0 * 2 + 12.0 * 2;
+      const spacing = 4.0;
+      final columns = urls.length == 4 ? 2 : 3;
+      final cellSize =
+          (screenWidth - outerPadding - spacing * (columns - 1)) / columns;
+      final displayCount = urls.length > 9 ? 9 : urls.length;
+
+      return Wrap(
+        spacing: spacing,
+        runSpacing: spacing,
+        children: List.generate(displayCount, (i) {
+          final url = urls[i];
+          final isVid = UrlUtils.isVideoUrl(url);
+          return GestureDetector(
+            onTap: () => context.push('/material/${moment.id}/preview'),
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(4),
+              child: SizedBox(
+                width: cellSize,
+                height: cellSize,
+                child: Stack(
+                  fit: StackFit.expand,
+                  children: [
+                    if (isVid)
+                      NetworkVideoThumbnail(
+                        videoUrl: url,
+                        fit: BoxFit.cover,
+                        placeholder: Container(
+                          color: AppColors.shimmer,
+                          child: const Center(
+                            child: Icon(
+                              Icons.play_circle_outline_rounded,
+                              color: AppColors.textSecondary,
+                              size: 24,
+                            ),
+                          ),
+                        ),
+                        errorWidget: Container(
+                          color: AppColors.shimmer,
+                          child: const Icon(
+                            Icons.broken_image_outlined,
+                            color: AppColors.textDisabled,
+                            size: 20,
+                          ),
+                        ),
+                      )
+                    else
+                      CachedNetworkImage(
+                        imageUrl: url,
+                        fit: BoxFit.cover,
+                        placeholder: (_, __) =>
+                            Container(color: AppColors.shimmer),
+                        errorWidget: (_, __, ___) => Container(
+                          color: AppColors.shimmer,
+                          child: const Icon(
+                            Icons.broken_image_outlined,
+                            color: AppColors.textDisabled,
+                            size: 20,
+                          ),
+                        ),
+                      ),
+                    Center(
+                      child: Container(
+                        width: 32,
+                        height: 32,
+                        decoration: BoxDecoration(
+                          color: Colors.black.withValues(alpha: 0.5),
+                          shape: BoxShape.circle,
+                        ),
+                        child: const Icon(
+                          Icons.play_arrow_rounded,
+                          color: Colors.white,
+                          size: 20,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          );
+        }),
       );
     }
 

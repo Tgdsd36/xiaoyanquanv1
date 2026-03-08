@@ -2,11 +2,13 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"log"
 	"net/http"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 	"time"
 
@@ -40,6 +42,12 @@ func main() {
 
 	// 数据迁移：收藏分组（为旧收藏记录创建默认分组）
 	migrateFavoriteGroups(db)
+
+	// 数据迁移：将已关联 Live Pack 的 .mov 资产从 video 修正为 live_video
+	migrateLiveVideoFileType(db)
+
+	// 数据迁移：为 live_photo 素材补全 original_urls 中缺失的视频 URL
+	migrateLivePhotoOriginalURLs(db, cfg)
 
 	// 初始化种子数据
 	seedData(db)
@@ -209,6 +217,148 @@ func migrateFavoriteGroups(db *gorm.DB) {
 	}
 
 	log.Printf("收藏分组迁移完成，处理 %d 个用户", len(userIDs))
+}
+
+// migrateLiveVideoFileType 将已关联到 LiveAssetPack 的 .mov 资产 file_type 从 video 修正为 live_video
+func migrateLiveVideoFileType(db *gorm.DB) {
+	result := db.Exec(`
+		UPDATE assets SET file_type = 'live_video'
+		WHERE id IN (
+			SELECT video_asset_id FROM live_asset_packs WHERE video_asset_id IS NOT NULL
+		)
+		AND file_type = 'video'
+	`)
+	if result.Error == nil && result.RowsAffected > 0 {
+		log.Printf("已迁移 %d 条 Live 视频资产: video -> live_video", result.RowsAffected)
+	}
+}
+
+// migrateLivePhotoOriginalURLs 为 live_photo 类型素材补全 original_urls 中缺失的 .mov 视频 URL。
+// 发布时可能只存了静态图地址，视频地址需要通过 live_asset_packs 反查补回。
+func migrateLivePhotoOriginalURLs(db *gorm.DB, cfg *config.Config) {
+	var materials []model.Material
+	db.Where("type = ?", "live_photo").Find(&materials)
+	if len(materials) == 0 {
+		return
+	}
+
+	// 批量加载所有 complete 的 Live Pack 及其 image/video 资产
+	var packs []model.LiveAssetPack
+	db.Where("status = 'complete' AND image_asset_id IS NOT NULL AND video_asset_id IS NOT NULL").Find(&packs)
+	if len(packs) == 0 {
+		return
+	}
+
+	assetIDs := make([]uint, 0, len(packs)*2)
+	for _, p := range packs {
+		assetIDs = append(assetIDs, *p.ImageAssetID, *p.VideoAssetID)
+	}
+	var assets []model.Asset
+	db.Where("id IN ?", assetIDs).Find(&assets)
+	assetMap := map[uint]model.Asset{}
+	for _, a := range assets {
+		assetMap[a.ID] = a
+	}
+
+	// 构建 fullURL（不依赖 handler 包，自行拼接）
+	cosBase := ""
+	if cfg.Storage.COSEnabled && cfg.Storage.COSBucket != "" {
+		if cfg.Storage.COSCDNDomain != "" {
+			cosBase = strings.TrimRight(cfg.Storage.COSCDNDomain, "/")
+		} else {
+			cosBase = fmt.Sprintf("https://%s.cos.%s.myqcloud.com",
+				cfg.Storage.COSBucket, cfg.Storage.COSRegion)
+		}
+	}
+	baseURL := cfg.Server.BaseURL
+
+	makeFullURL := func(p string) string {
+		if p == "" {
+			return ""
+		}
+		if len(p) > 4 && (p[:4] == "http" || p[:2] == "//") {
+			return p
+		}
+		if strings.HasPrefix(p, "/static/") {
+			return baseURL + p
+		}
+		if cosBase != "" {
+			return cosBase + "/" + p
+		}
+		return baseURL + "/" + p
+	}
+
+	// 构建 imageURL -> videoURL 映射
+	img2vid := map[string]string{}
+	for _, p := range packs {
+		imgAsset, okI := assetMap[*p.ImageAssetID]
+		vidAsset, okV := assetMap[*p.VideoAssetID]
+		if !okI || !okV {
+			continue
+		}
+		imgFull := makeFullURL(imgAsset.URL)
+		vidFull := makeFullURL(vidAsset.URL)
+		if imgFull != "" && vidFull != "" {
+			img2vid[imgFull] = vidFull
+		}
+	}
+
+	updated := 0
+	for _, m := range materials {
+		var urls []string
+		if len(m.OriginalURLs) > 0 {
+			json.Unmarshal(m.OriginalURLs, &urls)
+		}
+		if len(urls) == 0 {
+			continue
+		}
+
+		// 检查是否已有视频 URL
+		hasVideo := false
+		for _, u := range urls {
+			if isVideoURL(u) {
+				hasVideo = true
+				break
+			}
+		}
+		if hasVideo {
+			continue
+		}
+
+		// 通过 img2vid 映射补全视频 URL
+		videos := make([]string, 0, len(urls))
+		for _, imgURL := range urls {
+			if vid, ok := img2vid[imgURL]; ok {
+				videos = append(videos, vid)
+			}
+		}
+		if len(videos) == 0 {
+			continue
+		}
+
+		newURLs := append(urls, videos...)
+		newJSON, err := json.Marshal(newURLs)
+		if err != nil {
+			continue
+		}
+		db.Model(&model.Material{}).Where("id = ?", m.ID).
+			Update("original_urls", string(newJSON))
+		updated++
+	}
+
+	if updated > 0 {
+		log.Printf("已为 %d 条 live_photo 素材补全视频 URL 到 original_urls", updated)
+	}
+}
+
+func isVideoURL(u string) bool {
+	l := strings.ToLower(u)
+	for _, ext := range []string{".mp4", ".mov", ".m4v", ".webm", ".mkv", ".avi"} {
+		if strings.HasSuffix(strings.SplitN(l, "?", 2)[0], ext) {
+			return true
+		}
+	}
+	return false
 }
 
 // seedData 初始化种子数据（系统配置）

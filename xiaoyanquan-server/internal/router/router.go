@@ -126,6 +126,7 @@ func Setup(cfg *config.Config, db *gorm.DB, rdb *redis.Client) *gin.Engine {
 		{
 			favorites.POST("", favoriteHandler.Create)
 			favorites.POST("/toggle", favoriteHandler.Toggle)
+			favorites.POST("/batch-delete", favoriteHandler.BatchDelete)
 			favorites.DELETE("/:id", favoriteHandler.Delete)
 			favorites.GET("", favoriteHandler.List)
 		}

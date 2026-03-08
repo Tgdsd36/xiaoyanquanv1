@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"fmt"
 	"strconv"
 	"time"
 
@@ -210,6 +211,54 @@ func (h *FavoriteHandler) getMaterialFavCount(targetType string, targetID uint) 
 		return m.FavoriteCount
 	}
 	return 0
+}
+
+// BatchDelete 批量取消收藏
+func (h *FavoriteHandler) BatchDelete(c *gin.Context) {
+	var req struct {
+		IDs []uint `json:"ids" binding:"required"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil || len(req.IDs) == 0 {
+		response.BadRequest(c, 400, "参数错误")
+		return
+	}
+
+	userID := middleware.GetUserID(c)
+
+	// 查出这些收藏记录（仅当前用户的）
+	var favorites []model.Favorite
+	h.DB.Where("id IN ? AND user_id = ?", req.IDs, userID).Find(&favorites)
+	if len(favorites) == 0 {
+		response.SuccessMessage(c, "无可删除的收藏")
+		return
+	}
+
+	// 收集受影响的素材 target_id
+	materialTargetIDs := map[uint]bool{}
+	deleteIDs := make([]uint, 0, len(favorites))
+	for _, f := range favorites {
+		deleteIDs = append(deleteIDs, f.ID)
+		if f.TargetType == "material" {
+			materialTargetIDs[f.TargetID] = true
+		}
+	}
+
+	// 批量删除
+	h.DB.Where("id IN ? AND user_id = ?", deleteIDs, userID).Delete(&model.Favorite{})
+
+	// 对受影响的素材检查是否还有剩余收藏，没有则 favorite_count-1
+	for targetID := range materialTargetIDs {
+		var remaining int64
+		h.DB.Model(&model.Favorite{}).
+			Where("user_id = ? AND target_type = 'material' AND target_id = ?", userID, targetID).
+			Count(&remaining)
+		if remaining == 0 {
+			h.DB.Model(&model.Material{}).Where("id = ?", targetID).
+				UpdateColumn("favorite_count", gorm.Expr("GREATEST(favorite_count - 1, 0)"))
+		}
+	}
+
+	response.SuccessMessage(c, fmt.Sprintf("已取消 %d 条收藏", len(deleteIDs)))
 }
 
 // List 我的收藏列表（支持按分组筛选）

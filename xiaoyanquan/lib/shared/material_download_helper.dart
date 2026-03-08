@@ -157,24 +157,47 @@ class MaterialDownloadHelper {
               : 'Live Photo 已保存到 iPhone 相册';
         }
       } else if (kind == _DownloadKind.video) {
-        const prefix = '正在下载视频';
-        progress.update('$prefix...');
-        final videoUrl = UrlUtils.firstVideoUrl(mergedUrls);
-        if (videoUrl.isEmpty) {
+        final videoUrls = UrlUtils.allVideoUrls(mergedUrls);
+        if (videoUrls.isEmpty) {
           if (!context.mounted) return false;
           _showSnack(context, '未获取到可下载的视频地址');
           return false;
         }
-        saved = await _saveRemoteFileToAlbum(
-          videoUrl,
-          cancelToken: progress.cancelToken,
-          onReceiveProgress:
-              (received, total) =>
-                  progress.update(_buildProgressText(prefix, received, total)),
-        );
-        if (progress.isCanceled) {
-          canceledByUser = true;
-          return false;
+
+        var successCount = 0;
+        final total = videoUrls.length;
+        for (var i = 0; i < total; i++) {
+          if (progress.isCanceled) {
+            canceledByUser = true;
+            break;
+          }
+          final prefix = total > 1 ? '正在下载视频 ${i + 1}/$total' : '正在下载视频';
+          progress.update('$prefix...');
+          final ok = await _saveRemoteFileToAlbum(
+            videoUrls[i],
+            cancelToken: progress.cancelToken,
+            onReceiveProgress:
+                (received, totalBytes) => progress.update(
+                  _buildProgressText(prefix, received, totalBytes),
+                ),
+          );
+          if (progress.isCanceled) {
+            canceledByUser = true;
+            break;
+          }
+          if (ok) successCount++;
+        }
+
+        if (canceledByUser) return false;
+        if (successCount <= 0) {
+          saved = false;
+        } else {
+          saved = successCount == total;
+          if (successCount < total && context.mounted) {
+            _showSnack(context, '已下载 $successCount/$total 个视频，部分下载失败');
+          } else if (total > 1) {
+            successMessage = '已保存 $total 个视频到系统相册';
+          }
         }
       } else {
         // 图片与非 iOS 设备的 Live 素材，统一保存静态图；图片素材会逐张下载。

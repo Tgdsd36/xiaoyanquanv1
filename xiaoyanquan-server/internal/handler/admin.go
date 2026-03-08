@@ -987,7 +987,10 @@ func (h *AdminHandler) AssetUpload(c *gin.Context) {
 	switch ext {
 	case ".jpg", ".jpeg", ".png", ".gif", ".webp", ".bmp", ".heic", ".heif":
 		fileType = "image"
-	case ".mp4", ".mov", ".avi", ".mkv":
+	case ".mp4", ".avi", ".mkv":
+		fileType = "video"
+	case ".mov":
+		// .mov 延迟判断：先存临时文件后用 ffprobe 检测时长
 		fileType = "video"
 	default:
 		response.BadRequest(c, 400, "不支持的文件格式")
@@ -1005,6 +1008,13 @@ func (h *AdminHandler) AssetUpload(c *gin.Context) {
 	if err := c.SaveUploadedFile(file, tmpPath); err != nil {
 		response.ServerError(c, "文件保存失败")
 		return
+	}
+
+	// .mov 智能分类：用 ffprobe 检测时长，≤5 秒判定为 Live Photo 组件
+	if ext == ".mov" {
+		if dur := probeVideoDuration(tmpPath); dur > 0 && dur <= 5.0 {
+			fileType = "live_video"
+		}
 	}
 
 	var assetURL string
@@ -1031,7 +1041,7 @@ func (h *AdminHandler) AssetUpload(c *gin.Context) {
 				go h.uploadLocalFileToCOS(pvPath, pvURL)
 			}
 		}
-		// 视频转码：本地转换后上传到 COS
+		// 视频转码：仅对普通 video 转码，live_video 跳过（Live Photo 短视频无需转码）
 		if fileType == "video" {
 			go func(srcPath, srcKey string) {
 				if mobileKey, mobilePath, err := generateMobileVideoLocal(srcPath, srcKey); err == nil {
@@ -1041,7 +1051,7 @@ func (h *AdminHandler) AssetUpload(c *gin.Context) {
 				os.Remove(srcPath)
 			}(tmpPath, key)
 		} else {
-			// 图片上传完成后清理临时文件
+			// 图片或 live_video 上传完成后清理临时文件
 			go os.Remove(tmpPath)
 		}
 	} else {
@@ -1077,8 +1087,13 @@ func (h *AdminHandler) AssetUpload(c *gin.Context) {
 		response.ServerError(c, "保存记录失败")
 		return
 	}
-	if liveRole := resolveLiveRole(c.PostForm("live_role"), ext); liveRole != "" {
+	// Live Pack 关联：显式 live_role 或 live_video 自动关联
+	explicitLiveRole := c.PostForm("live_role")
+	if liveRole := resolveLiveRole(explicitLiveRole, ext); liveRole != "" {
 		_, _ = h.attachAssetToLivePack(asset, liveRole)
+	} else if fileType == "live_video" {
+		// 时长检测判定为 Live 短视频，自动关联
+		_, _ = h.attachAssetToLivePack(asset, "video")
 	}
 	if folder != "" {
 		_ = h.DB.FirstOrCreate(&model.AssetFolder{}, model.AssetFolder{Name: folder}).Error
@@ -1099,6 +1114,58 @@ func (h *AdminHandler) uploadLocalFileToCOS(localPath, cosKey string) {
 	}
 	_ = h.Store.Upload(cosKey, f, fi.Size())
 	os.Remove(localPath)
+}
+
+// probeVideoDuration 用 ffprobe 获取视频时长（秒），失败返回 -1
+func probeVideoDuration(filePath string) float64 {
+	// 优先 ffprobe
+	if p, _ := exec.LookPath("ffprobe"); p != "" {
+		out, err := exec.Command(
+			"ffprobe", "-v", "quiet",
+			"-show_entries", "format=duration",
+			"-of", "default=noprint_wrappers=1:nokey=1",
+			filePath,
+		).Output()
+		if err == nil {
+			if dur, err := strconv.ParseFloat(strings.TrimSpace(string(out)), 64); err == nil {
+				return dur
+			}
+		}
+	}
+	// fallback: ffmpeg
+	if p, _ := exec.LookPath("ffmpeg"); p != "" {
+		out, _ := exec.Command(
+			"ffmpeg", "-i", filePath,
+			"-f", "null", "-",
+		).CombinedOutput()
+		// 从 stderr 解析 "Duration: 00:00:02.50"
+		lines := strings.Split(string(out), "\n")
+		for _, line := range lines {
+			if idx := strings.Index(line, "Duration:"); idx >= 0 {
+				part := strings.TrimSpace(line[idx+len("Duration:"):])
+				if comma := strings.Index(part, ","); comma > 0 {
+					part = part[:comma]
+				}
+				return parseDurationHMS(strings.TrimSpace(part))
+			}
+		}
+	}
+	return -1
+}
+
+// parseDurationHMS 解析 "HH:MM:SS.xx" 格式为秒数
+func parseDurationHMS(s string) float64 {
+	parts := strings.Split(s, ":")
+	if len(parts) != 3 {
+		return -1
+	}
+	h, e1 := strconv.ParseFloat(parts[0], 64)
+	m, e2 := strconv.ParseFloat(parts[1], 64)
+	sec, e3 := strconv.ParseFloat(parts[2], 64)
+	if e1 != nil || e2 != nil || e3 != nil {
+		return -1
+	}
+	return h*3600 + m*60 + sec
 }
 
 // generateHEICPreviewLocal 本地生成 HEIC 预览 JPG，返回 COS key 和本地路径
@@ -1322,14 +1389,18 @@ func (h *AdminHandler) AssetList(c *gin.Context) {
 			`)
 		case "video":
 			// 兼容历史数据：file_type 可能被存成 mov/mp4 等具体扩展名
+			// 排除 live_video（Live Photo 短视频组件）
 			query = query.Where(`
-				lower(coalesce(file_type, '')) IN ('video', 'mov', 'mp4', 'm4v', 'avi', 'mkv', 'webm')
-				OR lower(coalesce(url, '')) LIKE '%.mov'
-				OR lower(coalesce(url, '')) LIKE '%.mp4'
-				OR lower(coalesce(url, '')) LIKE '%.m4v'
-				OR lower(coalesce(url, '')) LIKE '%.avi'
-				OR lower(coalesce(url, '')) LIKE '%.mkv'
-				OR lower(coalesce(url, '')) LIKE '%.webm'
+				(
+					lower(coalesce(file_type, '')) IN ('video', 'mov', 'mp4', 'm4v', 'avi', 'mkv', 'webm')
+					OR lower(coalesce(url, '')) LIKE '%.mov'
+					OR lower(coalesce(url, '')) LIKE '%.mp4'
+					OR lower(coalesce(url, '')) LIKE '%.m4v'
+					OR lower(coalesce(url, '')) LIKE '%.avi'
+					OR lower(coalesce(url, '')) LIKE '%.mkv'
+					OR lower(coalesce(url, '')) LIKE '%.webm'
+				)
+				AND lower(coalesce(file_type, '')) != 'live_video'
 			`)
 		default:
 			query = query.Where("lower(file_type) = ?", strings.ToLower(strings.TrimSpace(fileType)))
@@ -2027,12 +2098,10 @@ func resolveLiveRole(rawRole, ext string) string {
 			return ""
 		}
 	}
-	// 无 hint 时仅自动识别 HEIC/MOV，避免普通 JPG 被误判
+	// 无显式 live_role 时，仅 HEIC 自动识别为 Live 图片组件。
+	// .mov 不再自动关联 Live Pack，改由 AssetUpload 中 ffprobe 时长检测判断。
 	if isHEICExt(normalizedExt) {
 		return "image"
-	}
-	if normalizedExt == ".mov" {
-		return "video"
 	}
 	return ""
 }
