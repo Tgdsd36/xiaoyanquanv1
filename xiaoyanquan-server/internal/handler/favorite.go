@@ -24,12 +24,13 @@ type CreateFavoriteReq struct {
 }
 
 type FavoriteListItem struct {
-	ID         uint   `json:"id"`
-	TargetType string `json:"target_type"`
-	TargetID   uint   `json:"target_id"`
-	Title      string `json:"title"`
-	Thumbnail  string `json:"thumbnail"`
-	CreatedAt  string `json:"created_at"`
+	ID           uint   `json:"id"`
+	TargetType   string `json:"target_type"`
+	TargetID     uint   `json:"target_id"`
+	Title        string `json:"title"`
+	Thumbnail    string `json:"thumbnail"`
+	MaterialType string `json:"material_type"`
+	CreatedAt    string `json:"created_at"`
 }
 
 // Create 添加收藏
@@ -297,9 +298,10 @@ func (h *FavoriteHandler) List(c *gin.Context) {
 		// 补充标题和缩略图
 		if f.TargetType == "material" {
 			var m model.Material
-			if h.DB.Select("title, thumbnail_url").First(&m, f.TargetID).Error == nil {
+			if h.DB.Select("title, thumbnail_url, type").First(&m, f.TargetID).Error == nil {
 				item.Title = m.Title
 				item.Thumbnail = m.ThumbnailURL
+				item.MaterialType = m.Type
 			}
 		}
 		list[i] = item

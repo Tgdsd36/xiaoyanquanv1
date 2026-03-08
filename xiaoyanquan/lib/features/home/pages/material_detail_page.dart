@@ -737,27 +737,52 @@ class _DetailContentState extends ConsumerState<_DetailContent> {
         onTap: () => _openPreview(context, urls, 0),
         child: ClipRRect(
           borderRadius: BorderRadius.circular(6),
-          child: ConstrainedBox(
-            constraints: const BoxConstraints(maxHeight: 240),
-            child: CachedNetworkImage(
-              imageUrl: urls[0],
-              fit: BoxFit.cover,
-              width: double.infinity,
-              placeholder:
-                  (_, __) => Container(height: 180, color: AppColors.shimmer),
-              errorWidget:
-                  (_, __, ___) => Container(
-                    height: 180,
-                    color: AppColors.shimmer,
-                    child: const Center(
-                      child: Icon(
-                        Icons.broken_image_outlined,
-                        color: AppColors.textDisabled,
-                        size: 36,
+          child: Stack(
+            children: [
+              ConstrainedBox(
+                constraints: const BoxConstraints(maxHeight: 240),
+                child: CachedNetworkImage(
+                  imageUrl: urls[0],
+                  fit: BoxFit.cover,
+                  width: double.infinity,
+                  placeholder:
+                      (_, __) => Container(height: 180, color: AppColors.shimmer),
+                  errorWidget:
+                      (_, __, ___) => Container(
+                        height: 180,
+                        color: AppColors.shimmer,
+                        child: const Center(
+                          child: Icon(
+                            Icons.broken_image_outlined,
+                            color: AppColors.textDisabled,
+                            size: 36,
+                          ),
+                        ),
+                      ),
+                ),
+              ),
+              if (detail.isLivePhoto)
+                Positioned(
+                  top: 6,
+                  left: 6,
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                    decoration: BoxDecoration(
+                      color: Colors.black.withValues(alpha: 0.55),
+                      borderRadius: BorderRadius.circular(4),
+                    ),
+                    child: const Text(
+                      'LIVE',
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontSize: 10,
+                        fontWeight: FontWeight.w600,
+                        letterSpacing: 0.5,
                       ),
                     ),
                   ),
-            ),
+                ),
+            ],
           ),
         ),
       );
@@ -771,35 +796,60 @@ class _DetailContentState extends ConsumerState<_DetailContent> {
     final cellSize =
         (screenWidth - padding - spacing * (columns - 1)) / columns;
 
-    return Wrap(
-      spacing: spacing,
-      runSpacing: spacing,
-      children: List.generate(urls.length, (i) {
-        return GestureDetector(
-          onTap: () => _openPreview(context, urls, i),
-          child: ClipRRect(
-            borderRadius: BorderRadius.circular(4),
-            child: SizedBox(
-              width: cellSize,
-              height: cellSize,
-              child: CachedNetworkImage(
-                imageUrl: urls[i],
-                fit: BoxFit.cover,
-                placeholder: (_, __) => Container(color: AppColors.shimmer),
-                errorWidget:
-                    (_, __, ___) => Container(
-                      color: AppColors.shimmer,
-                      child: const Icon(
-                        Icons.broken_image_outlined,
-                        color: AppColors.textDisabled,
-                        size: 24,
-                      ),
-                    ),
+    return Stack(
+      children: [
+        Wrap(
+          spacing: spacing,
+          runSpacing: spacing,
+          children: List.generate(urls.length, (i) {
+            return GestureDetector(
+              onTap: () => _openPreview(context, urls, i),
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(4),
+                child: SizedBox(
+                  width: cellSize,
+                  height: cellSize,
+                  child: CachedNetworkImage(
+                    imageUrl: urls[i],
+                    fit: BoxFit.cover,
+                    placeholder: (_, __) => Container(color: AppColors.shimmer),
+                    errorWidget:
+                        (_, __, ___) => Container(
+                          color: AppColors.shimmer,
+                          child: const Icon(
+                            Icons.broken_image_outlined,
+                            color: AppColors.textDisabled,
+                            size: 24,
+                          ),
+                        ),
+                  ),
+                ),
+              ),
+            );
+          }),
+        ),
+        if (detail.isLivePhoto)
+          Positioned(
+            top: 2,
+            left: 2,
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+              decoration: BoxDecoration(
+                color: Colors.black.withValues(alpha: 0.55),
+                borderRadius: BorderRadius.circular(4),
+              ),
+              child: const Text(
+                'LIVE',
+                style: TextStyle(
+                  color: Colors.white,
+                  fontSize: 10,
+                  fontWeight: FontWeight.w600,
+                  letterSpacing: 0.5,
+                ),
               ),
             ),
           ),
-        );
-      }),
+      ],
     );
   }
 

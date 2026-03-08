@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:go_router/go_router.dart';
 import '../../../app/colors.dart';
+import '../../../app/styles.dart';
 import '../../../core/constants/api.dart';
 import '../../../core/network/http_client.dart';
 import '../../../core/utils/url_utils.dart';
@@ -430,6 +431,7 @@ class _FavoriteItemTile extends StatelessWidget {
     );
     final canShowImage =
         thumbnailUrl.isNotEmpty && !UrlUtils.isVideoUrl(thumbnailUrl);
+    final materialType = (item['type'] ?? item['material_type'] ?? '').toString();
     final createdAt =
         (item['created_at'] ?? item['favorited_at'])?.toString() ?? '';
 
@@ -452,40 +454,65 @@ class _FavoriteItemTile extends StatelessWidget {
             child: SizedBox(
               width: 50,
               height: 50,
-              child: canShowImage
-                  ? CachedNetworkImage(
-                      imageUrl: thumbnailUrl,
-                      fit: BoxFit.cover,
-                    )
-                  : (thumbnailUrl.isNotEmpty &&
-                          UrlUtils.isVideoUrl(thumbnailUrl))
-                      ? NetworkVideoThumbnail(
-                          videoUrl: thumbnailUrl,
+              child: Stack(
+                fit: StackFit.expand,
+                children: [
+                  canShowImage
+                      ? CachedNetworkImage(
+                          imageUrl: thumbnailUrl,
                           fit: BoxFit.cover,
-                          placeholder: Container(
-                            color: AppColors.shimmer,
-                            child: const Icon(
-                              Icons.play_circle_outline_rounded,
-                              color: AppColors.textDisabled,
-                            ),
-                          ),
-                          errorWidget: Container(
-                            color: AppColors.shimmer,
-                            child: const Icon(
-                              Icons.broken_image_outlined,
-                              color: AppColors.textDisabled,
-                            ),
-                          ),
                         )
-                      : Container(
-                          color: AppColors.shimmer,
-                          child: Icon(
-                            thumbnailUrl.isNotEmpty
-                                ? Icons.play_circle_outline_rounded
-                                : Icons.image,
-                            color: AppColors.textDisabled,
+                      : (thumbnailUrl.isNotEmpty &&
+                              UrlUtils.isVideoUrl(thumbnailUrl))
+                          ? NetworkVideoThumbnail(
+                              videoUrl: thumbnailUrl,
+                              fit: BoxFit.cover,
+                              placeholder: Container(
+                                color: AppColors.shimmer,
+                                child: const Icon(
+                                  Icons.play_circle_outline_rounded,
+                                  color: AppColors.textDisabled,
+                                ),
+                              ),
+                              errorWidget: Container(
+                                color: AppColors.shimmer,
+                                child: const Icon(
+                                  Icons.broken_image_outlined,
+                                  color: AppColors.textDisabled,
+                                ),
+                              ),
+                            )
+                          : Container(
+                              color: AppColors.shimmer,
+                              child: Icon(
+                                thumbnailUrl.isNotEmpty
+                                    ? Icons.play_circle_outline_rounded
+                                    : Icons.image,
+                                color: AppColors.textDisabled,
+                              ),
+                            ),
+                  if (materialType == 'live_photo')
+                    Positioned(
+                      bottom: 1,
+                      left: 1,
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 3, vertical: 1),
+                        decoration: BoxDecoration(
+                          color: Colors.black.withValues(alpha: 0.55),
+                          borderRadius: BorderRadius.circular(3),
+                        ),
+                        child: const Text(
+                          'LIVE',
+                          style: TextStyle(
+                            color: Colors.white,
+                            fontSize: 7,
+                            fontWeight: FontWeight.w600,
                           ),
                         ),
+                      ),
+                    ),
+                ],
+              ),
             ),
           ),
         ],
