@@ -27,6 +27,7 @@ class MaterialRepository {
     String? gender,
     String? type,
     String sort = 'hot',
+    String? timePeriod,
   }) async {
     final params = <String, dynamic>{
       'page': page,
@@ -41,6 +42,9 @@ class MaterialRepository {
     }
     if (type != null && type.isNotEmpty) {
       params['type'] = type;
+    }
+    if (timePeriod != null && timePeriod.isNotEmpty) {
+      params['time_period'] = timePeriod;
     }
 
     final resp = await _http.get(Api.materials, params: params);

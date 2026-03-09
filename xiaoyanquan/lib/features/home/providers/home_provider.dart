@@ -66,6 +66,14 @@ class MaterialListNotifier extends StateNotifier<MaterialListState> {
 
   MaterialListNotifier() : super(const MaterialListState());
 
+  /// 根据当前小时计算时段: 6-12 morning, 12-18 afternoon, 18-6 evening
+  static String _currentTimePeriod() {
+    final hour = DateTime.now().hour;
+    if (hour >= 6 && hour < 12) return 'morning';
+    if (hour >= 12 && hour < 18) return 'afternoon';
+    return 'evening';
+  }
+
   void updateFilters({String? type, int? categoryId, String? gender, String? sort}) {
     if (type != null) _type = type;
     if (categoryId != null) _categoryId = categoryId;
@@ -83,6 +91,7 @@ class MaterialListNotifier extends StateNotifier<MaterialListState> {
         categoryId: _categoryId > 0 ? _categoryId : null,
         gender: _gender.isNotEmpty ? _gender : null,
         sort: _sort,
+        timePeriod: _currentTimePeriod(),
       );
       state = MaterialListState(
         items: result.list,
@@ -106,6 +115,7 @@ class MaterialListNotifier extends StateNotifier<MaterialListState> {
         categoryId: _categoryId > 0 ? _categoryId : null,
         gender: _gender.isNotEmpty ? _gender : null,
         sort: _sort,
+        timePeriod: _currentTimePeriod(),
       );
       state = state.copyWith(
         items: [...state.items, ...result.list],

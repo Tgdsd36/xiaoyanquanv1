@@ -394,6 +394,7 @@ class _MomentsPageState extends ConsumerState<MomentsPage> {
               SliverPersistentHeader(
                 pinned: true,
                 delegate: _FilterBarDelegate(
+                  topPadding: MediaQuery.of(context).padding.top,
                   mediaType: momentsState.mediaType,
                   gender: momentsState.gender,
                   onMediaTypeChanged:
@@ -620,17 +621,21 @@ class _CoverArea extends StatelessWidget {
 // ==================== 吸顶筛选栏 ====================
 
 class _FilterBarDelegate extends SliverPersistentHeaderDelegate {
+  final double topPadding;
   final String mediaType;
   final String gender;
   final ValueChanged<String> onMediaTypeChanged;
   final ValueChanged<String> onGenderChanged;
 
   _FilterBarDelegate({
+    required this.topPadding,
     required this.mediaType,
     required this.gender,
     required this.onMediaTypeChanged,
     required this.onGenderChanged,
   });
+
+  static const _barHeight = 48.0;
 
   static const _tabs = [
     ('', '综合'),
@@ -640,9 +645,9 @@ class _FilterBarDelegate extends SliverPersistentHeaderDelegate {
   ];
 
   @override
-  double get minExtent => 48;
+  double get minExtent => _barHeight + topPadding;
   @override
-  double get maxExtent => 48;
+  double get maxExtent => _barHeight + topPadding;
 
   @override
   Widget build(
@@ -651,9 +656,8 @@ class _FilterBarDelegate extends SliverPersistentHeaderDelegate {
     bool overlapsContent,
   ) {
     return Container(
-      height: 48,
       color: Colors.white,
-      padding: const EdgeInsets.symmetric(horizontal: 12),
+      padding: EdgeInsets.only(top: topPadding, left: 12, right: 12),
       child: Row(
         children: [
           // 类型 Tab

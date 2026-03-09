@@ -231,6 +231,7 @@ func (h *AdminHandler) MaterialCreate(c *gin.Context) {
 		PreviewMovURL   string   `json:"preview_mov_url"`
 		ShowInspiration bool     `json:"show_inspiration"`
 		ShowMoments     bool     `json:"show_moments"`
+		TimePeriod      string   `json:"time_period"`
 		Status          string   `json:"status"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -291,6 +292,7 @@ func (h *AdminHandler) MaterialCreate(c *gin.Context) {
 		PreviewMovURL:   req.PreviewMovURL,
 		ShowInspiration: req.ShowInspiration,
 		ShowMoments:     req.ShowMoments,
+		TimePeriod:      req.TimePeriod,
 		Status:          req.Status,
 	}
 	if req.CategoryID > 0 {

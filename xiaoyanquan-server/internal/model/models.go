@@ -81,6 +81,7 @@ type Material struct {
 	PreviewMovURL   string         `gorm:"size:500" json:"preview_mov_url"`             // Live Photo
 	ShowInspiration bool           `gorm:"default:false;index" json:"show_inspiration"` // 是否投放到找灵感
 	ShowMoments     bool           `gorm:"default:false;index" json:"show_moments"`     // 是否投放到朋友圈
+	TimePeriod      string         `gorm:"size:20;default:''" json:"time_period"`        // 展示时段: ""/all=全天, morning, afternoon, evening
 	HotScore        float64        `gorm:"index;default:0" json:"hot_score"`
 	DownloadCount   int            `gorm:"default:0" json:"download_count"`
 	FavoriteCount   int            `gorm:"default:0" json:"favorite_count"`

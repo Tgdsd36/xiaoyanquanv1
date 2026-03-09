@@ -136,6 +136,11 @@ func (h *MaterialHandler) List(c *gin.Context) {
 
 	query := h.DB.Model(&model.Material{}).Where("status = ?", "published")
 
+	// 时段过滤：空值和 all 的素材全天展示
+	if timePeriod := c.Query("time_period"); timePeriod != "" {
+		query = query.Where("time_period = '' OR time_period = 'all' OR time_period IS NULL OR time_period = ?", timePeriod)
+	}
+
 	if categoryID > 0 {
 		// 检查是否为一级分类（有子分类），若是则展开查询
 		var childIDs []uint

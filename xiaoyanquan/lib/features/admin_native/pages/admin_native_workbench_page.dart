@@ -81,6 +81,7 @@ class _AdminNativeWorkbenchPageState extends State<AdminNativeWorkbenchPage> {
   bool _showMaterialComposer = false;
   bool _publishDataLoaded = false;
   String _publishGender = '';
+  String _publishTimePeriod = '';
   List<String> _publishTags = const [];
   final TextEditingController _publishTagController = TextEditingController();
   int? _editingMaterialId;
@@ -5037,6 +5038,7 @@ class _AdminNativeWorkbenchPageState extends State<AdminNativeWorkbenchPage> {
           'status': 'published',
           'gender': _publishGender,
           'tags': _publishTags,
+          'time_period': _publishTimePeriod,
           'show_inspiration': _publishShowInspiration,
           'show_moments': _publishShowMoments,
           'original_urls': originalUrls,
@@ -5087,6 +5089,7 @@ class _AdminNativeWorkbenchPageState extends State<AdminNativeWorkbenchPage> {
           'status': 'published',
           'gender': _publishGender,
           'tags': _publishTags,
+          'time_period': _publishTimePeriod,
           'show_inspiration': _publishShowInspiration,
           'show_moments': _publishShowMoments,
           'original_urls': [...imageUrls, ...videoUrls],
@@ -5118,6 +5121,7 @@ class _AdminNativeWorkbenchPageState extends State<AdminNativeWorkbenchPage> {
         _publishShowInspiration = false;
         _publishShowMoments = false;
         _publishGender = '';
+        _publishTimePeriod = '';
         _publishTags = const [];
         _showMaterialComposer = false;
       });
@@ -5190,6 +5194,7 @@ class _AdminNativeWorkbenchPageState extends State<AdminNativeWorkbenchPage> {
           'category_id': _publishCategoryId,
           'gender': _publishGender,
           'tags': _publishTags,
+          'time_period': _publishTimePeriod,
           'show_inspiration': _publishShowInspiration,
           'show_moments': _publishShowMoments,
           'original_urls': allUrls,
@@ -5223,6 +5228,7 @@ class _AdminNativeWorkbenchPageState extends State<AdminNativeWorkbenchPage> {
       _publishShowInspiration = false;
       _publishShowMoments = false;
       _publishGender = '';
+      _publishTimePeriod = '';
       _publishTags = const [];
       _publishCategoryId = null;
       _editingMaterialId = null;
@@ -5995,6 +6001,37 @@ class _AdminNativeWorkbenchPageState extends State<AdminNativeWorkbenchPage> {
                     DropdownMenuItem(value: 'female', child: Text('女')),
                   ],
                   onChanged: (v) => setState(() => _publishGender = v ?? ''),
+                ),
+              ),
+            ),
+          ),
+          Divider(height: 1, color: AppColors.border.withValues(alpha: 0.6)),
+          _publishSettingRow(
+            icon: Icons.schedule_rounded,
+            label: '展示时段',
+            subtitle: '设置素材在哪个时段展示',
+            trailing: ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 120),
+              child: DropdownButtonHideUnderline(
+                child: DropdownButton<String>(
+                  isExpanded: true,
+                  value: _publishTimePeriod,
+                  icon: const Icon(
+                    Icons.chevron_right_rounded,
+                    color: AppColors.textHint,
+                    size: 20,
+                  ),
+                  style: const TextStyle(
+                    fontSize: 14,
+                    color: AppColors.textPrimary,
+                  ),
+                  items: const [
+                    DropdownMenuItem(value: '', child: Text('全天')),
+                    DropdownMenuItem(value: 'morning', child: Text('早上')),
+                    DropdownMenuItem(value: 'afternoon', child: Text('中午')),
+                    DropdownMenuItem(value: 'evening', child: Text('晚上')),
+                  ],
+                  onChanged: (v) => setState(() => _publishTimePeriod = v ?? ''),
                 ),
               ),
             ),
