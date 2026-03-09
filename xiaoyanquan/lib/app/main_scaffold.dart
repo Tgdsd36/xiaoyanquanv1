@@ -1,8 +1,12 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'colors.dart';
 
-class MainScaffold extends StatelessWidget {
+/// 当前底部导航栏活跃 tab 索引
+final activeMainTabProvider = StateProvider<int>((ref) => 0);
+
+class MainScaffold extends ConsumerWidget {
   final StatefulNavigationShell navigationShell;
 
   const MainScaffold({super.key, required this.navigationShell});
@@ -15,9 +19,16 @@ class MainScaffold extends StatelessWidget {
   ];
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     final primary = Theme.of(context).colorScheme.primary;
     final currentIndex = navigationShell.currentIndex;
+
+    // 同步当前 tab 索引到 provider
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (ref.read(activeMainTabProvider) != currentIndex) {
+        ref.read(activeMainTabProvider.notifier).state = currentIndex;
+      }
+    });
 
     return Scaffold(
       body: navigationShell,

@@ -10,6 +10,7 @@ import '../../../core/constants/api.dart';
 import '../../../core/network/http_client.dart';
 import '../../../core/utils/url_utils.dart';
 import '../../../shared/favorite_group_sheet.dart';
+import '../../../app/main_scaffold.dart';
 import '../../../shared/live_photo_view.dart';
 import '../../../shared/material_download_helper.dart';
 import '../../home/models/material_model.dart';
@@ -231,6 +232,8 @@ class _InspirationFeedViewState extends ConsumerState<_InspirationFeedView>
   Widget build(BuildContext context) {
     super.build(context);
     final state = ref.watch(inspirationProvider(widget.type));
+    // 监听底部导航 tab 索引，判断找灵感是否是当前活跃 tab
+    final isTabActive = ref.watch(activeMainTabProvider) == 1;
 
     if (state.items.isEmpty) {
       return Center(
@@ -279,7 +282,7 @@ class _InspirationFeedViewState extends ConsumerState<_InspirationFeedView>
         final item = state.items[index];
         return _InspirationFullPage(
           item: item,
-          isActive: index == _currentIndex,
+          isActive: index == _currentIndex && isTabActive,
           onDislike: () {
             ref
                 .read(inspirationProvider(widget.type).notifier)
