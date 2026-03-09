@@ -182,7 +182,6 @@ class _VideoLiveMotionViewState extends State<_VideoLiveMotionView> {
     _controller = controller;
     try {
       await controller.initialize();
-      await controller.setVolume(0);
       await controller.setLooping(true);
       await controller.play();
       if (!mounted || _controller != controller) return;
