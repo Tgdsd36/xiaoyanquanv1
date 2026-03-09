@@ -39,19 +39,19 @@ class AdminNativeWorkbenchPage extends StatefulWidget {
 class _AdminNativeWorkbenchPageState extends State<AdminNativeWorkbenchPage> {
   static const String _allFoldersValue = '__all__';
   static const String _uncategorizedFolderValue = '__uncategorized__';
-  static const List<String> _tabTitles = ['看板', '上传', '素材', '提问', '分类'];
+  static const List<String> _tabTitles = ['看板', '上传', '素材', '会员', '分类'];
   static const List<String> _tabSubtitles = [
     '核心数据概览与快捷入口',
     '图片 / 视频 / Live 素材上传',
     '发布素材并投放渠道',
-    '用户提问与回复处理',
+    '用户会员状态管理',
     '一级 / 二级分类管理',
   ];
   static const List<IconData> _tabIcons = [
     Icons.space_dashboard_rounded,
     Icons.upload_file_rounded,
     Icons.photo_library_rounded,
-    Icons.forum_rounded,
+    Icons.card_membership_rounded,
     Icons.account_tree_rounded,
   ];
 
@@ -80,6 +80,19 @@ class _AdminNativeWorkbenchPageState extends State<AdminNativeWorkbenchPage> {
   bool _publishingMaterial = false;
   bool _showMaterialComposer = false;
   bool _publishDataLoaded = false;
+  String _publishGender = '';
+  List<String> _publishTags = const [];
+  final TextEditingController _publishTagController = TextEditingController();
+  int? _editingMaterialId;
+  List<String> _editingMaterialUrls = const [];
+  String _editingMaterialType = '';
+
+  // 会员管理
+  List<dynamic> _members = const [];
+  int _memberTotal = 0;
+  int _memberPage = 1;
+  String _memberTypeFilter = '';
+  final TextEditingController _memberSearchController = TextEditingController();
 
   String _uploadMode = 'image'; // image/video/live
   String _folder = '';
@@ -115,6 +128,8 @@ class _AdminNativeWorkbenchPageState extends State<AdminNativeWorkbenchPage> {
   @override
   void dispose() {
     _publishTitleController.dispose();
+    _publishTagController.dispose();
+    _memberSearchController.dispose();
     super.dispose();
   }
 
@@ -134,6 +149,16 @@ class _AdminNativeWorkbenchPageState extends State<AdminNativeWorkbenchPage> {
         if ((data['code'] ?? -1) == 0) {
           _dashboard = (data['data'] as Map?)?.cast<String, dynamic>() ?? {};
         }
+        // 看板同时加载提问数据
+        final qResp = await AdminHttpClient().dio.get(
+          '/questions',
+          queryParameters: {'page': 1, 'page_size': 20},
+        );
+        final qData = qResp.data as Map<String, dynamic>;
+        if ((qData['code'] ?? -1) == 0) {
+          final payload = (qData['data'] as Map?)?.cast<String, dynamic>() ?? {};
+          _questions = List<dynamic>.from(payload['list'] ?? const []);
+        }
       } else if (_index == 1) {
         await _loadAssetFolders();
         await _loadFolderThumbnails();
@@ -143,15 +168,7 @@ class _AdminNativeWorkbenchPageState extends State<AdminNativeWorkbenchPage> {
         await _loadPublishSourceAssets();
         await _loadPublishSourceLivePacks();
       } else if (_index == 3) {
-        final resp = await AdminHttpClient().dio.get(
-          '/questions',
-          queryParameters: {'page': 1, 'page_size': 20},
-        );
-        final data = resp.data as Map<String, dynamic>;
-        if ((data['code'] ?? -1) == 0) {
-          final payload = (data['data'] as Map?)?.cast<String, dynamic>() ?? {};
-          _questions = List<dynamic>.from(payload['list'] ?? const []);
-        }
+        await _loadMembers();
       } else if (_index == 4) {
         await _loadCategories();
       }
@@ -257,6 +274,156 @@ class _AdminNativeWorkbenchPageState extends State<AdminNativeWorkbenchPage> {
     _categories = list
         .map((item) => (item as Map).cast<String, dynamic>())
         .toList(growable: false);
+  }
+
+  Future<void> _loadMembers() async {
+    final params = <String, dynamic>{'page': _memberPage, 'page_size': 20};
+    final keyword = _memberSearchController.text.trim();
+    if (keyword.isNotEmpty) params['keyword'] = keyword;
+    if (_memberTypeFilter.isNotEmpty) params['member_type'] = _memberTypeFilter;
+    final resp = await AdminHttpClient().dio.get(
+      '/users',
+      queryParameters: params,
+    );
+    final data = resp.data as Map<String, dynamic>;
+    if ((data['code'] ?? -1) != 0) return;
+    final payload = (data['data'] as Map?)?.cast<String, dynamic>() ?? {};
+    _members = List<dynamic>.from(payload['list'] ?? const []);
+    _memberTotal = (payload['total'] as num?)?.toInt() ?? 0;
+  }
+
+  Future<void> _editMemberStatus(int userId, String currentStatus) async {
+    final newStatus = currentStatus == 'active' ? 'disabled' : 'active';
+    final label = newStatus == 'active' ? '启用' : '禁用';
+    final confirmed = await showCupertinoDialog<bool>(
+      context: context,
+      builder: (ctx) => CupertinoAlertDialog(
+        title: Text('$label用户'),
+        content: Text('确定将该用户状态切换为「$label」吗？'),
+        actions: [
+          CupertinoDialogAction(onPressed: () => Navigator.pop(ctx, false), child: const Text('取消')),
+          CupertinoDialogAction(
+            isDestructiveAction: newStatus == 'disabled',
+            onPressed: () => Navigator.pop(ctx, true),
+            child: Text(label),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true) return;
+    try {
+      final resp = await AdminHttpClient().dio.put(
+        '/users/$userId/status',
+        data: {'status': newStatus},
+      );
+      final data = resp.data as Map<String, dynamic>;
+      if ((data['code'] ?? -1) != 0) {
+        throw Exception((data['message'] ?? '操作失败').toString());
+      }
+      await _loadMembers();
+      if (!mounted) return;
+      setState(() {});
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('用户已$label')));
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('操作失败：$e')));
+    }
+  }
+
+  Future<void> _editMemberType(int userId, String currentType) async {
+    String selectedType = currentType.isEmpty ? 'free' : currentType;
+    final daysController = TextEditingController(text: '30');
+    final submitted = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setDialogState) => AlertDialog(
+          title: const Text('修改会员类型'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              DropdownButtonFormField<String>(
+                value: selectedType,
+                decoration: const InputDecoration(labelText: '会员类型'),
+                items: const [
+                  DropdownMenuItem(value: 'free', child: Text('免费用户')),
+                  DropdownMenuItem(value: 'pro', child: Text('Pro 会员')),
+                ],
+                onChanged: (v) => setDialogState(() => selectedType = v ?? 'free'),
+              ),
+              const SizedBox(height: 12),
+              if (selectedType == 'pro')
+                TextField(
+                  controller: daysController,
+                  keyboardType: TextInputType.number,
+                  decoration: const InputDecoration(
+                    labelText: '有效天数',
+                    hintText: '输入天数，如 30',
+                  ),
+                ),
+            ],
+          ),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('取消')),
+            TextButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('确定')),
+          ],
+        ),
+      ),
+    );
+    if (submitted != true) return;
+    try {
+      final body = <String, dynamic>{'member_type': selectedType};
+      if (selectedType == 'pro') {
+        body['expire_days'] = int.tryParse(daysController.text.trim()) ?? 30;
+      }
+      final resp = await AdminHttpClient().dio.put(
+        '/users/$userId/membership',
+        data: body,
+      );
+      final data = resp.data as Map<String, dynamic>;
+      if ((data['code'] ?? -1) != 0) {
+        throw Exception((data['message'] ?? '操作失败').toString());
+      }
+      await _loadMembers();
+      if (!mounted) return;
+      setState(() {});
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('会员类型已更新')));
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('操作失败：$e')));
+    }
+  }
+
+  Future<void> _unbindDevice(int userId) async {
+    final confirmed = await showCupertinoDialog<bool>(
+      context: context,
+      builder: (ctx) => CupertinoAlertDialog(
+        title: const Text('解绑设备'),
+        content: const Text('确定解绑该用户的设备吗？解绑后用户可以在其他设备登录。'),
+        actions: [
+          CupertinoDialogAction(onPressed: () => Navigator.pop(ctx, false), child: const Text('取消')),
+          CupertinoDialogAction(
+            isDestructiveAction: true,
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('解绑'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true) return;
+    try {
+      final resp = await AdminHttpClient().dio.delete('/users/$userId/device-unbind');
+      final data = resp.data as Map<String, dynamic>;
+      if ((data['code'] ?? -1) != 0) {
+        throw Exception((data['message'] ?? '操作失败').toString());
+      }
+      await _loadMembers();
+      if (!mounted) return;
+      setState(() {});
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('设备已解绑')));
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('解绑失败：$e')));
+    }
   }
 
   Future<void> _createAssetFolder() async {
@@ -453,6 +620,184 @@ class _AdminNativeWorkbenchPageState extends State<AdminNativeWorkbenchPage> {
       ScaffoldMessenger.of(
         context,
       ).showSnackBar(SnackBar(content: Text('创建分类失败：$e')));
+    }
+  }
+
+  Future<void> _editCategory(Map<String, dynamic> category) async {
+    final id = (category['id'] as num?)?.toInt() ?? 0;
+    if (id <= 0) return;
+    final nameController = TextEditingController(text: (category['name'] ?? '').toString());
+    final sortController = TextEditingController(text: (category['sort_order'] ?? 0).toString());
+    bool isVisible = category['is_visible'] != false;
+
+    final submitted = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setDialogState) => AlertDialog(
+          title: const Text('编辑分类'),
+          content: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                TextField(
+                  controller: nameController,
+                  autofocus: true,
+                  decoration: const InputDecoration(labelText: '分类名称'),
+                ),
+                const SizedBox(height: 10),
+                TextField(
+                  controller: sortController,
+                  keyboardType: TextInputType.number,
+                  decoration: const InputDecoration(labelText: '排序（默认0）'),
+                ),
+                const SizedBox(height: 10),
+                SwitchListTile(
+                  contentPadding: EdgeInsets.zero,
+                  title: const Text('是否可见'),
+                  value: isVisible,
+                  onChanged: (value) => setDialogState(() => isVisible = value),
+                ),
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('取消')),
+            TextButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('保存')),
+          ],
+        ),
+      ),
+    );
+    if (submitted != true) return;
+    final name = nameController.text.trim();
+    if (name.isEmpty) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('分类名称不能为空')));
+      return;
+    }
+    final sortOrder = int.tryParse(sortController.text.trim()) ?? 0;
+    try {
+      final resp = await AdminHttpClient().dio.put(
+        '/categories/$id',
+        data: {'name': name, 'sort_order': sortOrder, 'is_visible': isVisible},
+      );
+      final data = resp.data as Map<String, dynamic>;
+      if ((data['code'] ?? -1) != 0) {
+        throw Exception((data['message'] ?? '编辑失败').toString());
+      }
+      await _loadCurrent();
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('分类已更新')));
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('编辑失败：$e')));
+    }
+  }
+
+  Future<void> _deleteCategory(int id, String name) async {
+    final confirmed = await showCupertinoDialog<bool>(
+      context: context,
+      builder: (ctx) => CupertinoAlertDialog(
+        title: const Text('删除分类'),
+        content: Text('确定删除「$name」吗？\n该分类下的素材不会被删除。'),
+        actions: [
+          CupertinoDialogAction(onPressed: () => Navigator.pop(ctx, false), child: const Text('取消')),
+          CupertinoDialogAction(
+            isDestructiveAction: true,
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('删除'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true) return;
+    try {
+      final resp = await AdminHttpClient().dio.delete('/categories/$id');
+      final data = resp.data as Map<String, dynamic>;
+      if ((data['code'] ?? -1) != 0) {
+        throw Exception((data['message'] ?? '删除失败').toString());
+      }
+      await _loadCurrent();
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('分类「$name」已删除')));
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('删除失败：$e')));
+    }
+  }
+
+  Future<void> _editMaterial(Map<String, dynamic> item) async {
+    final id = (item['id'] as num?)?.toInt() ?? 0;
+    if (id <= 0) return;
+    await _loadCategories();
+    if (!mounted) return;
+
+    // 解析已有素材 URL 列表
+    final List<String> existingUrls = [];
+    final rawUrls = item['original_urls'];
+    if (rawUrls is List) {
+      for (final u in rawUrls) {
+        final url = u.toString().trim();
+        if (url.isNotEmpty) existingUrls.add(UrlUtils.absolute(url));
+      }
+    }
+    final thumbUrl = (item['thumbnail_url'] ?? '').toString().trim();
+    if (existingUrls.isEmpty && thumbUrl.isNotEmpty) {
+      existingUrls.add(UrlUtils.absolute(thumbUrl));
+    }
+
+    // 解析标签
+    final List<String> existingTags = [];
+    final rawTags = item['tags'];
+    if (rawTags is List) {
+      for (final t in rawTags) {
+        existingTags.add(t.toString());
+      }
+    }
+
+    // 预填充 Composer 状态并打开
+    setState(() {
+      _editingMaterialId = id;
+      _editingMaterialUrls = existingUrls;
+      _editingMaterialType = (item['type'] ?? '').toString();
+      _publishTitleController.text = (item['title'] ?? '').toString();
+      _publishCategoryId = (item['category_id'] as num?)?.toInt();
+      _publishGender = (item['gender'] ?? '').toString();
+      _publishTags = existingTags;
+      _publishShowInspiration = item['show_inspiration'] == true;
+      _publishShowMoments = item['show_moments'] == true;
+      _showMaterialComposer = true;
+    });
+  }
+
+  Future<void> _deleteMaterial(int id, String name) async {
+    final confirmed = await showCupertinoDialog<bool>(
+      context: context,
+      builder: (ctx) => CupertinoAlertDialog(
+        title: const Text('删除素材'),
+        content: Text('确定删除「$name」吗？\n删除后不可恢复。'),
+        actions: [
+          CupertinoDialogAction(onPressed: () => Navigator.pop(ctx, false), child: const Text('取消')),
+          CupertinoDialogAction(
+            isDestructiveAction: true,
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('删除'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true) return;
+    try {
+      final resp = await AdminHttpClient().dio.delete('/materials/$id');
+      final data = resp.data as Map<String, dynamic>;
+      if ((data['code'] ?? -1) != 0) {
+        throw Exception((data['message'] ?? '删除失败').toString());
+      }
+      await _loadCurrent();
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('素材「$name」已删除')));
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('删除失败：$e')));
     }
   }
 
@@ -1209,7 +1554,41 @@ class _AdminNativeWorkbenchPageState extends State<AdminNativeWorkbenchPage> {
                 title: '处理提问',
                 subtitle: '回复用户提问',
                 color: AppColors.videoBadge,
-                onTap: () => _switchTab(4),
+                onTap: () {
+                  showModalBottomSheet(
+                    context: context,
+                    isScrollControlled: true,
+                    backgroundColor: Colors.white,
+                    shape: const RoundedRectangleBorder(
+                      borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+                    ),
+                    builder: (ctx) => DraggableScrollableSheet(
+                      initialChildSize: 0.75,
+                      maxChildSize: 0.95,
+                      minChildSize: 0.4,
+                      expand: false,
+                      builder: (ctx, scrollController) => Column(
+                        children: [
+                          const SizedBox(height: 8),
+                          Container(
+                            width: 36, height: 4,
+                            decoration: BoxDecoration(
+                              color: AppColors.border,
+                              borderRadius: BorderRadius.circular(2),
+                            ),
+                          ),
+                          const SizedBox(height: 12),
+                          const Text(
+                            '用户提问',
+                            style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700, color: AppColors.textPrimary),
+                          ),
+                          const SizedBox(height: 8),
+                          Expanded(child: _buildQuestions()),
+                        ],
+                      ),
+                    ),
+                  );
+                },
               ),
             ),
           ],
@@ -4586,6 +4965,10 @@ class _AdminNativeWorkbenchPageState extends State<AdminNativeWorkbenchPage> {
 
   Future<void> _publishMaterial() async {
     if (_publishingMaterial) return;
+    // 编辑模式：只更新元数据
+    if (_editingMaterialId != null) {
+      return _updateExistingMaterial();
+    }
     final title = _publishTitleController.text.trim();
     if (title.isEmpty) {
       ScaffoldMessenger.of(
@@ -4652,6 +5035,8 @@ class _AdminNativeWorkbenchPageState extends State<AdminNativeWorkbenchPage> {
           'type': allVideo ? 'video' : 'image',
           'category_id': _publishCategoryId,
           'status': 'published',
+          'gender': _publishGender,
+          'tags': _publishTags,
           'show_inspiration': _publishShowInspiration,
           'show_moments': _publishShowMoments,
           'original_urls': originalUrls,
@@ -4700,6 +5085,8 @@ class _AdminNativeWorkbenchPageState extends State<AdminNativeWorkbenchPage> {
           'type': 'live_photo',
           'category_id': _publishCategoryId,
           'status': 'published',
+          'gender': _publishGender,
+          'tags': _publishTags,
           'show_inspiration': _publishShowInspiration,
           'show_moments': _publishShowMoments,
           'original_urls': [...imageUrls, ...videoUrls],
@@ -4725,10 +5112,13 @@ class _AdminNativeWorkbenchPageState extends State<AdminNativeWorkbenchPage> {
       if (!mounted) return;
       setState(() {
         _publishTitleController.clear();
+        _publishTagController.clear();
         _selectedPublishAssetIds = <int>{};
         _selectedPublishLivePackIds = <int>{};
         _publishShowInspiration = false;
         _publishShowMoments = false;
+        _publishGender = '';
+        _publishTags = const [];
         _showMaterialComposer = false;
       });
       await _loadCurrent();
@@ -4752,19 +5142,101 @@ class _AdminNativeWorkbenchPageState extends State<AdminNativeWorkbenchPage> {
     setState(() => _showMaterialComposer = true);
   }
 
+  Future<void> _updateExistingMaterial() async {
+    final title = _publishTitleController.text.trim();
+    if (title.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('请输入标题')));
+      return;
+    }
+    if (_publishCategoryId == null || _publishCategoryId! <= 0) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('请选择二级分类')));
+      return;
+    }
+
+    // 合并已有 URL + 新选择的素材 URL
+    final allUrls = <String>[..._editingMaterialUrls];
+    final selectedAssets = _selectedPublishAssets();
+    final selectedLivePacks = _selectedPublishLivePacks();
+    for (final asset in selectedAssets) {
+      final url = _assetSourceUrl(asset).trim();
+      if (url.isNotEmpty) allUrls.add(url);
+    }
+    for (final pack in selectedLivePacks) {
+      if (_livePackComplete(pack)) {
+        final imgUrl = (pack['image_url'] ?? '').toString().trim();
+        final movUrl = _livePackVideoSourceUrl(pack).trim();
+        if (imgUrl.isNotEmpty) allUrls.add(imgUrl);
+        if (movUrl.isNotEmpty) allUrls.add(movUrl);
+      }
+    }
+    if (allUrls.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('素材内容不能为空')));
+      return;
+    }
+
+    // 封面：优先用图片 URL
+    String thumbnailUrl = allUrls.first;
+    if (_isVideoUrl(thumbnailUrl)) {
+      final imgUrl = allUrls.firstWhere((u) => !_isVideoUrl(u), orElse: () => thumbnailUrl);
+      thumbnailUrl = imgUrl;
+    }
+
+    setState(() => _publishingMaterial = true);
+    try {
+      final resp = await AdminHttpClient().dio.put(
+        '/materials/$_editingMaterialId',
+        data: {
+          'title': title,
+          'category_id': _publishCategoryId,
+          'gender': _publishGender,
+          'tags': _publishTags,
+          'show_inspiration': _publishShowInspiration,
+          'show_moments': _publishShowMoments,
+          'original_urls': allUrls,
+          'thumbnail_url': thumbnailUrl,
+        },
+      );
+      final data = resp.data as Map<String, dynamic>;
+      if ((data['code'] ?? -1) != 0) {
+        throw Exception((data['message'] ?? '更新失败').toString());
+      }
+      if (!mounted) return;
+      _closeMaterialComposer();
+      await _loadCurrent();
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('素材已更新')));
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('更新失败：$e')));
+    } finally {
+      if (mounted) setState(() => _publishingMaterial = false);
+    }
+  }
+
   void _closeMaterialComposer() {
     setState(() {
       _showMaterialComposer = false;
       _publishTitleController.clear();
+      _publishTagController.clear();
       _selectedPublishAssetIds = <int>{};
       _selectedPublishLivePackIds = <int>{};
       _publishShowInspiration = false;
       _publishShowMoments = false;
+      _publishGender = '';
+      _publishTags = const [];
       _publishCategoryId = null;
+      _editingMaterialId = null;
+      _editingMaterialUrls = const [];
+      _editingMaterialType = '';
     });
   }
 
   Widget _buildPublishSelectedAssetsStrip() {
+    // 编辑模式：展示已有素材预览（只读）
+    if (_editingMaterialId != null) {
+      return _buildEditMaterialPreview();
+    }
+
     final selectedAssets = _selectedPublishAssets();
     final selectedLivePacks = _selectedPublishLivePacks();
     final selectedCount = selectedAssets.length + selectedLivePacks.length;
@@ -4850,6 +5322,136 @@ class _AdminNativeWorkbenchPageState extends State<AdminNativeWorkbenchPage> {
                 ),
                 SizedBox(width: cardWidth, child: _buildPublishAddCard()),
               ];
+              return Wrap(spacing: 8, runSpacing: 8, children: children);
+            },
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildEditMaterialPreview() {
+    final existingUrls = _editingMaterialUrls;
+    final selectedAssets = _selectedPublishAssets();
+    final selectedLivePacks = _selectedPublishLivePacks();
+    final totalCount = existingUrls.length + selectedAssets.length + selectedLivePacks.length;
+    final isVideo = _editingMaterialType == 'video';
+    final isLive = _editingMaterialType == 'live_photo';
+
+    return _buildPublishSectionCard(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              const Text(
+                '素材内容',
+                style: TextStyle(
+                  fontSize: 18,
+                  fontWeight: FontWeight.w700,
+                  color: AppColors.textPrimary,
+                ),
+              ),
+              const Spacer(),
+              if (totalCount > 0)
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                  decoration: BoxDecoration(
+                    color: AppColors.primary.withValues(alpha: 0.10),
+                    borderRadius: BorderRadius.circular(999),
+                  ),
+                  child: Text(
+                    '共 $totalCount 个文件',
+                    style: const TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w700,
+                      color: AppColors.primary,
+                    ),
+                  ),
+                ),
+            ],
+          ),
+          const SizedBox(height: 4),
+          Text(
+            totalCount > 0 ? '首张将作为封面，可继续添加或移除素材' : '素材已清空，请添加新素材',
+            style: const TextStyle(fontSize: 13, color: AppColors.textSecondary),
+          ),
+          const SizedBox(height: 14),
+          LayoutBuilder(
+            builder: (context, constraints) {
+              final cardWidth = (constraints.maxWidth - 16) / 3;
+              var coverIdx = 0;
+              final children = <Widget>[];
+
+              // 已有素材 URL（可删除）
+              for (int i = 0; i < existingUrls.length; i++) {
+                final url = existingUrls[i];
+                final showAsVideo = isVideo || (isLive && _isVideoUrl(url));
+                final isCover = coverIdx == 0;
+                coverIdx++;
+                children.add(
+                  SizedBox(
+                    width: cardWidth,
+                    child: _buildPublishSelectionCard(
+                      poster: _buildPublishPoster(
+                        imageUrl: url,
+                        fallbackVideoUrl: showAsVideo ? url : null,
+                        isVideo: showAsVideo,
+                      ),
+                      isCover: isCover,
+                      bottomLabel: isLive ? 'LIVE' : (showAsVideo ? '视频' : null),
+                      onRemove: () {
+                        setState(() {
+                          final updated = List<String>.from(_editingMaterialUrls);
+                          updated.removeAt(i);
+                          _editingMaterialUrls = updated;
+                        });
+                      },
+                      showPlayIcon: showAsVideo && !isLive,
+                    ),
+                  ),
+                );
+              }
+
+              // 新选择的普通素材
+              for (final entry in selectedAssets.asMap().entries) {
+                final isCover = coverIdx == 0;
+                coverIdx++;
+                children.add(
+                  SizedBox(
+                    width: cardWidth,
+                    child: _buildPublishSelectedAssetCard(
+                      entry.value,
+                      isCover: isCover,
+                      onRemove: () => setState(
+                        () => _selectedPublishAssetIds.remove(_assetId(entry.value)),
+                      ),
+                    ),
+                  ),
+                );
+              }
+
+              // 新选择的 Live 套件
+              for (final entry in selectedLivePacks.asMap().entries) {
+                final isCover = coverIdx == 0;
+                coverIdx++;
+                children.add(
+                  SizedBox(
+                    width: cardWidth,
+                    child: _buildPublishSelectedLiveCard(
+                      entry.value,
+                      isCover: isCover,
+                      onRemove: () => setState(
+                        () => _selectedPublishLivePackIds.remove(_livePackId(entry.value)),
+                      ),
+                    ),
+                  ),
+                );
+              }
+
+              // 添加按钮
+              children.add(SizedBox(width: cardWidth, child: _buildPublishAddCard()));
+
               return Wrap(spacing: 8, runSpacing: 8, children: children);
             },
           ),
@@ -5131,11 +5733,14 @@ class _AdminNativeWorkbenchPageState extends State<AdminNativeWorkbenchPage> {
     final topInset = MediaQuery.of(context).padding.top;
     final bottomInset = MediaQuery.of(context).padding.bottom;
     final secondLevel = _secondLevelCategories();
+    final isEditing = _editingMaterialId != null;
     final selectedCount =
         _selectedPublishAssetIds.length + _selectedPublishLivePackIds.length;
     final hasTitle = _publishTitleController.text.trim().isNotEmpty;
     final hasCategory = _publishCategoryId != null && _publishCategoryId! > 0;
-    final hasSelection = selectedCount > 0;
+    final hasSelection = isEditing
+        ? (_editingMaterialUrls.isNotEmpty || selectedCount > 0)
+        : selectedCount > 0;
     final canPublish =
         hasTitle && hasCategory && hasSelection && !_publishingMaterial;
 
@@ -5158,19 +5763,19 @@ class _AdminNativeWorkbenchPageState extends State<AdminNativeWorkbenchPage> {
               Expanded(
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
-                  children: const [
+                  children: [
                     Text(
-                      '新增素材',
-                      style: TextStyle(
+                      isEditing ? '编辑素材' : '新增素材',
+                      style: const TextStyle(
                         fontSize: 18,
                         fontWeight: FontWeight.w800,
                         color: AppColors.textPrimary,
                       ),
                     ),
-                    SizedBox(height: 2),
+                    const SizedBox(height: 2),
                     Text(
-                      '像相册一样选择与发布',
-                      style: TextStyle(
+                      isEditing ? '修改素材信息' : '像相册一样选择与发布',
+                      style: const TextStyle(
                         fontSize: 12,
                         color: AppColors.textSecondary,
                       ),
@@ -5269,16 +5874,20 @@ class _AdminNativeWorkbenchPageState extends State<AdminNativeWorkbenchPage> {
                 ),
               ),
               _buildPublishSettingsCard(secondLevel),
+              const SizedBox(height: 18),
+              _buildPublishTagsCard(),
               const SizedBox(height: 12),
               Padding(
                 padding: const EdgeInsets.only(left: 4),
                 child: Text(
-                  !hasSelection
-                      ? '请先从相簿添加素材'
-                      : !hasTitle
+                  !hasTitle
                       ? '请填写素材标题'
                       : !hasCategory
                       ? '请选择投放分类'
+                      : !hasSelection
+                      ? '请先从相簿添加素材'
+                      : isEditing
+                      ? '准备就绪，点击右上角“完成”保存'
                       : '准备就绪，点击右上角“完成”发布',
                   style: const TextStyle(
                     fontSize: 12,
@@ -5362,6 +5971,36 @@ class _AdminNativeWorkbenchPageState extends State<AdminNativeWorkbenchPage> {
           ),
           Divider(height: 1, color: AppColors.border.withValues(alpha: 0.6)),
           _publishSettingRow(
+            icon: Icons.wc_rounded,
+            label: '性别',
+            subtitle: '设置素材适用性别',
+            trailing: ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 120),
+              child: DropdownButtonHideUnderline(
+                child: DropdownButton<String>(
+                  isExpanded: true,
+                  value: _publishGender,
+                  icon: const Icon(
+                    Icons.chevron_right_rounded,
+                    color: AppColors.textHint,
+                    size: 20,
+                  ),
+                  style: const TextStyle(
+                    fontSize: 14,
+                    color: AppColors.textPrimary,
+                  ),
+                  items: const [
+                    DropdownMenuItem(value: '', child: Text('不限')),
+                    DropdownMenuItem(value: 'male', child: Text('男')),
+                    DropdownMenuItem(value: 'female', child: Text('女')),
+                  ],
+                  onChanged: (v) => setState(() => _publishGender = v ?? ''),
+                ),
+              ),
+            ),
+          ),
+          Divider(height: 1, color: AppColors.border.withValues(alpha: 0.6)),
+          _publishSettingRow(
             icon: Icons.lightbulb_outline_rounded,
             label: '同步到找灵感',
             subtitle: '开启后会出现在找灵感频道',
@@ -5439,6 +6078,130 @@ class _AdminNativeWorkbenchPageState extends State<AdminNativeWorkbenchPage> {
           ),
           const SizedBox(width: 12),
           trailing,
+        ],
+      ),
+    );
+  }
+
+  Widget _buildPublishTagsCard() {
+    return _buildPublishSectionCard(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text(
+            '标签',
+            style: TextStyle(
+              fontSize: 15,
+              fontWeight: FontWeight.w700,
+              color: AppColors.textPrimary,
+            ),
+          ),
+          const SizedBox(height: 4),
+          const Text(
+            '添加标签可帮助用户搜索关联素材',
+            style: TextStyle(fontSize: 12, color: AppColors.textSecondary),
+          ),
+          const SizedBox(height: 10),
+          if (_publishTags.isNotEmpty)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 8),
+              child: Wrap(
+                spacing: 6,
+                runSpacing: 6,
+                children: _publishTags.asMap().entries.map((entry) {
+                  return Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                    decoration: BoxDecoration(
+                      color: AppColors.primary.withValues(alpha: 0.08),
+                      borderRadius: BorderRadius.circular(14),
+                      border: Border.all(color: AppColors.primary.withValues(alpha: 0.2)),
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Text(
+                          entry.value,
+                          style: const TextStyle(
+                            fontSize: 13,
+                            fontWeight: FontWeight.w600,
+                            color: AppColors.primary,
+                          ),
+                        ),
+                        const SizedBox(width: 4),
+                        GestureDetector(
+                          onTap: () {
+                            setState(() {
+                              final list = List<String>.from(_publishTags);
+                              list.removeAt(entry.key);
+                              _publishTags = list;
+                            });
+                          },
+                          child: Icon(
+                            Icons.close_rounded,
+                            size: 14,
+                            color: AppColors.primary.withValues(alpha: 0.6),
+                          ),
+                        ),
+                      ],
+                    ),
+                  );
+                }).toList(),
+              ),
+            ),
+          Row(
+            children: [
+              Expanded(
+                child: TextField(
+                  controller: _publishTagController,
+                  style: const TextStyle(fontSize: 14),
+                  decoration: InputDecoration(
+                    hintText: '输入标签后按回车添加',
+                    hintStyle: const TextStyle(fontSize: 14, color: AppColors.textHint),
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(10),
+                      borderSide: BorderSide(color: AppColors.border),
+                    ),
+                    contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                    isDense: true,
+                  ),
+                  onSubmitted: (value) {
+                    final tag = value.trim();
+                    if (tag.isEmpty || _publishTags.contains(tag)) return;
+                    setState(() {
+                      _publishTags = [..._publishTags, tag];
+                      _publishTagController.clear();
+                    });
+                  },
+                ),
+              ),
+              const SizedBox(width: 8),
+              GestureDetector(
+                onTap: () {
+                  final tag = _publishTagController.text.trim();
+                  if (tag.isEmpty || _publishTags.contains(tag)) return;
+                  setState(() {
+                    _publishTags = [..._publishTags, tag];
+                    _publishTagController.clear();
+                  });
+                },
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                  decoration: BoxDecoration(
+                    color: AppColors.primary,
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  child: const Text(
+                    '添加',
+                    style: TextStyle(
+                      fontSize: 14,
+                      fontWeight: FontWeight.w600,
+                      color: Colors.white,
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ),
         ],
       ),
     );
@@ -5559,6 +6322,35 @@ class _AdminNativeWorkbenchPageState extends State<AdminNativeWorkbenchPage> {
                                 ),
                               const SizedBox(width: 4),
                               GestureDetector(
+                                onTap: () => _editCategory(parent),
+                                child: Container(
+                                  width: 28,
+                                  height: 28,
+                                  decoration: BoxDecoration(
+                                    color: AppColors.videoBadge.withValues(alpha: 0.08),
+                                    borderRadius: BorderRadius.circular(8),
+                                  ),
+                                  child: const Icon(Icons.edit_rounded, size: 14, color: AppColors.videoBadge),
+                                ),
+                              ),
+                              const SizedBox(width: 4),
+                              GestureDetector(
+                                onTap: () => _deleteCategory(
+                                  (parent['id'] as num?)?.toInt() ?? 0,
+                                  parentName,
+                                ),
+                                child: Container(
+                                  width: 28,
+                                  height: 28,
+                                  decoration: BoxDecoration(
+                                    color: AppColors.error.withValues(alpha: 0.08),
+                                    borderRadius: BorderRadius.circular(8),
+                                  ),
+                                  child: const Icon(Icons.delete_outline_rounded, size: 14, color: AppColors.error),
+                                ),
+                              ),
+                              const SizedBox(width: 4),
+                              GestureDetector(
                                 onTap:
                                     () => _createCategory(
                                       parentIdPreset:
@@ -5663,6 +6455,19 @@ class _AdminNativeWorkbenchPageState extends State<AdminNativeWorkbenchPage> {
                                         color: AppColors.textHint,
                                       ),
                                     ),
+                                    const SizedBox(width: 6),
+                                    GestureDetector(
+                                      onTap: () => _editCategory(node),
+                                      child: const Icon(Icons.edit_rounded, size: 14, color: AppColors.textSecondary),
+                                    ),
+                                    const SizedBox(width: 6),
+                                    GestureDetector(
+                                      onTap: () => _deleteCategory(
+                                        (node['id'] as num?)?.toInt() ?? 0,
+                                        name,
+                                      ),
+                                      child: const Icon(Icons.delete_outline_rounded, size: 14, color: AppColors.error),
+                                    ),
                                   ],
                                 ),
                               );
@@ -5716,53 +6521,103 @@ class _AdminNativeWorkbenchPageState extends State<AdminNativeWorkbenchPage> {
               isMaterial ? _materialThumbUrl(item) : _assetThumbUrl(item);
           final isVideo = _isVideoType(type) || _isVideoUrl(thumbUrl);
           final status = (item['status'] ?? '').toString();
+          final materialId = (item['id'] as num?)?.toInt() ?? 0;
           return Padding(
             padding: const EdgeInsets.only(bottom: 10),
             child: _sectionBlock(
-              child: Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
+              child: Column(
                 children: [
-                  _thumbView(thumbUrl: thumbUrl, isVideo: isVideo),
-                  const SizedBox(width: 10),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          title,
-                          maxLines: 2,
-                          overflow: TextOverflow.ellipsis,
-                          style: const TextStyle(
-                            fontSize: 14,
-                            fontWeight: FontWeight.w700,
-                            color: AppColors.textPrimary,
-                          ),
-                        ),
-                        const SizedBox(height: 6),
-                        Wrap(
-                          spacing: 6,
-                          runSpacing: 6,
+                  Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      _thumbView(thumbUrl: thumbUrl, isVideo: isVideo),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            _miniTag('ID ${item['id'] ?? '-'}'),
-                            _miniTag(_typeLabel(type)),
-                            if (status.isNotEmpty) _miniTag(_statusLabel(status)),
+                            Text(
+                              title,
+                              maxLines: 2,
+                              overflow: TextOverflow.ellipsis,
+                              style: const TextStyle(
+                                fontSize: 14,
+                                fontWeight: FontWeight.w700,
+                                color: AppColors.textPrimary,
+                              ),
+                            ),
+                            const SizedBox(height: 6),
+                            Wrap(
+                              spacing: 6,
+                              runSpacing: 6,
+                              children: [
+                                _miniTag('ID ${item['id'] ?? '-'}'),
+                                _miniTag(_typeLabel(type)),
+                                if (status.isNotEmpty) _miniTag(_statusLabel(status)),
+                              ],
+                            ),
+                            const SizedBox(height: 6),
+                            Text(
+                              isMaterial
+                                  ? '分类: ${(item['category_name'] ?? item['category']?['name'] ?? '-').toString()}'
+                                  : '文件夹: ${(item['folder'] ?? '未分类').toString()}',
+                              style: const TextStyle(
+                                fontSize: 12,
+                                color: AppColors.textSecondary,
+                              ),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                            ),
                           ],
                         ),
-                        const SizedBox(height: 6),
-                        Text(
-                          isMaterial
-                              ? '分类: ${(item['category_name'] ?? item['category']?['name'] ?? '-').toString()}'
-                              : '文件夹: ${(item['folder'] ?? '未分类').toString()}',
-                          style: const TextStyle(
-                            fontSize: 12,
-                            color: AppColors.textSecondary,
+                      ),
+                    ],
+                  ),
+                  if (isMaterial && materialId > 0) ...[
+                    const SizedBox(height: 8),
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.end,
+                      children: [
+                        GestureDetector(
+                          onTap: () => _editMaterial(item),
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                            decoration: BoxDecoration(
+                              color: AppColors.primary.withValues(alpha: 0.08),
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                            child: const Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Icon(Icons.edit_rounded, size: 14, color: AppColors.primary),
+                                SizedBox(width: 4),
+                                Text('编辑', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: AppColors.primary)),
+                              ],
+                            ),
                           ),
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
+                        ),
+                        const SizedBox(width: 8),
+                        GestureDetector(
+                          onTap: () => _deleteMaterial(materialId, title),
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                            decoration: BoxDecoration(
+                              color: AppColors.error.withValues(alpha: 0.08),
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                            child: const Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Icon(Icons.delete_outline_rounded, size: 14, color: AppColors.error),
+                                SizedBox(width: 4),
+                                Text('删除', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: AppColors.error)),
+                              ],
+                            ),
+                          ),
                         ),
                       ],
                     ),
-                  ),
+                  ],
                 ],
               ),
             ),
@@ -6001,6 +6856,303 @@ class _AdminNativeWorkbenchPageState extends State<AdminNativeWorkbenchPage> {
         lower.endsWith('.webm');
   }
 
+  Widget _buildMemberManager() {
+    return Column(
+      children: [
+        // 搜索栏 + 筛选
+        Padding(
+          padding: const EdgeInsets.fromLTRB(12, 10, 12, 0),
+          child: Column(
+            children: [
+              TextField(
+                controller: _memberSearchController,
+                style: const TextStyle(fontSize: 14),
+                decoration: InputDecoration(
+                  hintText: '搜索用户手机号/昵称',
+                  hintStyle: const TextStyle(fontSize: 14, color: AppColors.textHint),
+                  prefixIcon: const Icon(Icons.search_rounded, size: 20),
+                  suffixIcon: IconButton(
+                    icon: const Icon(Icons.search_rounded, color: AppColors.primary),
+                    onPressed: () {
+                      setState(() => _memberPage = 1);
+                      _loadMembers().then((_) { if (mounted) setState(() {}); });
+                    },
+                  ),
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(12),
+                    borderSide: BorderSide(color: AppColors.border),
+                  ),
+                  contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                  isDense: true,
+                ),
+                onSubmitted: (_) {
+                  setState(() => _memberPage = 1);
+                  _loadMembers().then((_) { if (mounted) setState(() {}); });
+                },
+              ),
+              const SizedBox(height: 8),
+              Row(
+                children: [
+                  _memberFilterChip('', '全部'),
+                  const SizedBox(width: 6),
+                  _memberFilterChip('free', '免费'),
+                  const SizedBox(width: 6),
+                  _memberFilterChip('pro', 'Pro'),
+                  const Spacer(),
+                  Text(
+                    '共 $_memberTotal 人',
+                    style: const TextStyle(fontSize: 12, color: AppColors.textHint),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 6),
+        // 列表
+        Expanded(
+          child: _members.isEmpty
+              ? Center(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Container(
+                        width: 56,
+                        height: 56,
+                        decoration: BoxDecoration(
+                          color: AppColors.memberPro.withValues(alpha: 0.08),
+                          borderRadius: BorderRadius.circular(18),
+                        ),
+                        child: const Icon(
+                          Icons.person_search_rounded,
+                          color: AppColors.memberPro,
+                          size: 28,
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+                      const Text(
+                        '暂无用户数据',
+                        style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: AppColors.textSecondary),
+                      ),
+                    ],
+                  ),
+                )
+              : ListView.builder(
+                  padding: const EdgeInsets.fromLTRB(12, 0, 12, 22),
+                  itemCount: _members.length,
+                  itemBuilder: (context, index) {
+                    final item = (_members[index] as Map).cast<String, dynamic>();
+                    return Padding(
+                      padding: const EdgeInsets.only(bottom: 10),
+                      child: _buildMemberCard(item),
+                    );
+                  },
+                ),
+        ),
+      ],
+    );
+  }
+
+  Widget _memberFilterChip(String value, String label) {
+    final selected = _memberTypeFilter == value;
+    return GestureDetector(
+      onTap: () {
+        setState(() {
+          _memberTypeFilter = value;
+          _memberPage = 1;
+        });
+        _loadMembers().then((_) { if (mounted) setState(() {}); });
+      },
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+        decoration: BoxDecoration(
+          color: selected ? AppColors.primary : AppColors.surface,
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(
+            color: selected ? AppColors.primary : AppColors.border,
+          ),
+        ),
+        child: Text(
+          label,
+          style: TextStyle(
+            fontSize: 12,
+            fontWeight: FontWeight.w600,
+            color: selected ? Colors.white : AppColors.textSecondary,
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildMemberCard(Map<String, dynamic> item) {
+    final id = (item['id'] as num?)?.toInt() ?? 0;
+    final nickname = (item['nickname'] ?? '未命名').toString();
+    final phone = (item['phone'] ?? '-').toString();
+    final avatarUrl = (item['avatar_url'] ?? '').toString();
+    final status = (item['status'] ?? 'active').toString();
+    final memberType = (item['member_type'] ?? 'free').toString();
+    final expireAt = (item['member_expire_at'] ?? '').toString();
+    final deviceBound = item['device_bound'] == true;
+    final isDisabled = status == 'disabled';
+    final isPro = memberType == 'pro';
+
+    return _sectionBlock(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              // 头像
+              ClipRRect(
+                borderRadius: BorderRadius.circular(20),
+                child: avatarUrl.isNotEmpty
+                    ? Image.network(UrlUtils.absolute(avatarUrl), width: 40, height: 40, fit: BoxFit.cover,
+                        errorBuilder: (_, __, ___) => Container(
+                          width: 40, height: 40,
+                          color: AppColors.primary.withValues(alpha: 0.1),
+                          child: const Icon(Icons.person_rounded, color: AppColors.primary, size: 22),
+                        ),
+                      )
+                    : Container(
+                        width: 40, height: 40,
+                        color: AppColors.primary.withValues(alpha: 0.1),
+                        child: const Icon(Icons.person_rounded, color: AppColors.primary, size: 22),
+                      ),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        Flexible(
+                          child: Text(
+                            nickname,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w700, color: AppColors.textPrimary),
+                          ),
+                        ),
+                        const SizedBox(width: 6),
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
+                          decoration: BoxDecoration(
+                            color: isPro ? AppColors.memberPro.withValues(alpha: 0.12) : AppColors.surface,
+                            borderRadius: BorderRadius.circular(6),
+                          ),
+                          child: Text(
+                            isPro ? 'Pro' : 'Free',
+                            style: TextStyle(
+                              fontSize: 10,
+                              fontWeight: FontWeight.w700,
+                              color: isPro ? AppColors.memberPro : AppColors.textHint,
+                            ),
+                          ),
+                        ),
+                        if (isDisabled) ...[
+                          const SizedBox(width: 4),
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
+                            decoration: BoxDecoration(
+                              color: AppColors.warning.withValues(alpha: 0.12),
+                              borderRadius: BorderRadius.circular(6),
+                            ),
+                            child: const Text(
+                              '已禁用',
+                              style: TextStyle(fontSize: 10, fontWeight: FontWeight.w700, color: AppColors.warning),
+                            ),
+                          ),
+                        ],
+                      ],
+                    ),
+                    const SizedBox(height: 2),
+                    Text(phone, style: const TextStyle(fontSize: 12, color: AppColors.textHint)),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          // 信息行
+          Wrap(
+            spacing: 8,
+            runSpacing: 4,
+            children: [
+              if (isPro && expireAt.isNotEmpty)
+                Text('到期: ${expireAt.substring(0, expireAt.length >= 10 ? 10 : expireAt.length)}',
+                    style: const TextStyle(fontSize: 11, color: AppColors.textHint)),
+              Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(deviceBound ? Icons.phone_android_rounded : Icons.devices_rounded,
+                      size: 13, color: deviceBound ? AppColors.liveBadge : AppColors.textHint),
+                  const SizedBox(width: 2),
+                  Text(deviceBound ? '已绑定' : '未绑定',
+                      style: TextStyle(fontSize: 11, color: deviceBound ? AppColors.liveBadge : AppColors.textHint)),
+                ],
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          // 操作按钮
+          Row(
+            children: [
+              _memberActionBtn(
+                icon: Icons.card_membership_rounded,
+                label: '会员',
+                color: AppColors.memberPro,
+                onTap: () => _editMemberType(id, memberType),
+              ),
+              const SizedBox(width: 8),
+              _memberActionBtn(
+                icon: isDisabled ? Icons.check_circle_outline_rounded : Icons.block_rounded,
+                label: isDisabled ? '启用' : '禁用',
+                color: isDisabled ? AppColors.liveBadge : AppColors.warning,
+                onTap: () => _editMemberStatus(id, status),
+              ),
+              if (deviceBound) ...[
+                const SizedBox(width: 8),
+                _memberActionBtn(
+                  icon: Icons.link_off_rounded,
+                  label: '解绑',
+                  color: AppColors.textSecondary,
+                  onTap: () => _unbindDevice(id),
+                ),
+              ],
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _memberActionBtn({
+    required IconData icon,
+    required String label,
+    required Color color,
+    required VoidCallback onTap,
+  }) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+        decoration: BoxDecoration(
+          color: color.withValues(alpha: 0.08),
+          borderRadius: BorderRadius.circular(8),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(icon, size: 14, color: color),
+            const SizedBox(width: 4),
+            Text(label, style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: color)),
+          ],
+        ),
+      ),
+    );
+  }
+
   Widget _buildQuestions() {
     if (_questions.isEmpty) {
       return Center(
@@ -6179,7 +7331,7 @@ class _AdminNativeWorkbenchPageState extends State<AdminNativeWorkbenchPage> {
       _buildDashboard(),
       _buildUpload(),
       _buildMaterialsVisual(),
-      _buildQuestions(),
+      _buildMemberManager(),
       _buildCategoryManager(),
     ];
 

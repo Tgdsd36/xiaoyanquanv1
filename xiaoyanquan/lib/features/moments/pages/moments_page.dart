@@ -1243,26 +1243,27 @@ class _MomentCardState extends ConsumerState<_MomentCard> {
         (screenWidth - outerPadding - spacing * (columns - 1)) / columns;
     final displayCount = imageOnlyUrls.length > 9 ? 9 : imageOnlyUrls.length;
 
-    return Stack(
-      children: [
-        Wrap(
-          spacing: spacing,
-          runSpacing: spacing,
-          children: List.generate(displayCount, (i) {
-            return GestureDetector(
-              onTap: () => context.push(
-                '/material/${moment.id}/preview',
-                extra: MaterialPreviewArgs(
-                  imageUrls: imageOnlyUrls,
-                  initialIndex: i,
-                ),
-              ),
-              child: ClipRRect(
-                borderRadius: BorderRadius.circular(4),
-                child: SizedBox(
-                  width: cellSize,
-                  height: cellSize,
-                  child: CachedNetworkImage(
+    return Wrap(
+      spacing: spacing,
+      runSpacing: spacing,
+      children: List.generate(displayCount, (i) {
+        return GestureDetector(
+          onTap: () => context.push(
+            '/material/${moment.id}/preview',
+            extra: MaterialPreviewArgs(
+              imageUrls: imageOnlyUrls,
+              initialIndex: i,
+            ),
+          ),
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(4),
+            child: SizedBox(
+              width: cellSize,
+              height: cellSize,
+              child: Stack(
+                fit: StackFit.expand,
+                children: [
+                  CachedNetworkImage(
                     imageUrl: imageOnlyUrls[i],
                     fit: BoxFit.cover,
                     placeholder: (_, __) => Container(color: AppColors.shimmer),
@@ -1276,33 +1277,33 @@ class _MomentCardState extends ConsumerState<_MomentCard> {
                           ),
                         ),
                   ),
-                ),
-              ),
-            );
-          }),
-        ),
-        if (isLive)
-          Positioned(
-            top: 2,
-            left: 2,
-            child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-              decoration: BoxDecoration(
-                color: Colors.black.withValues(alpha: 0.55),
-                borderRadius: BorderRadius.circular(4),
-              ),
-              child: const Text(
-                'LIVE',
-                style: TextStyle(
-                  color: Colors.white,
-                  fontSize: 10,
-                  fontWeight: FontWeight.w600,
-                  letterSpacing: 0.5,
-                ),
+                  if (isLive)
+                    Positioned(
+                      top: 2,
+                      left: 2,
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
+                        decoration: BoxDecoration(
+                          color: Colors.black.withValues(alpha: 0.55),
+                          borderRadius: BorderRadius.circular(3),
+                        ),
+                        child: const Text(
+                          'LIVE',
+                          style: TextStyle(
+                            color: Colors.white,
+                            fontSize: 8,
+                            fontWeight: FontWeight.w600,
+                            letterSpacing: 0.5,
+                          ),
+                        ),
+                      ),
+                    ),
+                ],
               ),
             ),
           ),
-      ],
+        );
+      }),
     );
   }
 }
