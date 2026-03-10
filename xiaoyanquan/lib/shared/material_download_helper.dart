@@ -93,7 +93,7 @@ class MaterialDownloadHelper {
         successMessage = '下载成功，已保存到本机下载目录';
       }
 
-      if (kind == _DownloadKind.livePhoto && Platform.isIOS) {
+      if (kind == _DownloadKind.livePhoto && (Platform.isIOS || Platform.isAndroid)) {
         // 收集所有图片和视频 URL，按顺序配对，逐组下载
         final imageUrls = UrlUtils.allImageUrls(mergedUrls);
         final videoUrls = UrlUtils.allVideoUrls(mergedUrls);
@@ -118,43 +118,84 @@ class MaterialDownloadHelper {
             ? imageUrls.length
             : videoUrls.length;
 
-        final channelGranted = await LivePhotoChannel.requestPermission();
-        if (!channelGranted) {
-          if (!context.mounted) return false;
-          _showSnack(context, '未获得相册写入权限，无法保存 Live');
-          return false;
-        }
+        if (Platform.isIOS) {
+          // iOS: 用原生 API 保存为 Live Photo 配对
+          final channelGranted = await LivePhotoChannel.requestPermission();
+          if (!channelGranted) {
+            if (!context.mounted) return false;
+            _showSnack(context, '未获得相册写入权限，无法保存 Live');
+            return false;
+          }
 
-        var successCount = 0;
-        for (var i = 0; i < totalPairs; i++) {
-          if (progress.isCanceled) {
-            canceledByUser = true;
-            break;
+          var successCount = 0;
+          for (var i = 0; i < totalPairs; i++) {
+            if (progress.isCanceled) {
+              canceledByUser = true;
+              break;
+            }
+            if (totalPairs > 1) {
+              progress.update('正在下载实况 ${i + 1}/$totalPairs...');
+            } else {
+              progress.update('正在下载实况...');
+            }
+            final ok = await LivePhotoChannel.saveLivePhoto(
+              imageUrl: imageUrls[i],
+              videoUrl: videoUrls[i],
+            );
+            if (progress.isCanceled) {
+              canceledByUser = true;
+              break;
+            }
+            if (ok) successCount++;
           }
-          if (totalPairs > 1) {
-            progress.update('正在下载实况 ${i + 1}/$totalPairs...');
-          } else {
-            progress.update('正在下载实况...');
-          }
-          final ok = await LivePhotoChannel.saveLivePhoto(
-            imageUrl: imageUrls[i],
-            videoUrl: videoUrls[i],
-          );
-          if (progress.isCanceled) {
-            canceledByUser = true;
-            break;
-          }
-          if (ok) successCount++;
-        }
 
-        if (canceledByUser) return false;
-        saved = successCount > 0;
-        if (totalPairs > 1 && successCount < totalPairs && context.mounted) {
-          _showSnack(context, '已保存 $successCount/$totalPairs 张 Live，部分下载失败');
-        } else if (saved) {
-          successMessage = totalPairs > 1
-              ? '已保存 $totalPairs 张 Live Photo 到 iPhone 相册'
-              : 'Live Photo 已保存到 iPhone 相册';
+          if (canceledByUser) return false;
+          saved = successCount > 0;
+          if (totalPairs > 1 && successCount < totalPairs && context.mounted) {
+            _showSnack(context, '已保存 $successCount/$totalPairs 张 Live，部分下载失败');
+          } else if (saved) {
+            successMessage = totalPairs > 1
+                ? '已保存 $totalPairs 张 Live Photo 到相册'
+                : 'Live Photo 已保存到相册';
+          }
+        } else {
+          // Android: 同时保存静态图 + 视频到相册
+          var successCount = 0;
+          final allFiles = <String>[];
+          for (var i = 0; i < totalPairs; i++) {
+            allFiles.add(imageUrls[i]);
+            allFiles.add(videoUrls[i]);
+          }
+          final totalFiles = allFiles.length;
+          for (var i = 0; i < totalFiles; i++) {
+            if (progress.isCanceled) {
+              canceledByUser = true;
+              break;
+            }
+            final prefix = '正在下载实况素材 ${i + 1}/$totalFiles';
+            progress.update('$prefix...');
+            final ok = await _saveRemoteFileToAlbum(
+              allFiles[i],
+              cancelToken: progress.cancelToken,
+              onReceiveProgress:
+                  (received, total) => progress.update(
+                    _buildProgressText(prefix, received, total),
+                  ),
+            );
+            if (progress.isCanceled) {
+              canceledByUser = true;
+              break;
+            }
+            if (ok) successCount++;
+          }
+
+          if (canceledByUser) return false;
+          saved = successCount > 0;
+          if (successCount < totalFiles && successCount > 0 && context.mounted) {
+            _showSnack(context, '已保存 $successCount/$totalFiles 个文件，部分下载失败');
+          } else if (saved) {
+            successMessage = '实况素材已保存到相册（图片+视频）';
+          }
         }
       } else if (kind == _DownloadKind.video) {
         final videoUrls = UrlUtils.allVideoUrls(mergedUrls);
