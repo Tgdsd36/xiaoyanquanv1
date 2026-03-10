@@ -16,6 +16,23 @@ subprojects {
     project.evaluationDependsOn(":app")
 }
 
+// Fix namespace for old plugins that only declare package in AndroidManifest.xml (AGP 8+ requirement)
+subprojects {
+    project.plugins.withId("com.android.library") {
+        val android = project.extensions.getByType(com.android.build.gradle.LibraryExtension::class.java)
+        if (android.namespace == null) {
+            val manifestFile = project.file("src/main/AndroidManifest.xml")
+            if (manifestFile.exists()) {
+                val content = manifestFile.readText()
+                val match = Regex("""package\s*=\s*"([^"]+)"""").find(content)
+                if (match != null) {
+                    android.namespace = match.groupValues[1]
+                }
+            }
+        }
+    }
+}
+
 tasks.register<Delete>("clean") {
     delete(rootProject.layout.buildDirectory)
 }
