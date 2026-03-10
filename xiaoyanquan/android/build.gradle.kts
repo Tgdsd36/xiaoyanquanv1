@@ -16,6 +16,19 @@ subprojects {
     project.evaluationDependsOn(":app")
 }
 
+// Force consistent JVM target for all subprojects (fixes old plugins like image_gallery_saver)
+subprojects {
+    tasks.withType<org.jetbrains.kotlin.gradle.tasks.KotlinCompile>().configureEach {
+        kotlinOptions {
+            jvmTarget = "11"
+        }
+    }
+    tasks.withType<JavaCompile>().configureEach {
+        sourceCompatibility = "11"
+        targetCompatibility = "11"
+    }
+}
+
 // Fix namespace for old plugins that only declare package in AndroidManifest.xml (AGP 8+ requirement)
 subprojects {
     project.plugins.withId("com.android.library") {
