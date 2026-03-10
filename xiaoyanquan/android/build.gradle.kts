@@ -17,16 +17,14 @@ subprojects {
 }
 
 // Force consistent JVM target for all subprojects (fixes old plugins like image_gallery_saver)
+// Uses plugins.withId instead of afterEvaluate because evaluationDependsOn makes subprojects
+// already evaluated when this block runs — afterEvaluate would throw.
 subprojects {
-    afterEvaluate {
-        // Override compileOptions at extension level — task-level JavaCompile overrides don't work
-        // because AGP reads from android.compileOptions and re-applies during its own afterEvaluate
-        if (plugins.hasPlugin("com.android.library")) {
-            extensions.configure<com.android.build.gradle.LibraryExtension> {
-                compileOptions {
-                    sourceCompatibility = JavaVersion.VERSION_11
-                    targetCompatibility = JavaVersion.VERSION_11
-                }
+    plugins.withId("com.android.library") {
+        extensions.configure<com.android.build.gradle.LibraryExtension> {
+            compileOptions {
+                sourceCompatibility = JavaVersion.VERSION_11
+                targetCompatibility = JavaVersion.VERSION_11
             }
         }
     }
