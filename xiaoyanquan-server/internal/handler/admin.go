@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"os"
 	"os/exec"
 	"path"
@@ -259,6 +260,12 @@ func (h *AdminHandler) MaterialCreate(c *gin.Context) {
 		}
 		if req.ThumbnailURL == "" {
 			req.ThumbnailURL = req.OriginalURLs[0]
+		}
+		// 视频 URL 作为缩略图时，自动查找对应 asset 的图片预览图替换
+		if isVideoURL(req.ThumbnailURL) {
+			if imgThumb := h.resolveAssetPreview(req.ThumbnailURL); imgThumb != "" {
+				req.ThumbnailURL = imgThumb
+			}
 		}
 	case "live_photo":
 		if len(req.OriginalURLs) == 0 {
@@ -1043,6 +1050,13 @@ func (h *AdminHandler) AssetUpload(c *gin.Context) {
 				go h.uploadLocalFileToCOS(pvPath, pvURL)
 			}
 		}
+		// 视频缩略图：提取首帧作为 JPG（在转码前执行，因为转码会删除 tmpPath）
+		if fileType == "video" || fileType == "live_video" {
+			if thumbKey, thumbPath, err := generateVideoThumbnailLocal(tmpPath, key); err == nil {
+				previewURL = thumbKey
+				go h.uploadLocalFileToCOS(thumbPath, thumbKey)
+			}
+		}
 		// 视频转码：仅对普通 video 转码，live_video 跳过（Live Photo 短视频无需转码）
 		if fileType == "video" {
 			go func(srcPath, srcKey string) {
@@ -1066,6 +1080,12 @@ func (h *AdminHandler) AssetUpload(c *gin.Context) {
 		assetURL = fmt.Sprintf("/static/uploads/%s/%s", dateDir, newFilename)
 		if isHEICExt(ext) {
 			if generated, err := ensureHEICPreview(assetURL); err == nil {
+				previewURL = generated
+			}
+		}
+		// 视频缩略图：提取首帧作为 JPG
+		if fileType == "video" || fileType == "live_video" {
+			if generated, err := ensureVideoThumbnail(assetURL); err == nil {
 				previewURL = generated
 			}
 		}
@@ -2616,6 +2636,77 @@ func ensureMobileVideoVariant(sourceURL string) (string, error) {
 		return "", err
 	}
 	return mobileURL, nil
+}
+
+// generateVideoThumbnailLocal 提取视频首帧作为 JPG 缩略图（COS 模式用）
+func generateVideoThumbnailLocal(sourcePath, sourceKey string) (cosKey string, localPath string, err error) {
+	if _, lookErr := exec.LookPath("ffmpeg"); lookErr != nil {
+		return "", "", lookErr
+	}
+	baseNoExt := strings.TrimSuffix(filepath.Base(sourcePath), filepath.Ext(sourcePath))
+	thumbFilename := baseNoExt + "_thumb.jpg"
+	thumbPath := filepath.Join(filepath.Dir(sourcePath), thumbFilename)
+	thumbKey := path.Join(path.Dir(sourceKey), thumbFilename)
+
+	cmd := exec.Command(
+		"ffmpeg", "-y", "-i", sourcePath,
+		"-vframes", "1", "-q:v", "2",
+		thumbPath,
+	)
+	if err := cmd.Run(); err != nil {
+		return "", "", err
+	}
+	return thumbKey, thumbPath, nil
+}
+
+// ensureVideoThumbnail 提取视频首帧作为 JPG 缩略图（本地模式用）
+func ensureVideoThumbnail(sourceURL string) (string, error) {
+	sourcePath := filepath.Join(".", strings.TrimPrefix(sourceURL, "/"))
+	if _, err := os.Stat(sourcePath); err != nil {
+		return "", err
+	}
+
+	ext := filepath.Ext(sourcePath)
+	baseName := strings.TrimSuffix(filepath.Base(sourcePath), ext)
+	thumbFilename := baseName + "_thumb.jpg"
+	thumbPath := filepath.Join(filepath.Dir(sourcePath), thumbFilename)
+	thumbURL := path.Join(path.Dir(sourceURL), thumbFilename)
+
+	// 已存在则直接返回
+	if _, err := os.Stat(thumbPath); err == nil {
+		return thumbURL, nil
+	}
+
+	if _, err := exec.LookPath("ffmpeg"); err != nil {
+		return "", err
+	}
+	cmd := exec.Command(
+		"ffmpeg", "-y", "-i", sourcePath,
+		"-vframes", "1", "-q:v", "2",
+		thumbPath,
+	)
+	if err := cmd.Run(); err != nil {
+		return "", err
+	}
+	return thumbURL, nil
+}
+
+// resolveAssetPreview
+func (h *AdminHandler) resolveAssetPreview(videoURL string) string {
+	var asset model.Asset
+	// 尝试精确匹配 URL
+	if err := h.DB.Where("url = ? AND preview_url != ''", videoURL).First(&asset).Error; err == nil {
+		return asset.PreviewURL
+	}
+	// 尝试去掉域名前缀后匹配（兼容相对/绝对 URL）
+	parsedPath := videoURL
+	if u, err := url.Parse(videoURL); err == nil && u.Path != "" {
+		parsedPath = u.Path
+	}
+	if err := h.DB.Where("url LIKE ? AND preview_url != ''", "%"+filepath.Base(parsedPath)).First(&asset).Error; err == nil {
+		return asset.PreviewURL
+	}
+	return ""
 }
 
 func (h *AdminHandler) ConfigUpdate(c *gin.Context) {
