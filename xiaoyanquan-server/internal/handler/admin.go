@@ -1012,8 +1012,8 @@ func (h *AdminHandler) AssetUpload(c *gin.Context) {
 		return
 	}
 
-	// .mov 智能分类：用 ffprobe 检测时长，≤5 秒判定为 Live Photo 组件
-	if ext == ".mov" {
+	// .mov/.mp4 智能分类：用 ffprobe 检测时长，≤5 秒判定为 Live Photo 组件
+	if ext == ".mov" || ext == ".mp4" {
 		if dur := probeVideoDuration(tmpPath); dur > 0 && dur <= 5.0 {
 			fileType = "live_video"
 		}
@@ -1551,7 +1551,7 @@ func (h *AdminHandler) AssetLivePackList(c *gin.Context) {
 			missing = append(missing, "静态图")
 		}
 		if p.VideoAssetID == nil {
-			missing = append(missing, "MOV视频")
+		missing = append(missing, "动态视频")
 		}
 		item.Missing = missing
 		if len(missing) > 0 {
@@ -2091,17 +2091,17 @@ func resolveLiveRole(rawRole, ext string) string {
 				return "image"
 			}
 			return ""
-		case "video", "mov", "motion":
-			if normalizedExt == ".mov" {
-				return "video"
-			}
-			return ""
+	case "video", "mov", "motion", "mp4":
+		if normalizedExt == ".mov" || normalizedExt == ".mp4" {
+			return "video"
+		}
+		return ""
 		default:
 			return ""
 		}
 	}
 	// 无显式 live_role 时，仅 HEIC 自动识别为 Live 图片组件。
-	// .mov 不再自动关联 Live Pack，改由 AssetUpload 中 ffprobe 时长检测判断。
+	// .mov/.mp4 不再自动关联 Live Pack，改由 AssetUpload 中 ffprobe 时长检测判断。
 	if isHEICExt(normalizedExt) {
 		return "image"
 	}
@@ -2122,6 +2122,14 @@ func liveRoleFromAssetURL(url string) string {
 		return "video"
 	}
 	return ""
+}
+
+// liveRoleFromAsset 根据 Asset 记录判断 Live 角色（优先检查 file_type，再回退到 URL 扩展名）
+func liveRoleFromAsset(asset model.Asset) string {
+	if asset.FileType == "live_video" {
+		return "video"
+	}
+	return liveRoleFromAssetURL(asset.URL)
 }
 
 func isJPGURL(url string) bool {
@@ -2205,6 +2213,7 @@ func trimLiveRoleSuffix(name, liveRole string) string {
 		suffixes = []string{
 			"_video", "-video", " video",
 			"_mov", "-mov", " mov",
+			"_mp4", "-mp4", " mp4",
 			"_motion", "-motion", " motion",
 		}
 	default:
@@ -2449,14 +2458,15 @@ func (h *AdminHandler) ensureLegacyLivePacks() error {
 		}
 	}
 
-	// 自动扫描：HEIC/HEIF + JPG/JPEG + MOV
+	// 自动扫描：HEIC/HEIF + JPG/JPEG + MOV + live_video MP4
 	var assets []model.Asset
 	if err := h.DB.Where(`
 		lower(coalesce(url, '')) LIKE '%.heic' OR
 		lower(coalesce(url, '')) LIKE '%.heif' OR
 		lower(coalesce(url, '')) LIKE '%.jpg' OR
 		lower(coalesce(url, '')) LIKE '%.jpeg' OR
-		lower(coalesce(url, '')) LIKE '%.mov'
+		lower(coalesce(url, '')) LIKE '%.mov' OR
+		(lower(coalesce(url, '')) LIKE '%.mp4' AND file_type = 'live_video')
 	`).Order("created_at ASC, id ASC").Find(&assets).Error; err != nil {
 		return err
 	}
@@ -2469,7 +2479,7 @@ func (h *AdminHandler) ensureLegacyLivePacks() error {
 		if isJPGURL(asset.URL) {
 			continue // JPG 留到第二阶段
 		}
-		liveRole := liveRoleFromAssetURL(asset.URL)
+		liveRole := liveRoleFromAsset(asset)
 		if liveRole == "" {
 			continue
 		}

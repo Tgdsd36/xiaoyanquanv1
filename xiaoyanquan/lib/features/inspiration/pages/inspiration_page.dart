@@ -629,11 +629,6 @@ class _InspirationFullPageState extends State<_InspirationFullPage> {
       _startImageAutoSwitch();
     }
 
-    if (next && !_supportsLiveMotionDevice) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('当前设备仅展示静态图，Live 动效要在 iPhone 或 Mac 上查看')),
-      );
-    }
   }
 
   @override
