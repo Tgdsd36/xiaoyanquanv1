@@ -887,6 +887,7 @@ class _InspirationFullPageState extends State<_InspirationFullPage> {
           imageUrl: _liveImageUrl,
           videoUrl: _livePreviewMovUrl,
           fit: BoxFit.contain,
+          isPlaying: widget.isActive,
         );
       }
       return _buildImageContent();
