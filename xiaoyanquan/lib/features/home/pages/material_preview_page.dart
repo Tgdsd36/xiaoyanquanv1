@@ -70,6 +70,7 @@ class _MaterialPreviewPageState extends ConsumerState<MaterialPreviewPage> {
   bool _videoFailed = false;
   bool _videoPaused = false;
   bool _liveEffectEnabled = false;
+  bool _livePhotoActive = true;
 
   late final PageController _pageController;
   int _currentIndex = 0;
@@ -449,12 +450,16 @@ class _MaterialPreviewPageState extends ConsumerState<MaterialPreviewPage> {
                   // 详情 >
                   GestureDetector(
                     onTap: () async {
-                      // 进入详情页前暂停视频
+                      // 进入详情页前暂停视频和 Live Photo
                       _videoController?.pause();
+                      setState(() => _livePhotoActive = false);
                       await context.push('/material/${widget.materialId}');
                       // 返回预览页后恢复播放
-                      if (mounted && _videoInitialized && !_videoPaused) {
-                        _videoController?.play();
+                      if (mounted) {
+                        setState(() => _livePhotoActive = true);
+                        if (_videoInitialized && !_videoPaused) {
+                          _videoController?.play();
+                        }
                       }
                     },
                     child: const Row(
@@ -681,6 +686,7 @@ class _MaterialPreviewPageState extends ConsumerState<MaterialPreviewPage> {
             return LivePhotoView(
               imageUrl: imageUrl,
               videoUrl: videoUrl,
+              isPlaying: _livePhotoActive,
             );
           }
           // 没有视频的 pack 显示静态图

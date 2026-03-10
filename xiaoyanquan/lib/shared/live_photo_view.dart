@@ -44,6 +44,7 @@ class LivePhotoView extends StatelessWidget {
   final double? width;
   final double? height;
   final BoxFit fit;
+  final bool isPlaying;
 
   const LivePhotoView({
     super.key,
@@ -52,6 +53,7 @@ class LivePhotoView extends StatelessWidget {
     this.width,
     this.height,
     this.fit = BoxFit.contain,
+    this.isPlaying = true,
   });
 
   @override
@@ -63,6 +65,7 @@ class LivePhotoView extends StatelessWidget {
         width: width,
         height: height,
         fit: fit,
+        isPlaying: isPlaying,
       );
     }
 
@@ -141,6 +144,7 @@ class _VideoLiveMotionView extends StatefulWidget {
   final double? width;
   final double? height;
   final BoxFit fit;
+  final bool isPlaying;
 
   const _VideoLiveMotionView({
     required this.imageUrl,
@@ -148,6 +152,7 @@ class _VideoLiveMotionView extends StatefulWidget {
     this.width,
     this.height,
     this.fit = BoxFit.contain,
+    this.isPlaying = true,
   });
 
   @override
@@ -171,6 +176,15 @@ class _VideoLiveMotionViewState extends State<_VideoLiveMotionView> {
     if (oldWidget.videoUrl != widget.videoUrl) {
       _disposeController();
       _initController();
+      return;
+    }
+    // 响应 isPlaying 变化：暂停/恢复播放
+    if (oldWidget.isPlaying != widget.isPlaying && _initialized && _controller != null) {
+      if (widget.isPlaying) {
+        _controller!.play();
+      } else {
+        _controller!.pause();
+      }
     }
   }
 
