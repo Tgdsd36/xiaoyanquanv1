@@ -18,14 +18,22 @@ subprojects {
 
 // Force consistent JVM target for all subprojects (fixes old plugins like image_gallery_saver)
 subprojects {
+    afterEvaluate {
+        // Override compileOptions at extension level — task-level JavaCompile overrides don't work
+        // because AGP reads from android.compileOptions and re-applies during its own afterEvaluate
+        if (plugins.hasPlugin("com.android.library")) {
+            extensions.configure<com.android.build.gradle.LibraryExtension> {
+                compileOptions {
+                    sourceCompatibility = JavaVersion.VERSION_11
+                    targetCompatibility = JavaVersion.VERSION_11
+                }
+            }
+        }
+    }
     tasks.withType<org.jetbrains.kotlin.gradle.tasks.KotlinCompile>().configureEach {
         kotlinOptions {
             jvmTarget = "11"
         }
-    }
-    tasks.withType<JavaCompile>().configureEach {
-        sourceCompatibility = "11"
-        targetCompatibility = "11"
     }
 }
 
