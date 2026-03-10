@@ -10,5 +10,8 @@ void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await TokenStorage.init();
   runApp(const ProviderScope(child: XiaoYanQuanApp()));
-  unawaited(SystemPermissionBootstrap.requestAllOnce());
+  // 等第一帧渲染完成后再请求权限，确保 Android Activity 已就绪
+  WidgetsBinding.instance.addPostFrameCallback((_) {
+    unawaited(SystemPermissionBootstrap.requestAllOnce());
+  });
 }

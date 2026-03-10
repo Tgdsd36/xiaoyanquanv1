@@ -25,27 +25,30 @@ class SystemPermissionBootstrap {
       if (asked) return;
       await box.put(_allPermissionsAskedKey, true);
 
-      // iOS 首次联网会弹出「允许使用无线数据」系统弹窗，
-      // 先发一个轻量请求触发它，等弹窗消失后再请求其他权限
-      await _triggerNetworkDialog();
+      if (Platform.isIOS) {
+        // iOS 首次联网会弹出「允许使用无线数据」系统弹窗
+        await _triggerNetworkDialog();
+        await Future<void>.delayed(const Duration(milliseconds: 800));
+      } else {
+        // Android 上等待 Activity 完全就绪
+        await Future<void>.delayed(const Duration(seconds: 1));
+      }
+
+      // 依次请求，每个权限之间间隔足够时间确保弹窗完整显示
+      await _requestSafe(Permission.notification);
       await Future<void>.delayed(const Duration(milliseconds: 800));
 
-      // 依次请求，每个权限之间间隔 500ms 避免弹窗堆叠
-      await _requestSafe(Permission.notification);
-      await Future<void>.delayed(const Duration(milliseconds: 500));
-
       if (Platform.isIOS) {
-        // iOS: 读取相册 + 仅写入相册（两个独立权限）
         await _requestSafe(Permission.photos);
-        await Future<void>.delayed(const Duration(milliseconds: 500));
+        await Future<void>.delayed(const Duration(milliseconds: 800));
         await _requestSafe(Permission.photosAddOnly);
       } else if (Platform.isAndroid) {
-        // Android 13+: 细分媒体权限；低版本走 storage
-        await _requestManySafe([
-          Permission.photos,
-          Permission.videos,
-          Permission.storage,
-        ]);
+        // Android: 逐个请求，不用 requestManySafe 批量，避免弹窗重叠
+        await _requestSafe(Permission.photos);
+        await Future<void>.delayed(const Duration(milliseconds: 800));
+        await _requestSafe(Permission.videos);
+        await Future<void>.delayed(const Duration(milliseconds: 800));
+        await _requestSafe(Permission.storage);
       }
     } catch (_) {
       // 权限请求失败不阻断主流程
