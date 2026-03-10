@@ -24,6 +24,9 @@
 -dontwarn okio.**
 -dontwarn javax.annotation.**
 
+# Google Play Core (Flutter deferred components references, not used)
+-dontwarn com.google.android.play.core.**
+
 # Gson
 -keepattributes *Annotation*
 -keep class com.google.gson.** { *; }
