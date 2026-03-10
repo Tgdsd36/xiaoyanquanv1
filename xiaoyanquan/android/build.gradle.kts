@@ -16,21 +16,16 @@ subprojects {
     project.evaluationDependsOn(":app")
 }
 
-// Force consistent JVM target for all subprojects (fixes old plugins like image_gallery_saver)
-// Uses plugins.withId instead of afterEvaluate because evaluationDependsOn makes subprojects
-// already evaluated when this block runs — afterEvaluate would throw.
+// Align each library's Kotlin jvmTarget with its own Java targetCompatibility.
+// Uses plugins.withId because evaluationDependsOn makes subprojects already evaluated.
 subprojects {
     plugins.withId("com.android.library") {
-        extensions.configure<com.android.build.gradle.LibraryExtension> {
-            compileOptions {
-                sourceCompatibility = JavaVersion.VERSION_11
-                targetCompatibility = JavaVersion.VERSION_11
+        val android = extensions.getByType(com.android.build.gradle.LibraryExtension::class.java)
+        val javaTarget = android.compileOptions.targetCompatibility.toString()
+        tasks.withType<org.jetbrains.kotlin.gradle.tasks.KotlinCompile>().configureEach {
+            kotlinOptions {
+                jvmTarget = javaTarget
             }
-        }
-    }
-    tasks.withType<org.jetbrains.kotlin.gradle.tasks.KotlinCompile>().configureEach {
-        kotlinOptions {
-            jvmTarget = "11"
         }
     }
 }

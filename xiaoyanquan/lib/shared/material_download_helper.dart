@@ -7,7 +7,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter/services.dart';
 import 'package:hive_flutter/hive_flutter.dart';
-import 'package:image_gallery_saver/image_gallery_saver.dart';
+import 'package:image_gallery_saver_plus/image_gallery_saver_plus.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:permission_handler/permission_handler.dart';
 
@@ -488,7 +488,7 @@ class MaterialDownloadHelper {
         return _saveToDesktopDirectory(tempFile);
       }
 
-      final result = await ImageGallerySaver.saveFile(
+      final result = await ImageGallerySaverPlus.saveFile(
         tempFile.path,
         isReturnPathOfIOS: true,
       );
