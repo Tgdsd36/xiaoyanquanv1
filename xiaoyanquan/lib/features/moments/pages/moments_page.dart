@@ -924,9 +924,18 @@ class _MomentCardState extends ConsumerState<_MomentCard> {
           // 内容文字
           if (moment.contentText.isNotEmpty) ...[
             const SizedBox(height: 10),
-            Text(
-              moment.contentText,
-              style: const TextStyle(fontSize: 14, height: 1.6),
+            GestureDetector(
+              onTap: () async {
+                await Clipboard.setData(ClipboardData(text: moment.contentText));
+                if (!mounted) return;
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(content: Text('文案已复制')),
+                );
+              },
+              child: Text(
+                moment.contentText,
+                style: const TextStyle(fontSize: 14, height: 1.6),
+              ),
             ),
           ],
           // 媒体区域

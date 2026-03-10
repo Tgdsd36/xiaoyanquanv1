@@ -353,11 +353,21 @@ class _DetailContentState extends ConsumerState<_DetailContent> {
                         ),
                       ),
                       const SizedBox(width: 12),
-                      // 右侧标题
+                      // 右侧标题（点击复制）
                       Expanded(
-                        child: Text(
-                          detail.title,
-                          style: const TextStyle(fontSize: 15, height: 1.5),
+                        child: GestureDetector(
+                          onTap: () async {
+                            if (detail.title.isEmpty) return;
+                            await Clipboard.setData(ClipboardData(text: detail.title));
+                            if (!mounted) return;
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              const SnackBar(content: Text('标题已复制')),
+                            );
+                          },
+                          child: Text(
+                            detail.title,
+                            style: const TextStyle(fontSize: 15, height: 1.5),
+                          ),
                         ),
                       ),
                     ],

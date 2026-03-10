@@ -401,18 +401,27 @@ class _MaterialPreviewPageState extends ConsumerState<MaterialPreviewPage> {
             crossAxisAlignment: CrossAxisAlignment.start,
             mainAxisSize: MainAxisSize.min,
             children: [
-              // 标题
+              // 标题（点击复制）
               if (_title.isNotEmpty)
                 Padding(
                   padding: const EdgeInsets.only(bottom: 12),
-                  child: Text(
-                    _title,
-                    maxLines: 2,
-                    overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(
-                      color: Colors.white,
-                      fontSize: 14,
-                      height: 1.4,
+                  child: GestureDetector(
+                    onTap: () async {
+                      await Clipboard.setData(ClipboardData(text: _title));
+                      if (!mounted) return;
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(content: Text('标题已复制')),
+                      );
+                    },
+                    child: Text(
+                      _title,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 14,
+                        height: 1.4,
+                      ),
                     ),
                   ),
                 ),
@@ -439,7 +448,15 @@ class _MaterialPreviewPageState extends ConsumerState<MaterialPreviewPage> {
                   const Spacer(),
                   // 详情 >
                   GestureDetector(
-                    onTap: () => context.push('/material/${widget.materialId}'),
+                    onTap: () async {
+                      // 进入详情页前暂停视频
+                      _videoController?.pause();
+                      await context.push('/material/${widget.materialId}');
+                      // 返回预览页后恢复播放
+                      if (mounted && _videoInitialized && !_videoPaused) {
+                        _videoController?.play();
+                      }
+                    },
                     child: const Row(
                       mainAxisSize: MainAxisSize.min,
                       children: [
