@@ -20,6 +20,7 @@ class HomePage extends ConsumerStatefulWidget {
 
 class _HomePageState extends ConsumerState<HomePage> {
   final _scrollController = ScrollController();
+  int _thumbCacheWidth = 400;
 
   @override
   void initState() {
@@ -47,6 +48,8 @@ class _HomePageState extends ConsumerState<HomePage> {
 
   @override
   Widget build(BuildContext context) {
+    final mq = MediaQuery.of(context);
+    _thumbCacheWidth = ((mq.size.width - 18) / 2 * mq.devicePixelRatio).round().clamp(100, 600);
     final primary = Theme.of(context).colorScheme.primary;
     final categoriesAsync = ref.watch(categoriesProvider);
     final selectedType = ref.watch(selectedTypeProvider);
@@ -293,6 +296,7 @@ class _HomePageState extends ConsumerState<HomePage> {
                       )
                       : GridView.builder(
                         controller: _scrollController,
+                        cacheExtent: 800,
                         gridDelegate:
                             const SliverGridDelegateWithFixedCrossAxisCount(
                               crossAxisCount: 2,
@@ -324,6 +328,7 @@ class _HomePageState extends ConsumerState<HomePage> {
                           final item = materialState.items[index];
                           return _MaterialCard(
                             item: item,
+                            thumbCacheWidth: _thumbCacheWidth,
                             onTap:
                                 () => context.push(
                                   '/material/${item.id}/preview',
@@ -505,8 +510,25 @@ class _SortPill extends StatelessWidget {
 class _MaterialCard extends ConsumerWidget {
   final MaterialListItem item;
   final VoidCallback onTap;
+  final int thumbCacheWidth;
 
-  const _MaterialCard({required this.item, required this.onTap});
+  const _MaterialCard({
+    required this.item,
+    required this.onTap,
+    required this.thumbCacheWidth,
+  });
+
+  static final _kCardRadius = BorderRadius.circular(14);
+  static final _kGradientOverlay = BoxDecoration(
+    gradient: LinearGradient(
+      begin: Alignment.topCenter,
+      end: Alignment.bottomCenter,
+      colors: [
+        Colors.transparent,
+        Colors.black.withValues(alpha: 0.3),
+      ],
+    ),
+  );
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -520,7 +542,7 @@ class _MaterialCard extends ConsumerWidget {
       child: Container(
         decoration: AppStyles.cardDecoration,
         child: ClipRRect(
-          borderRadius: BorderRadius.circular(14),
+          borderRadius: _kCardRadius,
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
@@ -533,6 +555,8 @@ class _MaterialCard extends ConsumerWidget {
                         ? CachedNetworkImage(
                           imageUrl: coverUrl,
                           fit: BoxFit.cover,
+                          memCacheWidth: thumbCacheWidth,
+                          fadeInDuration: Duration.zero,
                           placeholder:
                               (_, __) => Container(
                                 color: AppColors.shimmer,
@@ -599,18 +623,7 @@ class _MaterialCard extends ConsumerWidget {
                       left: 0,
                       right: 0,
                       height: 28,
-                      child: Container(
-                        decoration: BoxDecoration(
-                          gradient: LinearGradient(
-                            begin: Alignment.topCenter,
-                            end: Alignment.bottomCenter,
-                            colors: [
-                              Colors.transparent,
-                              Colors.black.withValues(alpha: 0.3),
-                            ],
-                          ),
-                        ),
-                      ),
+                      child: DecoratedBox(decoration: _kGradientOverlay),
                     ),
                     // 类型标签（左上角）
                     Positioned(

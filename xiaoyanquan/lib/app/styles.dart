@@ -7,15 +7,15 @@ class AppStyles {
 
   // ==================== 卡片 ====================
 
-  /// 标准卡片装饰（白底 + 圆角14 + 柔和阴影）
-  static BoxDecoration get cardDecoration => BoxDecoration(
+  /// 标准卡片装饰（白底 + 圆角14 + 柔和阴影）——static final 避免滑动时重复创建
+  static final BoxDecoration cardDecoration = BoxDecoration(
         color: AppColors.cardBg,
         borderRadius: BorderRadius.circular(14),
-        boxShadow: cardShadow,
+        boxShadow: _cardShadow,
       );
 
   /// 标准卡片阴影
-  static List<BoxShadow> get cardShadow => [
+  static final List<BoxShadow> _cardShadow = [
         BoxShadow(
           color: Colors.black.withValues(alpha: 0.05),
           blurRadius: 10,

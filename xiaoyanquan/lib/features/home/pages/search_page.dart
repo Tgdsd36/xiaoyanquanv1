@@ -275,6 +275,8 @@ class _SearchPageState extends ConsumerState<SearchPage> {
     if (_keyword.isEmpty && _categoryId == null) {
       return _buildHistoryView(primary);
     }
+    final mq = MediaQuery.of(context);
+    final thumbCacheW = ((mq.size.width - 18) / 2 * mq.devicePixelRatio).round().clamp(100, 600);
 
     if (_loading && _results.isEmpty) {
       return Center(
@@ -304,6 +306,7 @@ class _SearchPageState extends ConsumerState<SearchPage> {
 
     return GridView.builder(
       controller: _scrollController,
+      cacheExtent: 800,
       gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
         crossAxisCount: 2,
         mainAxisSpacing: 6,
@@ -331,6 +334,7 @@ class _SearchPageState extends ConsumerState<SearchPage> {
         final item = _results[index];
         return _SearchResultCard(
           item: item,
+          thumbCacheWidth: thumbCacheW,
           onTap:
               () => context.push('/material/${item.id}/preview', extra: item),
         );
@@ -494,8 +498,15 @@ class _TypeTabBar extends StatelessWidget {
 class _SearchResultCard extends StatelessWidget {
   final MaterialListItem item;
   final VoidCallback onTap;
+  final int thumbCacheWidth;
 
-  const _SearchResultCard({required this.item, required this.onTap});
+  const _SearchResultCard({
+    required this.item,
+    required this.onTap,
+    this.thumbCacheWidth = 400,
+  });
+
+  static final _kCardRadius = BorderRadius.circular(14);
 
   @override
   Widget build(BuildContext context) {
@@ -506,7 +517,7 @@ class _SearchResultCard extends StatelessWidget {
       child: Container(
         decoration: AppStyles.cardDecoration,
         child: ClipRRect(
-          borderRadius: BorderRadius.circular(14),
+          borderRadius: _kCardRadius,
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
@@ -518,6 +529,8 @@ class _SearchResultCard extends StatelessWidget {
                         ? CachedNetworkImage(
                           imageUrl: coverUrl,
                           fit: BoxFit.cover,
+                          memCacheWidth: thumbCacheWidth,
+                          fadeInDuration: Duration.zero,
                           placeholder:
                               (_, __) => Container(color: AppColors.shimmer),
                           errorWidget:
