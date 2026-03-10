@@ -1,7 +1,11 @@
+import 'dart:io';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:video_player/video_player.dart';
 
 /// 使用视频首帧作为缩略图展示（不自动播放）。
+/// Android 上不初始化 VideoPlayerController（多实例会导致 ANR），
+/// 改为显示静态占位符。
 class NetworkVideoThumbnail extends StatefulWidget {
   final String videoUrl;
   final BoxFit fit;
@@ -16,6 +20,10 @@ class NetworkVideoThumbnail extends StatefulWidget {
     this.errorWidget,
   });
 
+  /// Android 上跳过视频初始化
+  static bool get _skipVideoInit =>
+      !kIsWeb && Platform.isAndroid;
+
   @override
   State<NetworkVideoThumbnail> createState() => _NetworkVideoThumbnailState();
 }
@@ -28,7 +36,9 @@ class _NetworkVideoThumbnailState extends State<NetworkVideoThumbnail> {
   @override
   void initState() {
     super.initState();
-    _initController();
+    if (!NetworkVideoThumbnail._skipVideoInit) {
+      _initController();
+    }
   }
 
   @override
@@ -80,6 +90,21 @@ class _NetworkVideoThumbnailState extends State<NetworkVideoThumbnail> {
 
   @override
   Widget build(BuildContext context) {
+    // Android: 显示静态占位 + 播放图标
+    if (NetworkVideoThumbnail._skipVideoInit) {
+      return widget.placeholder ??
+          const ColoredBox(
+            color: Colors.black12,
+            child: Center(
+              child: Icon(
+                Icons.play_circle_outline_rounded,
+                color: Colors.white70,
+                size: 36,
+              ),
+            ),
+          );
+    }
+
     if (_failed) {
       return widget.errorWidget ??
           const ColoredBox(
