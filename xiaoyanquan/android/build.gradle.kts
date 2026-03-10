@@ -16,21 +16,7 @@ subprojects {
     project.evaluationDependsOn(":app")
 }
 
-// Align each library's Kotlin jvmTarget with its own Java targetCompatibility.
-// Uses plugins.withId because evaluationDependsOn makes subprojects already evaluated.
-subprojects {
-    plugins.withId("com.android.library") {
-        val android = extensions.getByType(com.android.build.gradle.LibraryExtension::class.java)
-        val javaTarget = android.compileOptions.targetCompatibility.toString()
-        tasks.withType<org.jetbrains.kotlin.gradle.tasks.KotlinCompile>().configureEach {
-            kotlinOptions {
-                jvmTarget = javaTarget
-            }
-        }
-    }
-}
-
-// Fix namespace for old plugins that only declare package in AndroidManifest.xml (AGP 8+ requirement)
+// Fix namespace
 subprojects {
     project.plugins.withId("com.android.library") {
         val android = project.extensions.getByType(com.android.build.gradle.LibraryExtension::class.java)
