@@ -36,8 +36,8 @@ class LivePhotoChannel {
 }
 
 /// Live Photo 展示组件
-/// - iOS/macOS: 使用 MOV 循环播放模拟 Live 动效（稳定兜底）
-/// - Android/Web: 静态图片 + Live Photo 角标
+/// - iOS/macOS/Android: 使用 MOV 循环播放模拟 Live 动效
+/// - Web: 静态图片 + Live Photo 角标
 class LivePhotoView extends StatelessWidget {
   final String imageUrl;
   final String videoUrl;
@@ -58,7 +58,7 @@ class LivePhotoView extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    if (!kIsWeb && (Platform.isIOS || Platform.isMacOS)) {
+    if (!kIsWeb && (Platform.isIOS || Platform.isMacOS || Platform.isAndroid)) {
       return _VideoLiveMotionView(
         imageUrl: imageUrl,
         videoUrl: videoUrl,
@@ -113,25 +113,6 @@ class LivePhotoView extends StatelessWidget {
             ),
           ),
         ),
-        if (!kIsWeb && Platform.isAndroid)
-          Positioned(
-            bottom: 8,
-            left: 0,
-            right: 0,
-            child: Center(
-              child: Container(
-                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                decoration: BoxDecoration(
-                  color: Colors.black54,
-                  borderRadius: BorderRadius.circular(4),
-                ),
-                child: const Text(
-                  '当前设备仅展示静态图，Live 动效要在 iPhone 或 Mac 上查看',
-                  style: TextStyle(fontSize: 11, color: Colors.white70),
-                ),
-              ),
-            ),
-          ),
       ],
     );
   }
