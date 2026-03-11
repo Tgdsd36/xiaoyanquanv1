@@ -2,7 +2,8 @@ import 'dart:io';
 import 'dart:typed_data';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
-import 'package:get_thumbnail_video/video_thumbnail.dart' as vt;
+import 'package:get_thumbnail_video/index.dart' show ImageFormat;
+import 'package:get_thumbnail_video/video_thumbnail.dart';
 import 'package:video_player/video_player.dart';
 
 /// 视频缩略图组件。
@@ -79,14 +80,14 @@ class _NetworkVideoThumbnailState extends State<NetworkVideoThumbnail> {
     }
 
     try {
-      final data = await vt.VideoThumbnail.thumbnailData(
+      final data = await VideoThumbnail.thumbnailData(
         video: widget.videoUrl,
-        imageFormat: vt.ImageFormat.JPEG,
+        imageFormat: ImageFormat.JPEG,
         maxWidth: 300,
         quality: 75,
       );
       if (!mounted) return;
-      if (data != null && data.isNotEmpty) {
+      if (data.isNotEmpty) {
         NetworkVideoThumbnail._cache[widget.videoUrl] = data;
         setState(() => _thumbnailData = data);
       } else {
