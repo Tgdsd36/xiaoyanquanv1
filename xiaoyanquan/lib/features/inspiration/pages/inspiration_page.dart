@@ -110,6 +110,9 @@ const _tabs = [
 
 const _defaultTabIndex = 1; // 默认"推荐"
 
+/// 当前活跃的子 Tab 索引（用于切换 Tab 时暂停非活跃 Tab 的视频/音频）
+final inspirationSubTabProvider = StateProvider<int>((ref) => _defaultTabIndex);
+
 // ==================== Page ====================
 
 class InspirationPage extends ConsumerStatefulWidget {
@@ -131,10 +134,19 @@ class _InspirationPageState extends ConsumerState<InspirationPage>
       vsync: this,
       initialIndex: _defaultTabIndex,
     );
+    _tabController.addListener(_onSubTabChanged);
+  }
+
+  void _onSubTabChanged() {
+    // Tab 切换完成时更新活跃索引，触发非活跃 Tab 暂停视频/音频
+    if (!_tabController.indexIsChanging) {
+      ref.read(inspirationSubTabProvider.notifier).state = _tabController.index;
+    }
   }
 
   @override
   void dispose() {
+    _tabController.removeListener(_onSubTabChanged);
     _tabController.dispose();
     super.dispose();
   }
@@ -152,8 +164,11 @@ class _InspirationPageState extends ConsumerState<InspirationPage>
           TabBarView(
             controller: _tabController,
             children:
-                _tabs.map((tab) {
-                  return _InspirationFeedView(type: tab.type);
+                _tabs.asMap().entries.map((entry) {
+                  return _InspirationFeedView(
+                    type: entry.value.type,
+                    tabIndex: entry.key,
+                  );
                 }).toList(),
           ),
           // 顶部 TabBar（悬浮）
@@ -207,7 +222,8 @@ class _InspirationPageState extends ConsumerState<InspirationPage>
 
 class _InspirationFeedView extends ConsumerStatefulWidget {
   final String? type;
-  const _InspirationFeedView({required this.type});
+  final int tabIndex;
+  const _InspirationFeedView({required this.type, required this.tabIndex});
 
   @override
   ConsumerState<_InspirationFeedView> createState() =>
@@ -234,6 +250,9 @@ class _InspirationFeedViewState extends ConsumerState<_InspirationFeedView>
     final state = ref.watch(inspirationProvider(widget.type));
     // 监听底部导航 tab 索引，判断找灵感是否是当前活跃 tab
     final isTabActive = ref.watch(activeMainTabProvider) == 1;
+    // 监听子 Tab 索引，切换子 Tab 时暂停非活跃 Tab 的视频/Live音频
+    final activeSubTab = ref.watch(inspirationSubTabProvider);
+    final isSubTabActive = widget.tabIndex == activeSubTab;
 
     if (state.items.isEmpty) {
       return Center(
@@ -282,7 +301,7 @@ class _InspirationFeedViewState extends ConsumerState<_InspirationFeedView>
         final item = state.items[index];
         return _InspirationFullPage(
           item: item,
-          isActive: index == _currentIndex && isTabActive,
+          isActive: index == _currentIndex && isTabActive && isSubTabActive,
           onDislike: () {
             ref
                 .read(inspirationProvider(widget.type).notifier)
