@@ -7,7 +7,9 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"os/exec"
 	"os/signal"
+	"path/filepath"
 	"strings"
 	"syscall"
 	"time"
@@ -48,6 +50,9 @@ func main() {
 
 	// 数据迁移：为 live_photo 素材补全 original_urls 中缺失的视频 URL
 	migrateLivePhotoOriginalURLs(db, cfg)
+
+	// 数据迁移：为已有视频资产生成首帧缩略图，修正素材 thumbnail_url
+	migrateVideoThumbnails(db, cfg)
 
 	// 初始化种子数据
 	seedData(db)
@@ -359,6 +364,130 @@ func isVideoURL(u string) bool {
 		}
 	}
 	return false
+}
+
+// migrateVideoThumbnails 为已有视频资产生成首帧缩略图，并修正 Material 中以视频 URL 作为 thumbnail_url 的记录
+func migrateVideoThumbnails(db *gorm.DB, cfg *config.Config) {
+	// Step 1: 为缺少 preview_url 的视频资产生成缩略图
+	var assets []model.Asset
+	db.Where("file_type IN ? AND (preview_url IS NULL OR preview_url = '')",
+		[]string{"video", "live_video"}).
+		Find(&assets)
+
+	if len(assets) == 0 {
+		// 没有需要处理的视频资产，检查是否有素材需要修正
+		migrateFixMaterialThumbnails(db, cfg)
+		return
+	}
+
+	generated := 0
+	for _, asset := range assets {
+		url := asset.URL
+		if url == "" {
+			continue
+		}
+
+		// 本地模式：文件在 static/uploads/ 下
+		if strings.HasPrefix(url, "/static/") {
+			sourcePath := "." + url
+			ext := strings.ToLower(filepath.Ext(sourcePath))
+			baseName := strings.TrimSuffix(filepath.Base(sourcePath), ext)
+			thumbFilename := baseName + "_thumb.jpg"
+			thumbPath := filepath.Join(filepath.Dir(sourcePath), thumbFilename)
+			thumbURL := filepath.Dir(url) + "/" + thumbFilename
+
+			// 已存在或生成成功
+			if _, err := os.Stat(thumbPath); err != nil {
+				// 需要生成
+				if _, err := os.Stat(sourcePath); err != nil {
+					continue // 源文件不存在
+				}
+				cmd := exec.Command("ffmpeg", "-y", "-i", sourcePath,
+					"-vframes", "1", "-q:v", "2", thumbPath)
+				if err := cmd.Run(); err != nil {
+					continue
+				}
+			}
+
+			db.Model(&model.Asset{}).Where("id = ?", asset.ID).
+				Update("preview_url", thumbURL)
+			generated++
+		}
+		// COS 模式的资产跳过（需要下载后处理，太慢）
+	}
+
+	if generated > 0 {
+		log.Printf("已为 %d 个视频资产生成首帧缩略图", generated)
+	}
+
+	// Step 2: 修正素材 thumbnail_url
+	migrateFixMaterialThumbnails(db, cfg)
+}
+
+// migrateFixMaterialThumbnails 将以视频 URL 作为 thumbnail_url 的素材替换为图片缩略图
+func migrateFixMaterialThumbnails(db *gorm.DB, cfg *config.Config) {
+	// 查找所有 type=video 的素材
+	var materials []model.Material
+	db.Where("type = 'video'").Find(&materials)
+
+	// 加载所有视频资产的 URL -> preview_url 映射
+	var videoAssets []model.Asset
+	db.Where("file_type IN ? AND preview_url IS NOT NULL AND preview_url != ''",
+		[]string{"video", "live_video"}).
+		Select("url, preview_url").
+		Find(&videoAssets)
+
+	urlToPreview := map[string]string{}
+	for _, a := range videoAssets {
+		urlToPreview[a.URL] = a.PreviewURL
+	}
+
+	baseURL := cfg.Server.BaseURL
+	updated := 0
+	for _, m := range materials {
+		thumbnail := m.ThumbnailURL
+		if thumbnail == "" || !isVideoURL(thumbnail) {
+			continue
+		}
+
+		// 尝试直接匹配
+		if preview, ok := urlToPreview[thumbnail]; ok {
+			db.Model(&model.Material{}).Where("id = ?", m.ID).
+				Update("thumbnail_url", preview)
+			updated++
+			continue
+		}
+
+		// 去掉域名前缀后匹配
+		clean := thumbnail
+		if strings.HasPrefix(clean, baseURL) {
+			clean = strings.TrimPrefix(clean, baseURL)
+		}
+		if preview, ok := urlToPreview[clean]; ok {
+			db.Model(&model.Material{}).Where("id = ?", m.ID).
+				Update("thumbnail_url", preview)
+			updated++
+			continue
+		}
+
+		// 按文件名模糊匹配
+		baseName := filepath.Base(clean)
+		if idx := strings.Index(baseName, "?"); idx >= 0 {
+			baseName = baseName[:idx]
+		}
+		for assetURL, preview := range urlToPreview {
+			if strings.HasSuffix(assetURL, baseName) {
+				db.Model(&model.Material{}).Where("id = ?", m.ID).
+					Update("thumbnail_url", preview)
+				updated++
+				break
+			}
+		}
+	}
+
+	if updated > 0 {
+		log.Printf("已修正 %d 条视频素材的 thumbnail_url 为图片缩略图", updated)
+	}
 }
 
 // seedData 初始化种子数据（系统配置）
