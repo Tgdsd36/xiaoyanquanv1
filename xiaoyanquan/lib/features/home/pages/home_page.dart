@@ -1,4 +1,3 @@
-import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:cached_network_image/cached_network_image.dart';
@@ -21,9 +20,6 @@ class HomePage extends ConsumerStatefulWidget {
 
 class _HomePageState extends ConsumerState<HomePage> {
   final _scrollController = ScrollController();
-  final _isScrollingFast = ValueNotifier<bool>(false);
-  Timer? _scrollEndTimer;
-  double _lastScrollOffset = 0;
   int _thumbCacheWidth = 400;
 
   @override
@@ -34,27 +30,13 @@ class _HomePageState extends ConsumerState<HomePage> {
 
   @override
   void dispose() {
-    _scrollEndTimer?.cancel();
-    _isScrollingFast.dispose();
     _scrollController.dispose();
     super.dispose();
   }
 
   void _onScroll() {
-    final pos = _scrollController.position.pixels;
-    final delta = (pos - _lastScrollOffset).abs();
-    _lastScrollOffset = pos;
-
-    // 快速滚动时暂停图片加载，减少解码对UI线程的压力
-    if (delta > 5) {
-      _isScrollingFast.value = true;
-      _scrollEndTimer?.cancel();
-      _scrollEndTimer = Timer(const Duration(milliseconds: 120), () {
-        if (mounted) _isScrollingFast.value = false;
-      });
-    }
-
-    if (pos >= _scrollController.position.maxScrollExtent - 200) {
+    if (_scrollController.position.pixels >=
+        _scrollController.position.maxScrollExtent - 200) {
       ref.read(materialListProvider.notifier).loadMore();
     }
   }
@@ -314,7 +296,7 @@ class _HomePageState extends ConsumerState<HomePage> {
                       )
                       : GridView.builder(
                         controller: _scrollController,
-                        cacheExtent: 400,
+                        cacheExtent: 800,
                         gridDelegate:
                             const SliverGridDelegateWithFixedCrossAxisCount(
                               crossAxisCount: 2,
@@ -347,7 +329,6 @@ class _HomePageState extends ConsumerState<HomePage> {
                           return _MaterialCard(
                             item: item,
                             thumbCacheWidth: _thumbCacheWidth,
-                            isScrollingFast: _isScrollingFast,
                             onTap:
                                 () => context.push(
                                   '/material/${item.id}/preview',
@@ -530,13 +511,11 @@ class _MaterialCard extends ConsumerWidget {
   final MaterialListItem item;
   final VoidCallback onTap;
   final int thumbCacheWidth;
-  final ValueNotifier<bool> isScrollingFast;
 
   const _MaterialCard({
     required this.item,
     required this.onTap,
     required this.thumbCacheWidth,
-    required this.isScrollingFast,
   });
 
   static final _kCardRadius = BorderRadius.circular(14);
@@ -572,81 +551,61 @@ class _MaterialCard extends ConsumerWidget {
                 child: Stack(
                   fit: StackFit.expand,
                   children: [
-                    ValueListenableBuilder<bool>(
-                      valueListenable: isScrollingFast,
-                      builder: (_, scrolling, __) {
-                        // 快速滚动时显示轻量占位，避免图片解码阻塞UI线程
-                        if (scrolling) {
-                          return Container(
+                    coverUrl.isNotEmpty
+                        ? CachedNetworkImage(
+                          imageUrl: coverUrl,
+                          fit: BoxFit.cover,
+                          memCacheWidth: thumbCacheWidth,
+                          fadeInDuration: Duration.zero,
+                          placeholder:
+                              (_, __) => Container(
+                                color: AppColors.shimmer,
+                                child: const Center(
+                                  child: Icon(
+                                    Icons.image_outlined,
+                                    color: AppColors.textDisabled,
+                                    size: 28,
+                                  ),
+                                ),
+                              ),
+                          errorWidget:
+                              (_, __, ___) => Container(
+                                color: AppColors.shimmer,
+                                child: const Center(
+                                  child: Icon(
+                                    Icons.broken_image_outlined,
+                                    color: AppColors.textDisabled,
+                                    size: 28,
+                                  ),
+                                ),
+                              ),
+                        )
+                        : (item.isVideo && videoCoverUrl.isNotEmpty)
+                        ? NetworkVideoThumbnail(
+                          videoUrl: videoCoverUrl,
+                          fit: BoxFit.cover,
+                          placeholder: Container(
                             color: AppColors.shimmer,
-                            child: Center(
+                            child: const Center(
                               child: Icon(
-                                item.isVideo
-                                    ? Icons.play_circle_outline_rounded
-                                    : Icons.image_outlined,
+                                Icons.play_circle_outline_rounded,
+                                color: AppColors.textDisabled,
+                                size: 30,
+                              ),
+                            ),
+                          ),
+                          errorWidget: Container(
+                            color: AppColors.shimmer,
+                            child: const Center(
+                              child: Icon(
+                                Icons.broken_image_outlined,
                                 color: AppColors.textDisabled,
                                 size: 28,
                               ),
                             ),
-                          );
-                        }
-                        if (coverUrl.isNotEmpty) {
-                          return CachedNetworkImage(
-                            imageUrl: coverUrl,
-                            fit: BoxFit.cover,
-                            memCacheWidth: thumbCacheWidth,
-                            fadeInDuration: Duration.zero,
-                            placeholder:
-                                (_, __) => Container(
-                                  color: AppColors.shimmer,
-                                  child: const Center(
-                                    child: Icon(
-                                      Icons.image_outlined,
-                                      color: AppColors.textDisabled,
-                                      size: 28,
-                                    ),
-                                  ),
-                                ),
-                            errorWidget:
-                                (_, __, ___) => Container(
-                                  color: AppColors.shimmer,
-                                  child: const Center(
-                                    child: Icon(
-                                      Icons.broken_image_outlined,
-                                      color: AppColors.textDisabled,
-                                      size: 28,
-                                    ),
-                                  ),
-                                ),
-                          );
-                        }
-                        if (item.isVideo && videoCoverUrl.isNotEmpty) {
-                          return NetworkVideoThumbnail(
-                            videoUrl: videoCoverUrl,
-                            fit: BoxFit.cover,
-                            placeholder: Container(
-                              color: AppColors.shimmer,
-                              child: const Center(
-                                child: Icon(
-                                  Icons.play_circle_outline_rounded,
-                                  color: AppColors.textDisabled,
-                                  size: 30,
-                                ),
-                              ),
-                            ),
-                            errorWidget: Container(
-                              color: AppColors.shimmer,
-                              child: const Center(
-                                child: Icon(
-                                  Icons.broken_image_outlined,
-                                  color: AppColors.textDisabled,
-                                  size: 28,
-                                ),
-                              ),
-                            ),
-                          );
-                        }
-                        return Container(
+                          ),
+                        )
+                        : Container(
                           color: AppColors.shimmer,
                           child: Center(
                             child: Icon(
@@ -657,9 +616,7 @@ class _MaterialCard extends ConsumerWidget {
                               size: 30,
                             ),
                           ),
-                        );
-                      },
-                    ),
+                        ),
                     // 底部渐变遮罩
                     Positioned(
                       bottom: 0,
