@@ -44,16 +44,16 @@ class _SplashPageState extends ConsumerState<SplashPage>
   void initState() {
     super.initState();
 
-    // Master controller: 2.5s total animation
+    // Master controller: 2.8s total animation (slightly longer for better pacing)
     _masterController = AnimationController(
       vsync: this,
-      duration: const Duration(milliseconds: 2500),
+      duration: const Duration(milliseconds: 2800),
     );
 
     // Particle controller: continuous subtle animation
     _particleController = AnimationController(
       vsync: this,
-      duration: const Duration(milliseconds: 3000),
+      duration: const Duration(milliseconds: 2500),
     )..repeat();
 
     _initAnimations();
@@ -61,85 +61,85 @@ class _SplashPageState extends ConsumerState<SplashPage>
   }
 
   void _initAnimations() {
-    // Logo: 0-800ms with elastic bounce
+    // Logo: 0-900ms with stronger elastic bounce
     _logoScale = Tween<double>(begin: 0.0, end: 1.0).animate(
       CurvedAnimation(
         parent: _masterController,
-        curve: const Interval(0.0, 0.32, curve: Curves.elasticOut),
+        curve: const Interval(0.0, 0.36, curve: Curves.elasticOut),
       ),
     );
     _logoOpacity = Tween<double>(begin: 0.0, end: 1.0).animate(
       CurvedAnimation(
         parent: _masterController,
-        curve: const Interval(0.0, 0.2, curve: Curves.easeOut),
+        curve: const Interval(0.0, 0.24, curve: Curves.easeOut),
       ),
     );
-    _logoGlow = Tween<double>(begin: 0.0, end: 1.0).animate(
+    _logoGlow = Tween<double>(begin: 0.0, end: 1.2).animate(
       CurvedAnimation(
         parent: _masterController,
-        curve: const Interval(0.1, 0.4, curve: Curves.easeOut),
+        curve: const Interval(0.1, 0.5, curve: Curves.easeInOut),
       ),
     );
 
-    // Ring 1: starts at 200ms
-    _ring1Scale = Tween<double>(begin: 0.8, end: 1.5).animate(
+    // Ring 1: starts at 150ms, faster and more dramatic
+    _ring1Scale = Tween<double>(begin: 0.7, end: 1.8).animate(
       CurvedAnimation(
         parent: _masterController,
-        curve: const Interval(0.08, 0.48, curve: Curves.easeOut),
+        curve: const Interval(0.06, 0.5, curve: Curves.easeOut),
       ),
     );
-    _ring1Opacity = Tween<double>(begin: 0.6, end: 0.0).animate(
+    _ring1Opacity = Tween<double>(begin: 0.8, end: 0.0).animate(
       CurvedAnimation(
         parent: _masterController,
-        curve: const Interval(0.08, 0.48, curve: Curves.easeOut),
-      ),
-    );
-
-    // Ring 2: starts at 400ms
-    _ring2Scale = Tween<double>(begin: 0.8, end: 1.5).animate(
-      CurvedAnimation(
-        parent: _masterController,
-        curve: const Interval(0.16, 0.56, curve: Curves.easeOut),
-      ),
-    );
-    _ring2Opacity = Tween<double>(begin: 0.5, end: 0.0).animate(
-      CurvedAnimation(
-        parent: _masterController,
-        curve: const Interval(0.16, 0.56, curve: Curves.easeOut),
+        curve: const Interval(0.06, 0.5, curve: Curves.easeIn),
       ),
     );
 
-    // App name: 300-800ms
+    // Ring 2: starts at 300ms, overlapping with ring 1
+    _ring2Scale = Tween<double>(begin: 0.7, end: 1.8).animate(
+      CurvedAnimation(
+        parent: _masterController,
+        curve: const Interval(0.12, 0.56, curve: Curves.easeOut),
+      ),
+    );
+    _ring2Opacity = Tween<double>(begin: 0.6, end: 0.0).animate(
+      CurvedAnimation(
+        parent: _masterController,
+        curve: const Interval(0.12, 0.56, curve: Curves.easeIn),
+      ),
+    );
+
+    // App name: 250-700ms, faster entrance
     _nameOpacity = Tween<double>(begin: 0.0, end: 1.0).animate(
       CurvedAnimation(
         parent: _masterController,
-        curve: const Interval(0.12, 0.32, curve: Curves.easeOut),
+        curve: const Interval(0.1, 0.28, curve: Curves.easeOut),
       ),
     );
     _nameSlide = Tween<Offset>(
-      begin: const Offset(0, 0.5),
+      begin: const Offset(0, 0.6),
       end: Offset.zero,
     ).animate(
       CurvedAnimation(
         parent: _masterController,
-        curve: const Interval(0.12, 0.32, curve: Curves.easeOutCubic),
+        curve: const Interval(0.1, 0.28, curve: Curves.easeOutCubic),
       ),
     );
 
-    // Tagline: 500-1000ms
+    // Tagline: 400-900ms
     _taglineOpacity = Tween<double>(begin: 0.0, end: 1.0).animate(
       CurvedAnimation(
         parent: _masterController,
-        curve: const Interval(0.2, 0.4, curve: Curves.easeOut),
+        curve: const Interval(0.16, 0.36, curve: Curves.easeOut),
       ),
     );
     _taglineSlide = Tween<Offset>(
-      begin: const Offset(0, 0.3),
+      begin: const Offset(0, 0.4),
       end: Offset.zero,
     ).animate(
       CurvedAnimation(
         parent: _masterController,
-        curve: const Interval(0.2, 0.4, curve: Curves.easeOutCubic),
+        curve: const Interval(0.16, 0.36, curve: Curves.easeOutCubic),
       ),
     );
 
@@ -151,17 +151,17 @@ class _SplashPageState extends ConsumerState<SplashPage>
       ),
     );
 
-    // Exit: 2200-2500ms
+    // Exit: 2400-2800ms (last 400ms)
     _exitOpacity = Tween<double>(begin: 1.0, end: 0.0).animate(
       CurvedAnimation(
         parent: _masterController,
-        curve: const Interval(0.88, 1.0, curve: Curves.easeIn),
+        curve: const Interval(0.86, 1.0, curve: Curves.easeInCubic),
       ),
     );
-    _exitScale = Tween<double>(begin: 1.0, end: 0.95).animate(
+    _exitScale = Tween<double>(begin: 1.0, end: 0.92).animate(
       CurvedAnimation(
         parent: _masterController,
-        curve: const Interval(0.88, 1.0, curve: Curves.easeIn),
+        curve: const Interval(0.86, 1.0, curve: Curves.easeInCubic),
       ),
     );
   }
@@ -255,11 +255,13 @@ class _SplashPageState extends ConsumerState<SplashPage>
   Widget _buildParticles() {
     return Stack(
       children: [
-        _buildParticle(0.2, 0.15, 8, 0.0),
-        _buildParticle(0.8, 0.25, 6, 0.3),
-        _buildParticle(0.15, 0.7, 10, 0.6),
-        _buildParticle(0.85, 0.65, 7, 0.2),
-        _buildParticle(0.5, 0.85, 5, 0.8),
+        _buildParticle(0.15, 0.12, 10, 0.0),
+        _buildParticle(0.85, 0.18, 7, 0.3),
+        _buildParticle(0.12, 0.68, 12, 0.6),
+        _buildParticle(0.88, 0.72, 8, 0.2),
+        _buildParticle(0.5, 0.88, 6, 0.8),
+        _buildParticle(0.25, 0.35, 5, 0.4),
+        _buildParticle(0.75, 0.45, 9, 0.7),
       ],
     );
   }
@@ -271,26 +273,38 @@ class _SplashPageState extends ConsumerState<SplashPage>
     double phaseOffset,
   ) {
     final phase = (_particleController.value + phaseOffset) % 1.0;
-    final opacity = (0.1 + 0.15 * (1 - (phase - 0.5).abs() * 2)) *
+    // 更强的呼吸效果
+    final opacity = (0.15 + 0.25 * (1 - (phase - 0.5).abs() * 2)) *
         _logoOpacity.value;
+    // 添加轻微的缩放动画
+    final scale = 0.8 + 0.4 * (1 - (phase - 0.5).abs() * 2);
 
     return Positioned(
       left: MediaQuery.of(context).size.width * left,
       top: MediaQuery.of(context).size.height * top,
-      child: Opacity(
-        opacity: opacity,
-        child: Container(
-          width: size,
-          height: size,
-          decoration: BoxDecoration(
-            color: AppColors.primary,
-            shape: BoxShape.circle,
-            boxShadow: [
-              BoxShadow(
-                color: AppColors.primary.withValues(alpha: 0.3),
-                blurRadius: 8,
+      child: Transform.scale(
+        scale: scale,
+        child: Opacity(
+          opacity: opacity,
+          child: Container(
+            width: size,
+            height: size,
+            decoration: BoxDecoration(
+              gradient: RadialGradient(
+                colors: [
+                  AppColors.primary.withValues(alpha: 0.8),
+                  AppColors.primary.withValues(alpha: 0.2),
+                ],
               ),
-            ],
+              shape: BoxShape.circle,
+              boxShadow: [
+                BoxShadow(
+                  color: AppColors.primary.withValues(alpha: 0.4),
+                  blurRadius: 12,
+                  spreadRadius: 2,
+                ),
+              ],
+            ),
           ),
         ),
       ),
@@ -299,55 +313,55 @@ class _SplashPageState extends ConsumerState<SplashPage>
 
   Widget _buildLogoSection() {
     return SizedBox(
-      width: 140,
-      height: 140,
+      width: 160,
+      height: 160,
       child: Stack(
         alignment: Alignment.center,
         children: [
-          // Ring 1
+          // Ring 1 - 更大的扩散效果
           Transform.scale(
             scale: _ring1Scale.value,
             child: Opacity(
               opacity: _ring1Opacity.value,
               child: Container(
-                width: 140,
-                height: 140,
+                width: 160,
+                height: 160,
                 decoration: BoxDecoration(
                   shape: BoxShape.circle,
                   border: Border.all(
                     color: AppColors.primary,
-                    width: 2,
+                    width: 3,
                   ),
                 ),
               ),
             ),
           ),
-          // Ring 2
+          // Ring 2 - 延迟的第二波扩散
           Transform.scale(
             scale: _ring2Scale.value,
             child: Opacity(
               opacity: _ring2Opacity.value,
               child: Container(
-                width: 140,
-                height: 140,
+                width: 160,
+                height: 160,
                 decoration: BoxDecoration(
                   shape: BoxShape.circle,
                   border: Border.all(
                     color: AppColors.primary,
-                    width: 2,
+                    width: 2.5,
                   ),
                 ),
               ),
             ),
           ),
-          // Logo
+          // Logo with enhanced glow
           Transform.scale(
             scale: _logoScale.value,
             child: Opacity(
               opacity: _logoOpacity.value,
               child: Container(
-                width: 100,
-                height: 100,
+                width: 110,
+                height: 110,
                 decoration: BoxDecoration(
                   shape: BoxShape.circle,
                   gradient: const LinearGradient(
@@ -356,21 +370,30 @@ class _SplashPageState extends ConsumerState<SplashPage>
                     colors: [
                       AppColors.primary,
                       Color(0xFFFF6B81),
+                      Color(0xFFFF8FA3),
                     ],
+                    stops: [0.0, 0.6, 1.0],
                   ),
                   boxShadow: [
                     BoxShadow(
                       color: AppColors.primary.withValues(
-                        alpha: 0.4 * _logoGlow.value,
+                        alpha: 0.5 * _logoGlow.value,
                       ),
-                      blurRadius: 30 * _logoGlow.value,
-                      spreadRadius: 5 * _logoGlow.value,
+                      blurRadius: 40 * _logoGlow.value,
+                      spreadRadius: 8 * _logoGlow.value,
+                    ),
+                    BoxShadow(
+                      color: const Color(0xFFFF6B81).withValues(
+                        alpha: 0.3 * _logoGlow.value,
+                      ),
+                      blurRadius: 60 * _logoGlow.value,
+                      spreadRadius: 12 * _logoGlow.value,
                     ),
                   ],
                 ),
                 child: const Icon(
                   Icons.camera_rounded,
-                  size: 50,
+                  size: 56,
                   color: Colors.white,
                 ),
               ),
@@ -386,14 +409,29 @@ class _SplashPageState extends ConsumerState<SplashPage>
       position: _nameSlide,
       child: Opacity(
         opacity: _nameOpacity.value,
-        child: const Text(
-          '小颜圈',
-          style: TextStyle(
-            fontSize: 36,
-            fontWeight: FontWeight.w800,
-            color: AppColors.textPrimary,
-            letterSpacing: 6,
-            height: 1.2,
+        child: ShaderMask(
+          shaderCallback: (bounds) => const LinearGradient(
+            colors: [
+              AppColors.textPrimary,
+              Color(0xFF333333),
+            ],
+          ).createShader(bounds),
+          child: const Text(
+            '小颜圈',
+            style: TextStyle(
+              fontSize: 40,
+              fontWeight: FontWeight.w900,
+              color: Colors.white,
+              letterSpacing: 8,
+              height: 1.2,
+              shadows: [
+                Shadow(
+                  color: Color(0x20000000),
+                  offset: Offset(0, 2),
+                  blurRadius: 4,
+                ),
+              ],
+            ),
           ),
         ),
       ),
@@ -405,13 +443,26 @@ class _SplashPageState extends ConsumerState<SplashPage>
       position: _taglineSlide,
       child: Opacity(
         opacity: _taglineOpacity.value,
-        child: const Text(
-          '创作者的素材灵感库',
-          style: TextStyle(
-            fontSize: 16,
-            fontWeight: FontWeight.w400,
-            color: AppColors.textSecondary,
-            letterSpacing: 2,
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
+          decoration: BoxDecoration(
+            gradient: LinearGradient(
+              colors: [
+                AppColors.primary.withValues(alpha: 0.08),
+                AppColors.primary.withValues(alpha: 0.12),
+                AppColors.primary.withValues(alpha: 0.08),
+              ],
+            ),
+            borderRadius: BorderRadius.circular(20),
+          ),
+          child: const Text(
+            '创作者的素材灵感库',
+            style: TextStyle(
+              fontSize: 15,
+              fontWeight: FontWeight.w500,
+              color: AppColors.textSecondary,
+              letterSpacing: 2.5,
+            ),
           ),
         ),
       ),
