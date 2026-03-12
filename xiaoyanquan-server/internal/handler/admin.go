@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log"
 	"net/http"
 	"net/url"
 	"os"
@@ -331,8 +332,14 @@ func (h *AdminHandler) MaterialUpdate(c *gin.Context) {
 		return
 	}
 
+	// 临时调试日志：记录客户端发送的实际请求体
+	if debugBody, _ := json.Marshal(req); len(debugBody) > 0 {
+		log.Printf("[MaterialUpdate] id=%d body=%s", id, string(debugBody))
+	}
+
 	// Handle tags specially (convert []interface{} to pq.StringArray)
 	if tagsRaw, ok := req["tags"]; ok {
+		log.Printf("[MaterialUpdate] Processing tags, type=%T, value=%v", tagsRaw, tagsRaw)
 		if tagsArr, ok := tagsRaw.([]interface{}); ok {
 			tags := make([]string, 0, len(tagsArr))
 			for _, t := range tagsArr {
@@ -342,38 +349,49 @@ func (h *AdminHandler) MaterialUpdate(c *gin.Context) {
 			}
 			// Use struct update for tags
 			delete(req, "tags")
+			log.Printf("[MaterialUpdate] Updating tags: %v", tags)
 			if err := h.DB.Model(&material).Update("tags", tags).Error; err != nil {
-				response.ServerError(c, "更新失败")
+				log.Printf("[MaterialUpdate] ERROR: Failed to update tags: %v", err)
+				response.ServerError(c, "更新标签失败: "+err.Error())
 				return
 			}
 		}
 	}
 
-	// Normalize category_id: 0 -> NULL (avoid FK error), number -> uint
+	// Normalize category_id: 0/nil -> NULL, positive number -> validate then uint
 	if cidRaw, ok := req["category_id"]; ok {
+		log.Printf("[MaterialUpdate] Processing category_id, type=%T, value=%v", cidRaw, cidRaw)
+		var cidUint uint
 		switch v := cidRaw.(type) {
 		case float64:
-			if v <= 0 {
-				req["category_id"] = nil
-			} else {
-				req["category_id"] = uint(v)
+			if v > 0 {
+				cidUint = uint(v)
 			}
 		case int:
-			if v <= 0 {
-				req["category_id"] = nil
-			} else {
-				req["category_id"] = uint(v)
+			if v > 0 {
+				cidUint = uint(v)
 			}
 		case int64:
-			if v <= 0 {
-				req["category_id"] = nil
-			} else {
-				req["category_id"] = uint(v)
+			if v > 0 {
+				cidUint = uint(v)
 			}
 		case uint:
-			if v == 0 {
-				req["category_id"] = nil
+			cidUint = v
+		}
+		if cidUint > 0 {
+			// 校验分类是否存在
+			var count int64
+			h.DB.Model(&model.Category{}).Where("id = ?", cidUint).Count(&count)
+			if count == 0 {
+				log.Printf("[MaterialUpdate] ERROR: Category not found: %d", cidUint)
+				response.BadRequest(c, 400, "分类不存在")
+				return
 			}
+			req["category_id"] = cidUint
+			log.Printf("[MaterialUpdate] Set category_id to: %d", cidUint)
+		} else {
+			req["category_id"] = nil
+			log.Printf("[MaterialUpdate] Set category_id to NULL")
 		}
 	}
 
@@ -382,19 +400,25 @@ func (h *AdminHandler) MaterialUpdate(c *gin.Context) {
 
 	// Normalize original_urls into jsonb
 	if ouRaw, ok := req["original_urls"]; ok {
+		log.Printf("[MaterialUpdate] Processing original_urls, type=%T, value=%v", ouRaw, ouRaw)
 		b, err := json.Marshal(ouRaw)
 		if err != nil {
-			response.BadRequest(c, 400, "参数错误")
+			log.Printf("[MaterialUpdate] ERROR: Failed to marshal original_urls: %v", err)
+			response.BadRequest(c, 400, "参数错误: original_urls 格式不正确")
 			return
 		}
+		log.Printf("[MaterialUpdate] Marshaled original_urls: %s", string(b))
 		req["original_urls"] = model.JSON(b)
 	}
 
 	if len(req) > 0 {
+		log.Printf("[MaterialUpdate] Updating material with fields: %v", req)
 		if err := h.DB.Model(&material).Updates(req).Error; err != nil {
-			response.ServerError(c, "更新失败")
+			log.Printf("[MaterialUpdate] ERROR: Database update failed: %v", err)
+			response.ServerError(c, "更新失败: "+err.Error())
 			return
 		}
+		log.Printf("[MaterialUpdate] Update successful for material id=%d", id)
 	}
 	h.DB.Preload("Category").First(&material, id)
 	response.Success(c, material)
