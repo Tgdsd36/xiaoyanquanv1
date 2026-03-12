@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import '../core/auth/auth_provider.dart';
+import '../features/splash/pages/splash_page.dart';
 import '../features/auth/pages/login_page.dart';
 import '../features/auth/pages/register_page.dart';
 import '../features/home/pages/home_page.dart';
@@ -27,16 +28,25 @@ final routerProvider = Provider<GoRouter>((ref) {
 
   return GoRouter(
     navigatorKey: _rootNavigatorKey,
-    initialLocation: '/',
+    initialLocation: '/splash',
     redirect: (context, state) {
+      final isSplashRoute = state.matchedLocation == '/splash';
       final isUnauthenticated = authStatus == AuthStatus.unauthenticated;
       final isLoginRoute = state.matchedLocation == '/login';
+
+      // 允许访问 Splash 页面
+      if (isSplashRoute) return null;
 
       if (isUnauthenticated && !isLoginRoute) return '/login';
       if (!isUnauthenticated && isLoginRoute) return '/';
       return null;
     },
     routes: [
+      // Splash
+      GoRoute(
+        path: '/splash',
+        builder: (context, state) => const SplashPage(),
+      ),
       // Login
       GoRoute(
         path: '/login',
