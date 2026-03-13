@@ -20,6 +20,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
+	"github.com/lib/pq"
 	"golang.org/x/crypto/bcrypt"
 	"gorm.io/gorm"
 
@@ -347,10 +348,10 @@ func (h *AdminHandler) MaterialUpdate(c *gin.Context) {
 					tags = append(tags, s)
 				}
 			}
-			// Use struct update for tags
+			// Use struct update for tags with pq.StringArray
 			delete(req, "tags")
 			log.Printf("[MaterialUpdate] Updating tags: %v", tags)
-			if err := h.DB.Model(&material).Update("tags", tags).Error; err != nil {
+			if err := h.DB.Model(&material).Update("tags", pq.StringArray(tags)).Error; err != nil {
 				log.Printf("[MaterialUpdate] ERROR: Failed to update tags: %v", err)
 				response.ServerError(c, "更新标签失败: "+err.Error())
 				return
