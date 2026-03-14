@@ -201,18 +201,45 @@ def split_candidates(detail: Dict[str, Any]) -> List[str]:
     return dedupe_keep_order(str(v) for v in values if v)
 
 
-def parse_media_data_urls(detail: Dict[str, Any]) -> Tuple[List[str], str]:
+def parse_media_data_urls(detail: Dict[str, Any]) -> Tuple[List[str], List[str], str]:
+    """解析 media_data，返回 (image_urls, video_urls, first_video_url)。
+
+    碰友 live photo 格式为列表：
+      [{"type": 0/1, "images": "<jpg>", "video_path": "<mp4>", "thumbnail_path": "..."}, ...]
+    type=1 表示 live 帧（有对应视频），type=0 为普通静态图。
+    """
     raw = detail.get("media_data")
     if raw in (None, "", []):
-        return [], ""
+        return [], [], ""
     parsed = raw
     if isinstance(raw, str):
         try:
             parsed = json.loads(raw)
         except Exception:
-            return [], ""
+            return [], [], ""
 
-    urls: List[str] = []
+    # 碰友专属：列表每项都含 images / video_path 字段
+    if (
+        isinstance(parsed, list)
+        and parsed
+        and all(isinstance(item, dict) and "images" in item for item in parsed)
+    ):
+        image_urls: List[str] = []
+        video_urls: List[str] = []
+        preview = ""
+        for item in parsed:
+            img = str(item.get("images") or "").strip()
+            vid = str(item.get("video_path") or "").strip()
+            if img.startswith("http"):
+                image_urls.append(img)
+            if vid.startswith("http"):
+                video_urls.append(vid)
+                if not preview:
+                    preview = vid
+        return dedupe_keep_order(image_urls), dedupe_keep_order(video_urls), preview
+
+    # 通用 fallback：递归遍历所有 URL
+    all_urls: List[str] = []
     preview = ""
 
     def walk(node: Any) -> None:
@@ -225,19 +252,21 @@ def parse_media_data_urls(detail: Dict[str, Any]) -> Tuple[List[str], str]:
                 walk(item)
         elif isinstance(node, str):
             if node.startswith("http://") or node.startswith("https://"):
-                urls.append(node)
+                all_urls.append(node)
                 lowered = node.lower()
                 if preview == "" and (lowered.endswith(".mov") or lowered.endswith(".mp4")):
                     preview = node
 
     walk(parsed)
-    image_urls = [url for url in dedupe_keep_order(urls) if not re.search(r"\.(mov|mp4)(\?|$)", url, re.I)]
-    return image_urls, preview
+    deduped = dedupe_keep_order(all_urls)
+    imgs = [u for u in deduped if not re.search(r"\.(mov|mp4)(\?|$)", u, re.I)]
+    vids = [u for u in deduped if re.search(r"\.(mov|mp4)(\?|$)", u, re.I)]
+    return imgs, vids, preview
 
 
 def resolve_type(detail: Dict[str, Any]) -> str:
     if detail.get("livepoto"):
-        image_urls, preview = parse_media_data_urls(detail)
+        image_urls, _video_urls, preview = parse_media_data_urls(detail)
         if image_urls and preview:
             return "live_photo"
     if detail.get("vod"):
@@ -252,10 +281,11 @@ def resolve_original_urls(detail: Dict[str, Any], material_type: str) -> Tuple[L
         return dedupe_keep_order([vod]), thumb or vod
 
     if material_type == "live_photo":
-        image_urls, preview = parse_media_data_urls(detail)
+        image_urls, video_urls, preview = parse_media_data_urls(detail)
         if image_urls and preview:
             thumb = image_urls[0]
-            return image_urls, thumb
+            # original_urls = 静态图 + 对应视频（jpg 在前，mp4 在后，与后端迁移脚本一致）
+            return image_urls + video_urls, thumb
 
     images = detail.get("mainImage") or detail.get("images") or []
     if isinstance(images, str):
@@ -268,7 +298,7 @@ def resolve_original_urls(detail: Dict[str, Any], material_type: str) -> Tuple[L
 def resolve_preview_mov_url(detail: Dict[str, Any], material_type: str) -> str:
     if material_type != "live_photo":
         return ""
-    _, preview = parse_media_data_urls(detail)
+    _, _video_urls, preview = parse_media_data_urls(detail)
     return preview
 
 
