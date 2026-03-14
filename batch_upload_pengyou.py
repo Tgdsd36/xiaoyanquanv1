@@ -353,6 +353,9 @@ class AdminAPI:
     def update_material(self, material_id: int, payload: Dict[str, Any]) -> Dict[str, Any]:
         return self.request("PUT", f"/materials/{material_id}", data=payload)
 
+    def batch_delete_materials(self, ids: List[int]) -> Dict[str, Any]:
+        return self.request("POST", "/materials/batch-delete", data={"ids": ids})
+
 
 @dataclass
 class CategoryMaps:
@@ -669,6 +672,14 @@ def parse_args() -> argparse.Namespace:
         "--upload-to-cos", action="store_true",
         help="将媒体文件下载后上传到腾讯云 COS，用 COS URL 替换碰友 CDN（需 qcloud_cos 已安装）",
     )
+    parser.add_argument(
+        "--rollback", action="store_true",
+        help="回滚已导入的素材（从 import_state.json 读取 target_id 批量删除）",
+    )
+    parser.add_argument(
+        "--rollback-last", type=int, default=0, metavar="N",
+        help="仅回滚最近 N 条（0 表示全部）",
+    )
     return parser.parse_args()
 
 
@@ -697,6 +708,39 @@ def main() -> int:
 
     token = make_jwt(secret, args.admin_id, args.admin_username, args.admin_role)
     api = AdminAPI(args.api_base, token, args.timeout)
+
+    # ---- 回滚模式 ----
+    if args.rollback:
+        imported: Dict[str, Any] = state.get("imported", {})
+        if not imported:
+            log("无已导入记录，无需回滚")
+            return 0
+        # 按 imported_at 排序，取最近 N 条
+        sorted_items = sorted(
+            imported.items(),
+            key=lambda kv: kv[1].get("imported_at", ""),
+            reverse=True,
+        )
+        if args.rollback_last > 0:
+            sorted_items = sorted_items[:args.rollback_last]
+        target_ids = [int(v["target_id"]) for _, v in sorted_items if v.get("target_id")]
+        source_ids = [k for k, _ in sorted_items]
+        log(f"将删除 {len(target_ids)} 条素材: material_ids={target_ids}")
+        if not target_ids:
+            log("没有有效的 target_id，终止")
+            return 0
+        try:
+            api.batch_delete_materials(target_ids)
+            log(f"删除成功: {len(target_ids)} 条")
+        except Exception as exc:
+            log(f"删除失败: {exc}")
+            return 1
+        # 从 state 中移除已回滚的记录
+        for sid in source_ids:
+            imported.pop(sid, None)
+        save_json(state_path, state)
+        log(f"回滚完成，已从 import_state.json 清除 {len(source_ids)} 条记录")
+        return 0
 
     cos_uploader: Optional[CosUploader] = None
     if args.upload_to_cos:
