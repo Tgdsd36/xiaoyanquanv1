@@ -79,6 +79,8 @@ type MaterialListItem struct {
 	ID            uint     `json:"id"`
 	Title         string   `json:"title"`
 	Type          string   `json:"type"`
+	CategoryID    *uint    `json:"category_id"`
+	CategoryName  string   `json:"category_name"`
 	ThumbnailURL  string   `json:"thumbnail_url"`
 	WatermarkURL  string   `json:"watermark_url,omitempty"`
 	OriginalURLs  []string `json:"original_urls"`
@@ -173,7 +175,7 @@ func (h *MaterialHandler) List(c *gin.Context) {
 	}
 
 	var materials []model.Material
-	query.Offset((page - 1) * pageSize).Limit(pageSize).Find(&materials)
+	query.Preload("Category").Offset((page-1)*pageSize).Limit(pageSize).Find(&materials)
 
 	// 检查当前用户收藏状态
 	userID := middleware.GetUserID(c)
@@ -185,10 +187,16 @@ func (h *MaterialHandler) List(c *gin.Context) {
 		if m.Tags != nil {
 			tags = m.Tags
 		}
+		categoryName := ""
+		if m.Category != nil {
+			categoryName = m.Category.Name
+		}
 		list[i] = MaterialListItem{
 			ID:            m.ID,
 			Title:         m.Title,
 			Type:          m.Type,
+			CategoryID:    m.CategoryID,
+			CategoryName:  categoryName,
 			ThumbnailURL:  fullURL(h.BaseURL, m.ThumbnailURL),
 			WatermarkURL:  fullURL(h.BaseURL, m.WatermarkURL),
 			OriginalURLs:  parseOriginalURLs(h.BaseURL, m.OriginalURLs),
@@ -339,7 +347,7 @@ func (h *MaterialHandler) Search(c *gin.Context) {
 	query.Count(&total)
 
 	var materials []model.Material
-	query.Order("hot_score DESC").
+	query.Preload("Category").Order("hot_score DESC").
 		Offset((page - 1) * pageSize).Limit(pageSize).
 		Find(&materials)
 
@@ -352,10 +360,16 @@ func (h *MaterialHandler) Search(c *gin.Context) {
 		if m.Tags != nil {
 			tags = m.Tags
 		}
+		categoryName := ""
+		if m.Category != nil {
+			categoryName = m.Category.Name
+		}
 		list[i] = MaterialListItem{
 			ID:            m.ID,
 			Title:         m.Title,
 			Type:          m.Type,
+			CategoryID:    m.CategoryID,
+			CategoryName:  categoryName,
 			ThumbnailURL:  fullURL(h.BaseURL, m.ThumbnailURL),
 			WatermarkURL:  fullURL(h.BaseURL, m.WatermarkURL),
 			Width:         m.Width,
