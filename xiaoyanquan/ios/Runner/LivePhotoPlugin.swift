@@ -1,4 +1,6 @@
+import AVFoundation
 import Flutter
+import ImageIO
 import UIKit
 import Photos
 import PhotosUI
@@ -272,64 +274,133 @@ class LivePhotoPlugin: NSObject, FlutterPlugin, PHPickerViewControllerDelegate {
     private func saveLivePhoto(imageURL: String, videoURL: String, result: @escaping FlutterResult) {
         let group = DispatchGroup()
         var imageData: Data?
-        var videoLocalURL: URL?
+        var rawVideoURL: URL?
         var downloadError: Error?
-        
+
         // Download image
         group.enter()
         downloadFile(from: imageURL) { data, error in
-            if let data = data {
-                imageData = data
-            } else {
-                downloadError = error
-            }
+            if let data = data { imageData = data } else { downloadError = error }
             group.leave()
         }
-        
+
         // Download video
         group.enter()
-        let tempVideoURL = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString + ".mov")
+        let tempVideoURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString + ".mov")
         downloadFileToURL(from: videoURL, to: tempVideoURL) { url, error in
-            if let url = url {
-                videoLocalURL = url
-            } else {
-                downloadError = error
-            }
+            if let url = url { rawVideoURL = url } else { downloadError = error }
             group.leave()
         }
-        
+
         group.notify(queue: .main) {
-            guard let imageData = imageData, let videoLocalURL = videoLocalURL, downloadError == nil else {
-                result(FlutterError(code: "DOWNLOAD_FAILED", message: downloadError?.localizedDescription ?? "Download failed", details: nil))
+            guard let imageData = imageData,
+                  let rawVideoURL = rawVideoURL,
+                  downloadError == nil else {
+                result(FlutterError(code: "DOWNLOAD_FAILED",
+                                    message: downloadError?.localizedDescription ?? "Download failed",
+                                    details: nil))
                 return
             }
-            
-            // Save as Live Photo
-            let tempImageURL = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString + ".heic")
+
+            // 生成唯一 ContentIdentifier，注入 image 和 video，使 iOS 识别为合法 Live Photo 对
+            let contentID = UUID().uuidString
+
+            // --- 注入 image 元数据 ---
+            let processedImageData = self.injectContentID(intoImage: imageData, uuid: contentID) ?? imageData
+            let tempImageURL = FileManager.default.temporaryDirectory
+                .appendingPathComponent(UUID().uuidString + ".jpg")
             do {
-                try imageData.write(to: tempImageURL)
+                try processedImageData.write(to: tempImageURL)
             } catch {
                 result(FlutterError(code: "WRITE_FAILED", message: error.localizedDescription, details: nil))
                 return
             }
-            
-            PHPhotoLibrary.shared().performChanges({
-                let request = PHAssetCreationRequest.forAsset()
-                let options = PHAssetResourceCreationOptions()
-                options.shouldMoveFile = true
-                request.addResource(with: .photo, fileURL: tempImageURL, options: options)
-                request.addResource(with: .pairedVideo, fileURL: videoLocalURL, options: options)
-            }) { success, error in
-                DispatchQueue.main.async {
-                    // Cleanup temp files
-                    try? FileManager.default.removeItem(at: tempImageURL)
-                    try? FileManager.default.removeItem(at: videoLocalURL)
-                    
-                    if success {
-                        result(true)
-                    } else {
-                        result(FlutterError(code: "SAVE_FAILED", message: error?.localizedDescription ?? "Save failed", details: nil))
+
+            // --- 注入 video 元数据（AVAssetExportSession passthrough → .mov）---
+            let processedVideoURL = FileManager.default.temporaryDirectory
+                .appendingPathComponent(UUID().uuidString + ".mov")
+            self.injectContentID(intoVideo: rawVideoURL, outputURL: processedVideoURL, uuid: contentID) { exportError in
+                // 如果导出失败则回退到原始文件（仍可能失败，但保留兜底尝试）
+                let finalVideoURL = (exportError == nil) ? processedVideoURL : rawVideoURL
+
+                PHPhotoLibrary.shared().performChanges({
+                    let request = PHAssetCreationRequest.forAsset()
+                    let opts = PHAssetResourceCreationOptions()
+                    opts.shouldMoveFile = true
+                    request.addResource(with: .photo, fileURL: tempImageURL, options: opts)
+                    request.addResource(with: .pairedVideo, fileURL: finalVideoURL, options: opts)
+                }) { success, saveError in
+                    DispatchQueue.main.async {
+                        // 清理临时文件（shouldMoveFile=true 时成功后系统已移走，removeItem 会静默失败，无妨）
+                        try? FileManager.default.removeItem(at: tempImageURL)
+                        try? FileManager.default.removeItem(at: rawVideoURL)
+                        try? FileManager.default.removeItem(at: processedVideoURL)
+
+                        if success {
+                            result(true)
+                        } else {
+                            result(FlutterError(code: "SAVE_FAILED",
+                                                message: saveError?.localizedDescription ?? "Save failed",
+                                                details: nil))
+                        }
                     }
+                }
+            }
+        }
+    }
+
+    /// 向 JPEG/HEIC 图片数据注入 ContentIdentifier（MakerApple tag 0x0011 = key "17"）
+    private func injectContentID(intoImage data: Data, uuid: String) -> Data? {
+        guard let source = CGImageSourceCreateWithData(data as CFData, nil),
+              let typeUTI = CGImageSourceGetType(source) else { return nil }
+        let mutableData = NSMutableData()
+        guard let dest = CGImageDestinationCreateWithData(mutableData, typeUTI, 1, nil) else { return nil }
+
+        var props = (CGImageSourceCopyPropertiesAtIndex(source, 0, nil) as? [String: Any]) ?? [:]
+        var makerApple = (props[kCGImagePropertyMakerAppleDictionary as String] as? [String: Any]) ?? [:]
+        makerApple["17"] = uuid   // 0x0011 = ContentIdentifier
+        props[kCGImagePropertyMakerAppleDictionary as String] = makerApple
+
+        CGImageDestinationAddImageFromSource(dest, source, 0, props as CFDictionary)
+        guard CGImageDestinationFinalize(dest) else { return nil }
+        return mutableData as Data
+    }
+
+    /// 向视频文件注入 com.apple.quicktime.content.identifier，输出为 .mov 容器
+    private func injectContentID(intoVideo inputURL: URL, outputURL: URL, uuid: String,
+                                  completion: @escaping (Error?) -> Void) {
+        let asset = AVURLAsset(url: inputURL)
+        guard let session = AVAssetExportSession(asset: asset,
+                                                 presetName: AVAssetExportPresetPassthrough) else {
+            completion(NSError(domain: "LivePhoto", code: -2,
+                               userInfo: [NSLocalizedDescriptionKey: "Cannot create AVAssetExportSession"]))
+            return
+        }
+
+        let idItem = AVMutableMetadataItem()
+        idItem.key = "com.apple.quicktime.content.identifier" as NSString
+        idItem.keySpace = AVMetadataKeySpace.quickTimeMetadata
+        idItem.value = uuid as NSString
+        idItem.dataType = "com.apple.metadata.datatype.UTF-8"
+
+        let versionItem = AVMutableMetadataItem()
+        versionItem.key = "com.apple.quicktime.live-photo.version" as NSString
+        versionItem.keySpace = AVMetadataKeySpace.quickTimeMetadata
+        versionItem.value = 1 as NSNumber
+        versionItem.dataType = "com.apple.metadata.datatype.int8"
+
+        session.outputURL = outputURL
+        session.outputFileType = .mov
+        session.metadata = [idItem, versionItem]
+
+        session.exportAsynchronously {
+            DispatchQueue.main.async {
+                if session.status == .completed {
+                    completion(nil)
+                } else {
+                    completion(session.error ?? NSError(domain: "LivePhoto", code: -3,
+                                                        userInfo: [NSLocalizedDescriptionKey: "Video export failed"]))
                 }
             }
         }
