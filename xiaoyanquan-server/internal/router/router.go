@@ -93,6 +93,8 @@ func Setup(cfg *config.Config, db *gorm.DB, rdb *redis.Client) *gin.Engine {
 		materialsAuth.Use(middleware.AuthRequired(&cfg.JWT, db))
 		{
 			materialsAuth.GET("/:id/download", materialHandler.Download)
+			// Live Photo 视频代理：.mp4 以 video/quicktime 返回，.mov 直接重定向
+			materialsAuth.GET("/:id/live-video", materialHandler.LiveVideoProxy)
 		}
 
 		// 找灵感（游客可浏览）

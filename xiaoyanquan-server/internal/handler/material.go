@@ -2,6 +2,9 @@ package handler
 
 import (
 	"encoding/json"
+	"fmt"
+	"io"
+	"net/http"
 	"net/url"
 	"os"
 	"path"
@@ -478,12 +481,23 @@ func (h *MaterialHandler) Download(c *gin.Context) {
 		downloadURL = urls[0]
 	}
 
-	response.Success(c, gin.H{
+	// Live Photo：video 字段统一指向代理端点，客户端调用后得到 .mov
+	// 无论源文件是 .mp4 还是 .mov，均走同一个 URL，由服务端判断是否需要转换
+	liveVideoURL := ""
+	if material.Type == "live_photo" && strings.TrimSpace(material.PreviewMovURL) != "" {
+		liveVideoURL = fmt.Sprintf("%s/api/v1/materials/%d/live-video", h.BaseURL, material.ID)
+	}
+
+	respData := gin.H{
 		"download_url":    downloadURL,
 		"download_urls":   urls,
 		"remaining_count": monthlyLimit - user.MonthlyDownloadCount - 1,
 		"monthly_limit":   monthlyLimit,
-	})
+	}
+	if liveVideoURL != "" {
+		respData["live_video_url"] = liveVideoURL
+	}
+	response.Success(c, respData)
 }
 
 func normalizeDownloadURLs(raw []string) []string {
@@ -622,6 +636,71 @@ func localStaticURLExists(raw string) bool {
 	local := filepath.Join(".", strings.TrimPrefix(p, "/"))
 	_, err := os.Stat(local)
 	return err == nil
+}
+
+// ==================== Live Photo 视频代理 ====================
+
+// LiveVideoProxy 将 live_photo 素材的视频统一以 video/quicktime（.mov）格式代理输出。
+// - 源视频已是 .mov → 302 重定向，客户端直接下载
+// - 源视频是 .mp4  → 下载后以 Content-Type: video/quicktime 流式返回
+// MP4 与 MOV 同属 MPEG-4 容器，无需 ffmpeg 重编码，仅改 MIME 声明即可被 iOS 识别为 .mov。
+func (h *MaterialHandler) LiveVideoProxy(c *gin.Context) {
+	id, err := strconv.ParseUint(c.Param("id"), 10, 64)
+	if err != nil {
+		response.BadRequest(c, 400, "参数错误")
+		return
+	}
+
+	var material model.Material
+	if err := h.DB.First(&material, id).Error; err != nil {
+		response.NotFound(c, "素材不存在")
+		return
+	}
+	if material.Type != "live_photo" {
+		response.BadRequest(c, 400, "仅支持 live_photo 类型")
+		return
+	}
+
+	videoURL := strings.TrimSpace(fullURL(h.BaseURL, material.PreviewMovURL))
+	if videoURL == "" {
+		response.NotFound(c, "该素材无视频")
+		return
+	}
+
+	// 已是 .mov：直接重定向，节省带宽
+	cleanPath := strings.ToLower(strings.SplitN(videoURL, "?", 2)[0])
+	if strings.HasSuffix(cleanPath, ".mov") {
+		c.Redirect(http.StatusFound, videoURL)
+		return
+	}
+
+	// .mp4（或其他）：代理并以 video/quicktime 流式返回
+	req, err := http.NewRequestWithContext(c.Request.Context(), http.MethodGet, videoURL, nil)
+	if err != nil {
+		response.ServerError(c, "构建请求失败")
+		return
+	}
+	req.Header.Set("User-Agent", "Mozilla/5.0")
+
+	client := &http.Client{Timeout: 120 * time.Second}
+	resp, err := client.Do(req)
+	if err != nil {
+		response.ServerError(c, "视频获取失败")
+		return
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		c.Status(resp.StatusCode)
+		return
+	}
+
+	c.Header("Content-Type", "video/quicktime")
+	c.Header("Content-Disposition", `attachment; filename="live.mov"`)
+	if cl := resp.Header.Get("Content-Length"); cl != "" {
+		c.Header("Content-Length", cl)
+	}
+	io.Copy(c.Writer, resp.Body) //nolint:errcheck
 }
 
 // ==================== 内部方法 ====================
