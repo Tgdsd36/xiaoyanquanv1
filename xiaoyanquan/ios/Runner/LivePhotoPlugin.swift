@@ -399,17 +399,36 @@ class LivePhotoPlugin: NSObject, FlutterPlugin, PHPickerViewControllerDelegate {
     private func injectContentID(intoVideo inputURL: URL, outputURL: URL, uuid: String,
                                   completion: @escaping (Error?) -> Void) {
         let asset = AVURLAsset(url: inputURL)
+        // 使用 H.264 转码（不用 passthrough）：PengYou 视频是 HEVC/hvc1 非标准帧率+full-range
+        // PHAssetCreationRequest.pairedVideo 将 HEVC 拒绝，H.264 MOV 才是安全格式
         guard let session = AVAssetExportSession(asset: asset,
-                                                 presetName: AVAssetExportPresetPassthrough) else {
+                                                 presetName: AVAssetExportPreset1280x720) else {
             completion(NSError(domain: "LivePhoto", code: -2,
                                userInfo: [NSLocalizedDescriptionKey: "Cannot create AVAssetExportSession"]))
             return
         }
 
-        // TODO: 待测试结论后，根据需要加回 content.identifier / live-photo.version / still-image-time
-        // 当前：纯 passthrough（无 metadata），测试 PHAssetCreationRequest 是否接受
+        // Live Photo 必要元数据
+        let cidItem = AVMutableMetadataItem()
+        cidItem.key = "com.apple.quicktime.content.identifier" as NSString
+        cidItem.keySpace = .quickTimeMetadata
+        cidItem.value = uuid as NSString
+        cidItem.dataType = "com.apple.metadata.datatype.UTF-8"
+
+        let verItem = AVMutableMetadataItem()
+        verItem.key = "com.apple.quicktime.live-photo.version" as NSString
+        verItem.keySpace = .quickTimeMetadata
+        verItem.value = NSNumber(value: 1)
+        verItem.dataType = "com.apple.metadata.datatype.int8"
+
+        let stillItem = AVMutableMetadataItem()
+        stillItem.key = "com.apple.quicktime.still-image-time" as NSString
+        stillItem.keySpace = .quickTimeMetadata
+        stillItem.value = NSNumber(value: Float(0))
+
         session.outputURL = outputURL
         session.outputFileType = .mov
+        session.metadata = [cidItem, verItem, stillItem]
 
         session.exportAsynchronously {
             DispatchQueue.main.async {
