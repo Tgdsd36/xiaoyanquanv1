@@ -336,10 +336,14 @@ class LivePhotoPlugin: NSObject, FlutterPlugin, PHPickerViewControllerDelegate {
             self.injectContentID(intoVideo: rawVideoURL, outputURL: processedVideoURL, uuid: contentID) { exportError in
                 if let exportError = exportError {
                     result(FlutterError(code: "VIDEO_PROCESS_FAILED",
-                                       message: exportError.localizedDescription,
+                                       message: exportError.localizedDescription +
+                                           " [imgUUID=\(imgUUIDOK ? "ok" : "no"),imgSize=\(processedImageData.count)]",
                                        details: nil))
                     return
                 }
+
+                // 检查处理后视频文件大小，用于诊断
+                let vidSize = (try? FileManager.default.attributesOfItem(atPath: processedVideoURL.path))?[.size] as? Int ?? 0
 
                 PHPhotoLibrary.shared().performChanges({
                     let request = PHAssetCreationRequest.forAsset()
@@ -357,9 +361,9 @@ class LivePhotoPlugin: NSObject, FlutterPlugin, PHPickerViewControllerDelegate {
                         if success {
                             result(true)
                         } else {
-                            // 诊断信息：imgUUID 是否注入成功，方便服务器日志分析
+                            // 诊断信息：imgUUID/imgSize/vidSize 用于服务器日志分析
                             let diagMsg = (saveError?.localizedDescription ?? "Save failed") +
-                                " [imgUUID=\(imgUUIDOK ? "ok" : "no")]"
+                                " [imgUUID=\(imgUUIDOK ? "ok" : "no"),imgSize=\(processedImageData.count),vidSize=\(vidSize)]"
                             result(FlutterError(code: "SAVE_FAILED",
                                                 message: diagMsg,
                                                 details: nil))
@@ -402,27 +406,10 @@ class LivePhotoPlugin: NSObject, FlutterPlugin, PHPickerViewControllerDelegate {
             return
         }
 
-        let cidItem = AVMutableMetadataItem()
-        cidItem.key = "com.apple.quicktime.content.identifier" as NSString
-        cidItem.keySpace = .quickTimeMetadata
-        cidItem.value = uuid as NSString
-        cidItem.dataType = "com.apple.metadata.datatype.UTF-8"
-
-        let verItem = AVMutableMetadataItem()
-        verItem.key = "com.apple.quicktime.live-photo.version" as NSString
-        verItem.keySpace = .quickTimeMetadata
-        verItem.value = NSNumber(value: 1)
-        verItem.dataType = "com.apple.metadata.datatype.int8"
-
-        // still-image-time 作为全局 metadata（value=0 表示静态帧在视频起始位置）
-        let stillItem = AVMutableMetadataItem()
-        stillItem.key = "com.apple.quicktime.still-image-time" as NSString
-        stillItem.keySpace = .quickTimeMetadata
-        stillItem.value = NSNumber(value: Float(0))
-
+        // TODO: 待测试结论后，根据需要加回 content.identifier / live-photo.version / still-image-time
+        // 当前：纯 passthrough（无 metadata），测试 PHAssetCreationRequest 是否接受
         session.outputURL = outputURL
         session.outputFileType = .mov
-        session.metadata = [cidItem, verItem, stillItem]
 
         session.exportAsynchronously {
             DispatchQueue.main.async {
