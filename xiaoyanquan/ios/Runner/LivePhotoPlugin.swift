@@ -322,7 +322,7 @@ class LivePhotoPlugin: NSObject, FlutterPlugin, PHPickerViewControllerDelegate {
             }
 
             let tempImageURL = FileManager.default.temporaryDirectory
-                .appendingPathComponent(UUID().uuidString + ".jpg")
+                .appendingPathComponent(UUID().uuidString + ".heic")
             do {
                 try processedImageData.write(to: tempImageURL)
             } catch {
@@ -374,19 +374,27 @@ class LivePhotoPlugin: NSObject, FlutterPlugin, PHPickerViewControllerDelegate {
         }
     }
 
-    /// 向 JPEG/HEIC 图片数据注入 ContentIdentifier（MakerApple tag 0x0011 = key "17"）
+    /// 向图片数据注入 ContentIdentifier，输出 HEIC 格式
+    /// 旧方式：CGImageDestinationAddImageFromSource（复制模式）
+    ///   → 原始 PengYou JPEG 没有 MakerApple 结构，复制时 key["17"] 被静默忽略，imgUUID 永远=no
+    /// 新方式：UIImage → CGImage → CGImageDestinationAddImage（全新创建模式）
+    ///   → 全新创建时 metadata 完全由调用方控制，MakerApple["17"] 可正确写入
+    ///   → 输出 HEIC（Apple 原生格式），PHAssetCreationRequest.photo 完全支持 HEIC
     private func injectContentID(intoImage data: Data, uuid: String) -> Data? {
-        guard let source = CGImageSourceCreateWithData(data as CFData, nil),
-              let typeUTI = CGImageSourceGetType(source) else { return nil }
+        guard let uiImage = UIImage(data: data) else { return nil }
+        // 重新绘制以归一化方向，避免 EXIF orientation 带来的旋转问题
+        let renderer = UIGraphicsImageRenderer(size: uiImage.size)
+        let normalized = renderer.image { _ in uiImage.draw(at: .zero) }
+        guard let cgImage = normalized.cgImage else { return nil }
+
         let mutableData = NSMutableData()
-        guard let dest = CGImageDestinationCreateWithData(mutableData, typeUTI, 1, nil) else { return nil }
+        guard let dest = CGImageDestinationCreateWithData(
+            mutableData, "public.heic" as CFString, 1, nil) else { return nil }
 
-        var props = (CGImageSourceCopyPropertiesAtIndex(source, 0, nil) as? [String: Any]) ?? [:]
-        var makerApple = (props[kCGImagePropertyMakerAppleDictionary as String] as? [String: Any]) ?? [:]
-        makerApple["17"] = uuid   // 0x0011 = ContentIdentifier
-        props[kCGImagePropertyMakerAppleDictionary as String] = makerApple
-
-        CGImageDestinationAddImageFromSource(dest, source, 0, props as CFDictionary)
+        let props: [String: Any] = [
+            kCGImagePropertyMakerAppleDictionary as String: ["17": uuid]
+        ]
+        CGImageDestinationAddImage(dest, cgImage, props as CFDictionary)
         guard CGImageDestinationFinalize(dest) else { return nil }
         return mutableData as Data
     }
