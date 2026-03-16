@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 import 'dart:io';
 
 import 'package:dio/dio.dart';
@@ -11,6 +12,7 @@ import 'package:image_gallery_saver_plus/image_gallery_saver_plus.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:permission_handler/permission_handler.dart';
 
+import '../core/constants/api.dart';
 import '../core/network/http_client.dart';
 import '../core/utils/url_utils.dart';
 import '../features/home/repositories/material_repository.dart';
@@ -128,6 +130,7 @@ class MaterialDownloadHelper {
           }
 
           var successCount = 0;
+          final errors = <String>[];
           for (var i = 0; i < totalPairs; i++) {
             if (progress.isCanceled) {
               canceledByUser = true;
@@ -138,7 +141,7 @@ class MaterialDownloadHelper {
             } else {
               progress.update('正在下载实况...');
             }
-            final ok = await LivePhotoChannel.saveLivePhoto(
+            final (ok, errMsg) = await LivePhotoChannel.saveLivePhoto(
               imageUrl: imageUrls[i],
               videoUrl: videoUrls[i],
             );
@@ -146,13 +149,26 @@ class MaterialDownloadHelper {
               canceledByUser = true;
               break;
             }
-            if (ok) successCount++;
+            if (ok) {
+              successCount++;
+            } else if (errMsg != null) {
+              errors.add('pair[$i]: $errMsg');
+              _reportLog(
+                tag: 'live_photo_save',
+                message: 'materialId=$materialId pair=$i/$totalPairs '
+                    'img=${imageUrls[i]} vid=${videoUrls[i]} err=$errMsg',
+              );
+            }
           }
 
           if (canceledByUser) return false;
           saved = successCount > 0;
-          if (totalPairs > 1 && successCount < totalPairs && context.mounted) {
-            _showSnack(context, '已保存 $successCount/$totalPairs 张 Live，部分下载失败');
+          if (successCount < totalPairs && context.mounted) {
+            final errSummary = errors.isNotEmpty ? ' (${errors.first})' : '';
+            _showSnack(
+              context,
+              '已保存 $successCount/$totalPairs 张 Live，部分失败$errSummary',
+            );
           } else if (saved) {
             successMessage = totalPairs > 1
                 ? '已保存 $totalPairs 张 Live Photo 到相册'
@@ -752,6 +768,25 @@ class MaterialDownloadHelper {
     ScaffoldMessenger.of(
       context,
     ).showSnackBar(SnackBar(content: Text(message)));
+  }
+
+  /// 将日志上报到服务端（调试用，火了就忘）
+  static void _reportLog({required String tag, required String message}) {
+    unawaited(() async {
+      try {
+        await HttpClient().dio.post(
+          Api.clientLog,
+          data: jsonEncode({'tag': tag, 'message': message}),
+          options: Options(
+            headers: {'Content-Type': 'application/json'},
+            sendTimeout: const Duration(seconds: 5),
+            receiveTimeout: const Duration(seconds: 5),
+          ),
+        );
+      } catch (_) {
+        // 日志上报失败不影响主流程
+      }
+    }());
   }
 }
 

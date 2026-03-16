@@ -76,6 +76,9 @@ func Setup(cfg *config.Config, db *gorm.DB, rdb *redis.Client) *gin.Engine {
 			authRequired.POST("/device/unbind", authHandler.UnbindDevice)
 		}
 
+		// 客户端日志上报（无需认证）
+		v1.POST("/client-log", handler.ClientLog)
+
 		// 分类（游客可访问）
 		v1.GET("/categories", categoryHandler.List)
 

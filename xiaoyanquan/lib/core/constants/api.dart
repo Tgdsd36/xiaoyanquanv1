@@ -57,4 +57,7 @@ class Api {
   static const String membershipStatus = '/membership/status';
   static const String membershipPurchase = '/membership/purchase';
   static const String membershipVerify = '/membership/verify';
+
+  // 客户端日志上报（调试用）
+  static const String clientLog = '/client-log';
 }

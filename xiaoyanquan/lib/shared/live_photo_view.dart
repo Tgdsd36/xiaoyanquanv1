@@ -19,7 +19,8 @@ class LivePhotoChannel {
   }
 
   /// 保存 Live Photo 到相册 (iOS only)
-  static Future<bool> saveLivePhoto({
+  /// 返回 (success, errorMessage)
+  static Future<(bool, String?)> saveLivePhoto({
     required String imageUrl,
     required String videoUrl,
   }) async {
@@ -28,9 +29,11 @@ class LivePhotoChannel {
         'image_url': imageUrl,
         'video_url': videoUrl,
       });
-      return result ?? false;
-    } catch (_) {
-      return false;
+      return (result ?? false, null);
+    } on PlatformException catch (e) {
+      return (false, '[${e.code}] ${e.message ?? e.details ?? "unknown"}');
+    } catch (e) {
+      return (false, e.toString());
     }
   }
 }
