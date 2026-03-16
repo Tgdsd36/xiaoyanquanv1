@@ -446,10 +446,10 @@ class LivePhotoPlugin: NSObject, FlutterPlugin, PHPickerViewControllerDelegate {
                 ]
                 var metaFmtDesc: CMFormatDescription?
                 if CMMetadataFormatDescriptionCreateWithMetadataSpecifications(
-                    kCFAllocatorDefault,
-                    kCMMetadataFormatType_Boxed,
-                    [metaSpec as NSDictionary] as NSArray,
-                    &metaFmtDesc) == noErr,
+                    allocator: kCFAllocatorDefault,
+                    metadataType: kCMMetadataFormatType_Boxed,
+                    metadataSpecifications: [metaSpec as NSDictionary] as NSArray,
+                    formatDescriptionOut: &metaFmtDesc) == noErr,
                    let fmtDesc = metaFmtDesc {
                     let metaIn = AVAssetWriterInput(mediaType: .metadata,
                                                    outputSettings: nil,
