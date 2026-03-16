@@ -1,5 +1,4 @@
 import AVFoundation
-import CoreMedia
 import Flutter
 import ImageIO
 import UIKit
@@ -307,8 +306,21 @@ class LivePhotoPlugin: NSObject, FlutterPlugin, PHPickerViewControllerDelegate {
             // 生成唯一 ContentIdentifier，注入 image 和 video，使 iOS 识别为合法 Live Photo 对
             let contentID = UUID().uuidString
 
-            // --- 注入 image 元数据 ---
-            let processedImageData = self.injectContentID(intoImage: imageData, uuid: contentID) ?? imageData
+            // --- 注入 image 元数据，并验证是否真正写入 ---
+            let injectedImageData = self.injectContentID(intoImage: imageData, uuid: contentID)
+            let processedImageData = injectedImageData ?? imageData
+            // 验证 MakerApple["17"] 是否写入成功
+            let imgUUIDOK: Bool
+            if let injected = injectedImageData,
+               let vs = CGImageSourceCreateWithData(injected as CFData, nil),
+               let vp = CGImageSourceCopyPropertiesAtIndex(vs, 0, nil) as? [String: Any],
+               let ma = vp[kCGImagePropertyMakerAppleDictionary as String] as? [String: Any],
+               let written = ma["17"] as? String, written == contentID {
+                imgUUIDOK = true
+            } else {
+                imgUUIDOK = false
+            }
+
             let tempImageURL = FileManager.default.temporaryDirectory
                 .appendingPathComponent(UUID().uuidString + ".jpg")
             do {
@@ -345,8 +357,11 @@ class LivePhotoPlugin: NSObject, FlutterPlugin, PHPickerViewControllerDelegate {
                         if success {
                             result(true)
                         } else {
+                            // 诊断信息：imgUUID 是否注入成功，方便服务器日志分析
+                            let diagMsg = (saveError?.localizedDescription ?? "Save failed") +
+                                " [imgUUID=\(imgUUIDOK ? "ok" : "no")]"
                             result(FlutterError(code: "SAVE_FAILED",
-                                                message: saveError?.localizedDescription ?? "Save failed",
+                                                message: diagMsg,
                                                 details: nil))
                         }
                     }
@@ -373,170 +388,51 @@ class LivePhotoPlugin: NSObject, FlutterPlugin, PHPickerViewControllerDelegate {
     }
 
     /// 向视频文件注入 Live Photo 必需元数据，输出为 .mov 容器
-    /// 使用 AVAssetReader/AVAssetWriter 实现 passthrough，同时注入：
-    ///   - 全局: com.apple.quicktime.content.identifier
-    ///   - 全局: com.apple.quicktime.live-photo.version
-    ///   - timed metadata track: com.apple.quicktime.still-image-time（PHAssetCreationRequest 必需）
+    /// 使用 AVAssetExportSession passthrough，在 session.metadata 中加入：
+    ///   - com.apple.quicktime.content.identifier
+    ///   - com.apple.quicktime.live-photo.version
+    ///   - com.apple.quicktime.still-image-time (全局，value=0)
     private func injectContentID(intoVideo inputURL: URL, outputURL: URL, uuid: String,
                                   completion: @escaping (Error?) -> Void) {
         let asset = AVURLAsset(url: inputURL)
+        guard let session = AVAssetExportSession(asset: asset,
+                                                 presetName: AVAssetExportPresetPassthrough) else {
+            completion(NSError(domain: "LivePhoto", code: -2,
+                               userInfo: [NSLocalizedDescriptionKey: "Cannot create AVAssetExportSession"]))
+            return
+        }
 
-        asset.loadValuesAsynchronously(forKeys: ["tracks", "duration"]) {
-            var loadErr: NSError?
-            guard asset.statusOfValue(forKey: "tracks", error: &loadErr) == .loaded else {
-                completion(loadErr ?? NSError(domain: "LivePhoto", code: -2,
-                           userInfo: [NSLocalizedDescriptionKey: "Cannot load asset tracks"]))
-                return
-            }
+        let cidItem = AVMutableMetadataItem()
+        cidItem.key = "com.apple.quicktime.content.identifier" as NSString
+        cidItem.keySpace = .quickTimeMetadata
+        cidItem.value = uuid as NSString
+        cidItem.dataType = "com.apple.metadata.datatype.UTF-8"
 
-            do {
-                try? FileManager.default.removeItem(at: outputURL)
+        let verItem = AVMutableMetadataItem()
+        verItem.key = "com.apple.quicktime.live-photo.version" as NSString
+        verItem.keySpace = .quickTimeMetadata
+        verItem.value = NSNumber(value: 1)
+        verItem.dataType = "com.apple.metadata.datatype.int8"
 
-                let reader = try AVAssetReader(asset: asset)
-                let writer = try AVAssetWriter(outputURL: outputURL, fileType: .mov)
-                writer.shouldOptimizeForNetworkUse = false
+        // still-image-time 作为全局 metadata（value=0 表示静态帧在视频起始位置）
+        let stillItem = AVMutableMetadataItem()
+        stillItem.key = "com.apple.quicktime.still-image-time" as NSString
+        stillItem.keySpace = .quickTimeMetadata
+        stillItem.value = NSNumber(value: Float(0))
 
-                // 全局元数据
-                let cidItem = AVMutableMetadataItem()
-                cidItem.key = "com.apple.quicktime.content.identifier" as NSString
-                cidItem.keySpace = .quickTimeMetadata
-                cidItem.value = uuid as NSString
-                cidItem.dataType = "com.apple.metadata.datatype.UTF-8"
+        session.outputURL = outputURL
+        session.outputFileType = .mov
+        session.metadata = [cidItem, verItem, stillItem]
 
-                let verItem = AVMutableMetadataItem()
-                verItem.key = "com.apple.quicktime.live-photo.version" as NSString
-                verItem.keySpace = .quickTimeMetadata
-                verItem.value = NSNumber(value: 1)
-                verItem.dataType = "com.apple.metadata.datatype.int8"
-
-                writer.metadata = [cidItem, verItem]
-
-                // 视频/音频 passthrough
-                var readerOutputs = [AVAssetReaderTrackOutput]()
-                var writerInputs = [AVAssetWriterInput]()
-
-                for track in asset.tracks {
-                    let rOut = AVAssetReaderTrackOutput(track: track, outputSettings: nil)
-                    rOut.alwaysCopiesSampleData = false
-                    let hint = track.formatDescriptions.first.map { $0 as! CMFormatDescription }
-                    let wIn = AVAssetWriterInput(mediaType: track.mediaType,
-                                               outputSettings: nil,
-                                               sourceFormatHint: hint)
-                    wIn.expectsMediaDataInRealTime = false
-                    guard reader.canAdd(rOut) && writer.canAdd(wIn) else { continue }
-                    reader.add(rOut)
-                    writer.add(wIn)
-                    readerOutputs.append(rOut)
-                    writerInputs.append(wIn)
+        session.exportAsynchronously {
+            DispatchQueue.main.async {
+                if session.status == .completed {
+                    completion(nil)
+                } else {
+                    let errMsg = session.error?.localizedDescription ?? "Export failed"
+                    completion(NSError(domain: "LivePhoto", code: -3,
+                               userInfo: [NSLocalizedDescriptionKey: "Export status=\(session.status.rawValue): \(errMsg)"]))
                 }
-
-                guard !readerOutputs.isEmpty else {
-                    completion(NSError(domain: "LivePhoto", code: -6,
-                               userInfo: [NSLocalizedDescriptionKey: "Video has no readable tracks"]))
-                    return
-                }
-
-                // Timed metadata track: com.apple.quicktime.still-image-time
-                // PHAssetCreationRequest 要求此 track，否则返回 PHPhotosErrorDomain -1
-                var metaAdaptor: AVAssetWriterInputMetadataAdaptor?
-                let metaSpec: [String: Any] = [
-                    kCMMetadataFormatDescriptionKey_Namespace as String: "mdta",
-                    kCMMetadataFormatDescriptionKey_Value as String: "com.apple.quicktime.still-image-time",
-                    kCMMetadataFormatDescriptionKey_LocalID as String: NSNumber(value: UInt32(1))
-                ]
-                var metaFmtDesc: CMFormatDescription?
-                if CMMetadataFormatDescriptionCreateWithMetadataSpecifications(
-                    allocator: kCFAllocatorDefault,
-                    metadataType: kCMMetadataFormatType_Boxed,
-                    metadataSpecifications: [metaSpec as NSDictionary] as NSArray,
-                    formatDescriptionOut: &metaFmtDesc) == noErr,
-                   let fmtDesc = metaFmtDesc {
-                    let metaIn = AVAssetWriterInput(mediaType: .metadata,
-                                                   outputSettings: nil,
-                                                   sourceFormatHint: fmtDesc)
-                    metaIn.expectsMediaDataInRealTime = false
-                    if writer.canAdd(metaIn) {
-                        writer.add(metaIn)
-                        metaAdaptor = AVAssetWriterInputMetadataAdaptor(assetWriterInput: metaIn)
-                    }
-                }
-
-                guard reader.startReading() else {
-                    completion(reader.error ?? NSError(domain: "LivePhoto", code: -3,
-                               userInfo: [NSLocalizedDescriptionKey: "Reader failed to start"]))
-                    return
-                }
-                writer.startWriting()
-                writer.startSession(atSourceTime: .zero)
-
-                let wg = DispatchGroup()
-                let q = DispatchQueue(label: "com.xiaoyanquan.livevideo.writer", qos: .userInitiated)
-
-                // 写入 still-image-time timed metadata（标记静态帧在 t=0）
-                if let adaptor = metaAdaptor {
-                    let stillItem = AVMutableMetadataItem()
-                    stillItem.key = "com.apple.quicktime.still-image-time" as NSString
-                    stillItem.keySpace = .quickTimeMetadata
-                    stillItem.value = NSNumber(value: Float(0))
-                    let timedGroup = AVTimedMetadataGroup(
-                        items: [stillItem],
-                        timeRange: CMTimeRange(start: .zero, duration: CMTime(value: 1, timescale: 100))
-                    )
-                    wg.enter()
-                    adaptor.assetWriterInput.requestMediaDataWhenReady(on: q) {
-                        while adaptor.assetWriterInput.isReadyForMoreMediaData {
-                            adaptor.append(timedGroup)
-                            adaptor.assetWriterInput.markAsFinished()
-                            wg.leave()
-                            return
-                        }
-                    }
-                }
-
-                // 逐轨道 passthrough
-                for (rOut, wIn) in zip(readerOutputs, writerInputs) {
-                    wg.enter()
-                    wIn.requestMediaDataWhenReady(on: q) {
-                        while wIn.isReadyForMoreMediaData {
-                            if let sb = rOut.copyNextSampleBuffer() {
-                                if !wIn.append(sb) {
-                                    wIn.markAsFinished()
-                                    wg.leave()
-                                    return
-                                }
-                            } else {
-                                wIn.markAsFinished()
-                                wg.leave()
-                                return
-                            }
-                        }
-                    }
-                }
-
-                wg.notify(queue: .global(qos: .userInitiated)) {
-                    if reader.status == .failed {
-                        writer.cancelWriting()
-                        DispatchQueue.main.async {
-                            completion(reader.error ?? NSError(domain: "LivePhoto", code: -5,
-                                       userInfo: [NSLocalizedDescriptionKey: "Reader error during copy"]))
-                        }
-                        return
-                    }
-                    writer.finishWriting {
-                        DispatchQueue.main.async {
-                            if writer.status == .completed {
-                                completion(nil)
-                            } else {
-                                completion(writer.error ?? NSError(
-                                    domain: "LivePhoto", code: -4,
-                                    userInfo: [NSLocalizedDescriptionKey: "Writer failed: status=\(writer.status.rawValue)"]))
-                            }
-                        }
-                    }
-                }
-
-            } catch {
-                completion(error)
             }
         }
     }
