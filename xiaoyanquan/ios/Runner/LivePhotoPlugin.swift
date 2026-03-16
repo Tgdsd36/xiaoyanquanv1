@@ -335,7 +335,7 @@ class LivePhotoPlugin: NSObject, FlutterPlugin, PHPickerViewControllerDelegate {
                     opts.shouldMoveFile = true
                     request.addResource(with: .photo, fileURL: tempImageURL, options: opts)
                     request.addResource(with: .pairedVideo, fileURL: processedVideoURL, options: opts)
-                })
+                }) { success, saveError in
                     DispatchQueue.main.async {
                         // 清理临时文件（shouldMoveFile=true 时成功后系统已移走，removeItem 会静默失败，无妨）
                         try? FileManager.default.removeItem(at: tempImageURL)
@@ -446,10 +446,10 @@ class LivePhotoPlugin: NSObject, FlutterPlugin, PHPickerViewControllerDelegate {
                 ]
                 var metaFmtDesc: CMFormatDescription?
                 if CMMetadataFormatDescriptionCreateWithMetadataSpecifications(
-                    allocator: kCFAllocatorDefault,
-                    metadataType: kCMMetadataFormatType_Boxed,
-                    metadataSpecifications: [metaSpec] as NSArray,
-                    formatDescriptionOut: &metaFmtDesc) == noErr,
+                    kCFAllocatorDefault,
+                    kCMMetadataFormatType_Boxed,
+                    [metaSpec as NSDictionary] as NSArray,
+                    &metaFmtDesc) == noErr,
                    let fmtDesc = metaFmtDesc {
                     let metaIn = AVAssetWriterInput(mediaType: .metadata,
                                                    outputSettings: nil,
