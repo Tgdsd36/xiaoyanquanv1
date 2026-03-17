@@ -877,7 +877,16 @@ class _MomentCardState extends ConsumerState<_MomentCard> {
   @override
   Widget build(BuildContext context) {
     final authState = ref.watch(authProvider);
-    final isMember = authState.user?.isMemberValid ?? false;
+    final isAuthenticated = authState.status == AuthStatus.authenticated;
+    // 用 profileProvider 判断会员（authState.user 重启后可能为 null）
+    final profile = ref.watch(profileProvider).valueOrNull;
+    final memberType = (profile?['member_type'] ?? 'free').toString();
+    final expireRaw = profile?['member_expire_at']?.toString();
+    final expireAt = expireRaw != null ? DateTime.tryParse(expireRaw) : null;
+    final isMember = isAuthenticated &&
+        memberType != 'free' &&
+        memberType.isNotEmpty &&
+        (expireAt == null || expireAt.isAfter(DateTime.now()));
 
     return Container(
       padding: const EdgeInsets.all(12),
