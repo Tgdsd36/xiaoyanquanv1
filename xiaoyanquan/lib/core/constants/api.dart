@@ -25,6 +25,7 @@ class Api {
   static String materialDetail(int id) => '/materials/$id';
   static const String materialSearch = '/materials/search';
   static String materialDownload(int id) => '/materials/$id/download';
+  static String materialAiCopy(int id) => '/materials/$id/ai-copy';
 
   // 找灵感
   static const String inspirationFeed = '/inspiration/feed';

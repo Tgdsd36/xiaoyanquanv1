@@ -15,6 +15,12 @@ type Config struct {
 	JWT      JWTConfig
 	SMS      SMSConfig
 	Storage  StorageConfig
+	AI       AIConfig
+}
+
+type AIConfig struct {
+	DoubaoAPIKey string
+	DoubaoModel  string // 豆包 endpoint ID，如 ep-xxxxxxxx
 }
 
 type ServerConfig struct {
@@ -111,6 +117,10 @@ func Load() *Config {
 			COSBucket:    getEnv("COS_BUCKET", ""),
 			COSRegion:    getEnv("COS_REGION", "ap-guangzhou"),
 			COSCDNDomain: getEnv("COS_CDN_DOMAIN", ""),
+		},
+		AI: AIConfig{
+			DoubaoAPIKey: getEnv("DOUBAO_API_KEY", ""),
+			DoubaoModel:  getEnv("DOUBAO_MODEL", ""),
 		},
 	}
 }

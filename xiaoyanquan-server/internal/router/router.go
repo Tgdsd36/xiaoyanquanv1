@@ -43,6 +43,11 @@ func Setup(cfg *config.Config, db *gorm.DB, rdb *redis.Client) *gin.Engine {
 	}
 
 	// 初始化 handlers
+	aiCopyHandler := &handler.AICopyHandler{
+		DB:           db,
+		DoubaoAPIKey: cfg.AI.DoubaoAPIKey,
+		DoubaoModel:  cfg.AI.DoubaoModel,
+	}
 	authHandler := &handler.AuthHandler{DB: db, RDB: rdb, Cfg: cfg}
 	categoryHandler := &handler.CategoryHandler{DB: db}
 	materialHandler := &handler.MaterialHandler{DB: db, BaseURL: cfg.Server.BaseURL}
@@ -98,6 +103,8 @@ func Setup(cfg *config.Config, db *gorm.DB, rdb *redis.Client) *gin.Engine {
 			materialsAuth.GET("/:id/download", materialHandler.Download)
 			// Live Photo 视频代理：.mp4 以 video/quicktime 返回，.mov 直接重定向
 			materialsAuth.GET("/:id/live-video", materialHandler.LiveVideoProxy)
+			// AI 文案生成（需登录，handler 内部验证会员）
+			materialsAuth.POST("/:id/ai-copy", aiCopyHandler.Generate)
 		}
 
 		// 找灵感（游客可浏览）

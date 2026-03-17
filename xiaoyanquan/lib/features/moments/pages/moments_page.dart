@@ -876,6 +876,9 @@ class _MomentCardState extends ConsumerState<_MomentCard> {
 
   @override
   Widget build(BuildContext context) {
+    final authState = ref.watch(authProvider);
+    final isMember = authState.user?.isMemberValid ?? false;
+
     return Container(
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
@@ -935,6 +938,41 @@ class _MomentCardState extends ConsumerState<_MomentCard> {
               child: Text(
                 moment.contentText,
                 style: const TextStyle(fontSize: 14, height: 1.6),
+              ),
+            ),
+          ],
+          // AI 文案生成按钮（仅会员可见）
+          if (isMember) ...[
+            const SizedBox(height: 8),
+            GestureDetector(
+              onTap: () => AiCopyDialog.show(
+                context,
+                materialId: moment.id,
+                mediaType: moment.mediaType,
+              ),
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                decoration: BoxDecoration(
+                  gradient: const LinearGradient(
+                    colors: [AppColors.primary, Color(0xFFFF7A8A)],
+                  ),
+                  borderRadius: BorderRadius.circular(14),
+                ),
+                child: const Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(Icons.auto_awesome, size: 12, color: Colors.white),
+                    SizedBox(width: 4),
+                    Text(
+                      'AI 文案生成',
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: Colors.white,
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
+                  ],
+                ),
               ),
             ),
           ],
@@ -1321,7 +1359,270 @@ class _MomentCardState extends ConsumerState<_MomentCard> {
   }
 }
 
-// ==================== 操作按钮 ====================
+// ==================== AI 文案弹窗 ====================
+
+class AiCopyDialog extends StatefulWidget {
+  final int materialId;
+  final String mediaType;
+
+  const AiCopyDialog({
+    super.key,
+    required this.materialId,
+    required this.mediaType,
+  });
+
+  static Future<void> show(
+    BuildContext context, {
+    required int materialId,
+    required String mediaType,
+  }) {
+    return showDialog(
+      context: context,
+      barrierDismissible: true,
+      builder: (_) => AiCopyDialog(
+        materialId: materialId,
+        mediaType: mediaType,
+      ),
+    );
+  }
+
+  @override
+  State<AiCopyDialog> createState() => _AiCopyDialogState();
+}
+
+class _AiCopyDialogState extends State<AiCopyDialog> {
+  String _style = 'natural';
+  List<String> _copies = [];
+  bool _isLoading = false;
+  String? _error;
+
+  static const _styles = [
+    ('natural', '原味'),
+    ('lively', '活波'),
+    ('literary', '文艺'),
+    ('descriptive', '文案描绘'),
+  ];
+
+  @override
+  void initState() {
+    super.initState();
+    _generate();
+  }
+
+  Future<void> _generate() async {
+    setState(() {
+      _isLoading = true;
+      _error = null;
+      _copies = [];
+    });
+    try {
+      final resp = await HttpClient().post(
+        Api.materialAiCopy(widget.materialId),
+        data: {'style': _style},
+      );
+      if (!mounted) return;
+      if (resp.isSuccess) {
+        final list =
+            (resp.data['copies'] as List?)
+                ?.map((e) => e.toString())
+                .where((s) => s.isNotEmpty)
+                .toList() ??
+            [];
+        setState(() {
+          _copies = list;
+          _isLoading = false;
+        });
+      } else {
+        setState(() {
+          _error = resp.message.isNotEmpty ? resp.message : 'AI 生成失败';
+          _isLoading = false;
+        });
+      }
+    } catch (_) {
+      if (!mounted) return;
+      setState(() {
+        _error = '网络错误，请稍后重试';
+        _isLoading = false;
+      });
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Dialog(
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+      insetPadding: const EdgeInsets.symmetric(horizontal: 24, vertical: 40),
+      child: Padding(
+        padding: const EdgeInsets.all(20),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // 标题栏
+            Row(
+              children: [
+                const Icon(Icons.auto_awesome, size: 18, color: AppColors.primary),
+                const SizedBox(width: 6),
+                const Text(
+                  'AI 文案生成',
+                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
+                ),
+                const Spacer(),
+                GestureDetector(
+                  onTap: () => Navigator.of(context).pop(),
+                  child: const Icon(Icons.close, size: 20, color: AppColors.textHint),
+                ),
+              ],
+            ),
+            const SizedBox(height: 14),
+            // 风格选择
+            Wrap(
+              spacing: 8,
+              runSpacing: 6,
+              children: _styles.map((s) {
+                final selected = _style == s.$1;
+                return GestureDetector(
+                  onTap: () {
+                    if (_style == s.$1) return;
+                    setState(() => _style = s.$1);
+                    _generate();
+                  },
+                  child: AnimatedContainer(
+                    duration: const Duration(milliseconds: 150),
+                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 5),
+                    decoration: BoxDecoration(
+                      color: selected ? AppColors.primary : Colors.transparent,
+                      borderRadius: BorderRadius.circular(14),
+                      border: Border.all(
+                        color: selected ? AppColors.primary : AppColors.border,
+                      ),
+                    ),
+                    child: Text(
+                      s.$2,
+                      style: TextStyle(
+                        fontSize: 13,
+                        fontWeight: selected ? FontWeight.w500 : FontWeight.normal,
+                        color: selected ? Colors.white : AppColors.textSecondary,
+                      ),
+                    ),
+                  ),
+                );
+              }).toList(),
+            ),
+            const SizedBox(height: 14),
+            // 结果区
+            if (_isLoading)
+              _buildSkeleton()
+            else if (_error != null)
+              _buildError()
+            else
+              _buildResults(),
+            const SizedBox(height: 14),
+            // 重新生成
+            SizedBox(
+              width: double.infinity,
+              child: OutlinedButton.icon(
+                onPressed: _isLoading ? null : _generate,
+                icon: const Icon(Icons.refresh_rounded, size: 16),
+                label: const Text('重新生成'),
+                style: OutlinedButton.styleFrom(
+                  foregroundColor: AppColors.primary,
+                  side: const BorderSide(color: AppColors.primary),
+                  padding: const EdgeInsets.symmetric(vertical: 10),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildSkeleton() {
+    return Column(
+      children: List.generate(
+        3,
+        (_) => Container(
+          margin: const EdgeInsets.only(bottom: 8),
+          height: 60,
+          decoration: BoxDecoration(
+            color: AppColors.shimmer,
+            borderRadius: BorderRadius.circular(8),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildError() {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 20),
+      child: Center(
+        child: Text(
+          _error!,
+          style: const TextStyle(color: AppColors.textHint, fontSize: 13),
+          textAlign: TextAlign.center,
+        ),
+      ),
+    );
+  }
+
+  Widget _buildResults() {
+    if (_copies.isEmpty) return const SizedBox.shrink();
+    return Column(
+      children: _copies
+          .map(
+            (text) => Container(
+              margin: const EdgeInsets.only(bottom: 8),
+              padding: const EdgeInsets.fromLTRB(12, 10, 8, 10),
+              decoration: BoxDecoration(
+                color: AppColors.surface,
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(color: AppColors.border),
+              ),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Expanded(
+                    child: Text(
+                      text,
+                      style: const TextStyle(fontSize: 13, height: 1.55),
+                    ),
+                  ),
+                  const SizedBox(width: 6),
+                  GestureDetector(
+                    onTap: () async {
+                      await Clipboard.setData(ClipboardData(text: text));
+                      if (!context.mounted) return;
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(
+                          content: Text('已复制'),
+                          duration: Duration(seconds: 1),
+                        ),
+                      );
+                    },
+                    child: const Padding(
+                      padding: EdgeInsets.only(top: 2),
+                      child: Icon(
+                        Icons.copy_outlined,
+                        size: 16,
+                        color: AppColors.textHint,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          )
+          .toList(),
+    );
+  }
+}
+
+// ==================== 操作按鈕 ====================
 
 class _ActionBtn extends StatelessWidget {
   final IconData icon;
