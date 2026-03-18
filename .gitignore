@@ -70,3 +70,7 @@ xiaoyanquan-admin/.env.*
 memory/
 ui-ux-pro-max/
 *.log
+apk_decompiled/
+__pycache__/
+*.pyc
+*.pyo
