@@ -21,7 +21,7 @@ final selectedGenderProvider = StateProvider<String>((ref) => '');
 
 // ==================== 排序 ====================
 
-final sortTypeProvider = StateProvider<String>((ref) => 'hot');
+final sortTypeProvider = StateProvider<String>((ref) => 'random');
 
 // ==================== 素材列表 ====================
 
@@ -62,7 +62,7 @@ class MaterialListNotifier extends StateNotifier<MaterialListState> {
   String _type = '';
   int _categoryId = 0;
   String _gender = '';
-  String _sort = 'hot';
+  String _sort = 'random';
 
   MaterialListNotifier() : super(const MaterialListState());
 

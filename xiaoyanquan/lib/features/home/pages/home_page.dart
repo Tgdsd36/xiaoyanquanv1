@@ -219,6 +219,8 @@ class _HomePageState extends ConsumerState<HomePage> {
                     // 第三行：排序
                     Row(
                       children: [
+                        _SortPill('ic_sparkle', '随机', 'random', sortType, ref),
+                        const SizedBox(width: 12),
                         _SortPill('ic_fire', '热门', 'hot', sortType, ref),
                         const SizedBox(width: 12),
                         _SortPill('ic_clock', '最新', 'latest', sortType, ref),

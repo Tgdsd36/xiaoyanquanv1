@@ -29,7 +29,8 @@ type AICopyHandler struct {
 // ── 请求 / 响应结构 ───────────────────────────────────────────
 
 type AICopyReq struct {
-	Style string `json:"style"` // natural | lively | literary | descriptive
+	Style       string `json:"style"`       // natural | lively | literary
+	Description string `json:"description"` // 用户自定义描述（可选）
 }
 
 // ── 豆包 Ark API 数据结构 ──────────────────────────────────────
@@ -90,11 +91,16 @@ func (h *AICopyHandler) Generate(c *gin.Context) {
 
 	// 构造 prompt
 	systemPrompt := "你是一位专业的朋友圈文案写手，擅长为女性用户创作吸引人的社交媒体文案。风格自然真实、有感染力，适合直接发布到微信朋友圈。"
+	descNote := ""
+	if strings.TrimSpace(req.Description) != "" {
+		descNote = fmt.Sprintf("\n用户描述：%s", strings.TrimSpace(req.Description))
+	}
 	userPrompt := fmt.Sprintf(
-		"请基于以下素材信息，生成3条【%s】风格的朋友圈文案：\n\n素材类型：%s\n参考标题：%s\n\n要求：\n1. 每条文案50字以内\n2. 适当使用emoji\n3. 贴合女性用户朋友圈发布场景\n4. 3条文案风格各有差异\n5. 直接输出3条，每条单独一行，用「1. 」「2. 」「3. 」开头，不加其他说明",
+		"请基于以下素材信息，生成3条【%s】风格的朋友圈文案：\n\n素材类型：%s\n参考标题：%s%s\n\n要求：\n1. 每条文案100字以内\n2. 适当使用emoji\n3. 贴合女性用户朋友圈发布场景\n4. 3条文案风格各有差异\n5. 直接输出3条，每条单独一行，用「1. 」「2. 」「3. 」开头，不加其他说明",
 		styleDesc(req.Style),
 		mediaTypeDesc(material.Type),
 		material.Title,
+		descNote,
 	)
 
 	// 调用豆包
@@ -195,14 +201,14 @@ func parseCopies(content string) []string {
 
 func styleDesc(style string) string {
 	switch style {
-	case "lively":
-		return "活泼可爱"
-	case "literary":
-		return "文艺清新"
-	case "descriptive":
-		return "细腻描绘"
+	case "gentle":
+		return "温柔治愈"
+	case "luxury":
+		return "高级简约"
+	case "real":
+		return "人间真实"
 	default:
-		return "自然真实"
+		return "温柔治愈"
 	}
 }
 

@@ -495,7 +495,7 @@ def infer_parent_name(detail: Dict[str, Any], maps: CategoryMaps) -> str:
 
 def infer_child_name(detail: Dict[str, Any], parent_name: str) -> str:
     explicit_child = str(detail.get("grouptitle_sub") or "").strip()
-    if explicit_child:
+    if explicit_child and len(explicit_child) <= 5:
         return explicit_child
 
     hashtags = extract_hashtags(detail)
@@ -507,8 +507,9 @@ def infer_child_name(detail: Dict[str, Any], parent_name: str) -> str:
         if tag in {"我的旅行碎片", "旅行碎片", "澳大利亚", "澳洲"}:
             continue
         filtered.append(tag)
-    if filtered:
-        return filtered[0]
+    for candidate in filtered:
+        if len(candidate) <= 5:
+            return candidate
 
     return ""  # 无法推断子分类时返回空，由 ensure_category 直接挂到父分类
 

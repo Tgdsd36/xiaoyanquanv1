@@ -14,7 +14,9 @@ import '../../../shared/favorite_group_sheet.dart';
 import '../../../shared/material_download_helper.dart';
 import '../../../shared/share_helper.dart';
 import '../pages/search_page.dart';
+import '../../profile/pages/profile_page.dart';
 import '../../profile/providers/profile_refresh_provider.dart';
+import '../../../shared/member_required_dialog.dart';
 import '../models/material_model.dart';
 import '../providers/favorite_provider.dart';
 import '../repositories/material_repository.dart';
@@ -37,6 +39,15 @@ class MaterialDetailPage extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final detailAsync = ref.watch(materialDetailProvider(materialId));
     final authState = ref.watch(authProvider);
+    final isAuthenticated = authState.status == AuthStatus.authenticated;
+    final profile = ref.watch(profileProvider).valueOrNull;
+    final memberType = (profile?['member_type'] ?? 'free').toString();
+    final expireRaw = profile?['member_expire_at']?.toString();
+    final expireAt = expireRaw != null ? DateTime.tryParse(expireRaw) : null;
+    final isMember = isAuthenticated &&
+        memberType != 'free' &&
+        memberType.isNotEmpty &&
+        (expireAt == null || expireAt.isAfter(DateTime.now()));
 
     return Scaffold(
       appBar: AppBar(
@@ -46,11 +57,16 @@ class MaterialDetailPage extends ConsumerWidget {
           if (detailAsync.valueOrNull != null)
             IconButton(
               icon: const Icon(Icons.share_outlined, size: 22),
-              onPressed:
-                  () => ShareHelper.shareMaterial(
-                    id: materialId,
-                    title: detailAsync.valueOrNull!.title,
-                  ),
+              onPressed: () {
+                if (!isMember) {
+                  MemberRequiredDialog.show(context);
+                  return;
+                }
+                ShareHelper.shareMaterial(
+                  id: materialId,
+                  title: detailAsync.valueOrNull!.title,
+                );
+              },
             ),
         ],
       ),
@@ -61,7 +77,7 @@ class MaterialDetailPage extends ConsumerWidget {
           }
           return _DetailContent(
             detail: detail,
-            isAuthenticated: authState.status == AuthStatus.authenticated,
+            isMember: isMember,
           );
         },
         loading:
@@ -75,9 +91,9 @@ class MaterialDetailPage extends ConsumerWidget {
 
 class _DetailContent extends ConsumerStatefulWidget {
   final MaterialDetail detail;
-  final bool isAuthenticated;
+  final bool isMember;
 
-  const _DetailContent({required this.detail, required this.isAuthenticated});
+  const _DetailContent({required this.detail, required this.isMember});
 
   @override
   ConsumerState<_DetailContent> createState() => _DetailContentState();
@@ -85,7 +101,7 @@ class _DetailContent extends ConsumerStatefulWidget {
 
 class _DetailContentState extends ConsumerState<_DetailContent> {
   MaterialDetail get detail => widget.detail;
-  bool get isAuthenticated => widget.isAuthenticated;
+  bool get isMember => widget.isMember;
 
   // 提问相关
   List<Map<String, dynamic>> _questions = [];
@@ -127,8 +143,8 @@ class _DetailContentState extends ConsumerState<_DetailContent> {
   }
 
   void _showQuestionSheet() {
-    if (!isAuthenticated) {
-      _showLoginHint(context);
+    if (!isMember) {
+      MemberRequiredDialog.show(context);
       return;
     }
     final controller = TextEditingController();
@@ -273,8 +289,8 @@ class _DetailContentState extends ConsumerState<_DetailContent> {
   }
 
   Future<void> _handleFavorite() async {
-    if (!isAuthenticated) {
-      _showLoginHint(context);
+    if (!isMember) {
+      MemberRequiredDialog.show(context);
       return;
     }
 
@@ -353,10 +369,14 @@ class _DetailContentState extends ConsumerState<_DetailContent> {
                         ),
                       ),
                       const SizedBox(width: 12),
-                      // 右侧标题（点击复制）
+                      // 右侧标题（点击复制，仅会员）
                       Expanded(
                         child: GestureDetector(
                           onTap: () async {
+                            if (!isMember) {
+                              MemberRequiredDialog.show(context);
+                              return;
+                            }
                             if (detail.title.isEmpty) return;
                             await Clipboard.setData(ClipboardData(text: detail.title));
                             if (!mounted) return;
@@ -374,10 +394,47 @@ class _DetailContentState extends ConsumerState<_DetailContent> {
                   ),
                 ),
                 const SizedBox(height: 16),
-                // 缩略图区域（可点击进入预览）
+                // 缩略图区域（会员可预览，非会员显示锁定占位）
                 Padding(
                   padding: const EdgeInsets.symmetric(horizontal: 16),
-                  child: _buildThumbnails(context),
+                  child: isMember
+                      ? _buildThumbnails(context)
+                      : GestureDetector(
+                          onTap: () => MemberRequiredDialog.show(context),
+                          child: Container(
+                            width: double.infinity,
+                            height: 180,
+                            decoration: BoxDecoration(
+                              color: const Color(0xFFF0F0F0),
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                            alignment: Alignment.center,
+                            child: const Column(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                Icon(Icons.lock_rounded,
+                                    color: Color(0xFFBBBBBB), size: 40),
+                                SizedBox(height: 10),
+                                Text(
+                                  '开通会员查看内容',
+                                  style: TextStyle(
+                                    color: Color(0xFF666666),
+                                    fontSize: 14,
+                                    fontWeight: FontWeight.w600,
+                                  ),
+                                ),
+                                SizedBox(height: 4),
+                                Text(
+                                  '扫码添加客服开通会员',
+                                  style: TextStyle(
+                                    color: Color(0xFF999999),
+                                    fontSize: 12,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
                 ),
                 const SizedBox(height: 12),
                 // 素材信息
@@ -566,6 +623,10 @@ class _DetailContentState extends ConsumerState<_DetailContent> {
                 icon: Icons.sentiment_dissatisfied_outlined,
                 label: '不喜欢',
                 onTap: () {
+                  if (!isMember) {
+                    MemberRequiredDialog.show(context);
+                    return;
+                  }
                   ScaffoldMessenger.of(
                     context,
                   ).showSnackBar(const SnackBar(content: Text('已标记不喜欢')));
@@ -580,8 +641,8 @@ class _DetailContentState extends ConsumerState<_DetailContent> {
                 icon: Icons.file_download_outlined,
                 label: '下载',
                 onTap: () async {
-                  if (!isAuthenticated) {
-                    _showLoginHint(context);
+                  if (!isMember) {
+                    MemberRequiredDialog.show(context);
                     return;
                   }
                   await _handleDownload();
@@ -956,21 +1017,16 @@ class _DetailContentState extends ConsumerState<_DetailContent> {
   }
 
   void _openPreview(BuildContext context, List<String> urls, int index) {
+    if (!isMember) {
+      MemberRequiredDialog.show(context);
+      return;
+    }
     context.push(
       '/material/${detail.id}/preview',
       extra: MaterialPreviewArgs(
         imageUrls: urls,
         initialIndex: index,
         title: detail.title,
-      ),
-    );
-  }
-
-  void _showLoginHint(BuildContext context) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text('请先登录并开通会员'),
-        backgroundColor: AppColors.warning,
       ),
     );
   }

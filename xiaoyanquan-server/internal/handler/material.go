@@ -173,6 +173,8 @@ func (h *MaterialHandler) List(c *gin.Context) {
 		query = query.Order("created_at DESC")
 	case "downloads":
 		query = query.Order("download_count DESC")
+	case "random":
+		query = query.Order("RANDOM()")
 	default:
 		query = query.Order("hot_score DESC")
 	}

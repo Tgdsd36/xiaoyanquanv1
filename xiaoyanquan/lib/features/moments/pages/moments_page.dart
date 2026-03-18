@@ -17,6 +17,7 @@ import '../../../shared/favorite_group_sheet.dart';
 import '../../../shared/material_download_helper.dart';
 import '../../profile/pages/profile_page.dart';
 import '../../home/pages/material_preview_page.dart';
+import '../../../shared/member_required_dialog.dart';
 
 // ==================== 模型 ====================
 
@@ -950,15 +951,21 @@ class _MomentCardState extends ConsumerState<_MomentCard> {
               ),
             ),
           ],
-          // AI 文案生成按钮（仅会员可见）
-          if (isMember) ...[
+          // AI 文案生成按鈕（所有人可见，仅会员可用）
+          ...[
             const SizedBox(height: 8),
             GestureDetector(
-              onTap: () => AiCopyDialog.show(
-                context,
-                materialId: moment.id,
-                mediaType: moment.mediaType,
-              ),
+              onTap: () {
+                if (!isMember) {
+                  MemberRequiredDialog.show(context);
+                  return;
+                }
+                AiCopyDialog.show(
+                  context,
+                  materialId: moment.id,
+                  mediaType: moment.mediaType,
+                );
+              },
               child: Container(
                 padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
                 decoration: BoxDecoration(
@@ -1400,22 +1407,28 @@ class AiCopyDialog extends StatefulWidget {
 }
 
 class _AiCopyDialogState extends State<AiCopyDialog> {
-  String _style = 'natural';
+  String _style = 'gentle';
   List<String> _copies = [];
   bool _isLoading = false;
   String? _error;
+  final TextEditingController _descController = TextEditingController();
 
   static const _styles = [
-    ('natural', '原味'),
-    ('lively', '活波'),
-    ('literary', '文艺'),
-    ('descriptive', '文案描绘'),
+    ('gentle', '温柔治愈风'),
+    ('luxury', '高级简约风'),
+    ('real', '人间真实风'),
   ];
 
   @override
   void initState() {
     super.initState();
     _generate();
+  }
+
+  @override
+  void dispose() {
+    _descController.dispose();
+    super.dispose();
   }
 
   Future<void> _generate() async {
@@ -1425,9 +1438,12 @@ class _AiCopyDialogState extends State<AiCopyDialog> {
       _copies = [];
     });
     try {
+      final data = <String, dynamic>{'style': _style};
+      final desc = _descController.text.trim();
+      if (desc.isNotEmpty) data['description'] = desc;
       final resp = await HttpClient().post(
         Api.materialAiCopy(widget.materialId),
-        data: {'style': _style},
+        data: data,
       );
       if (!mounted) return;
       if (resp.isSuccess) {
@@ -1460,91 +1476,134 @@ class _AiCopyDialogState extends State<AiCopyDialog> {
   Widget build(BuildContext context) {
     return Dialog(
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-      insetPadding: const EdgeInsets.symmetric(horizontal: 24, vertical: 40),
-      child: Padding(
-        padding: const EdgeInsets.all(20),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            // 标题栏
-            Row(
-              children: [
-                const Icon(Icons.auto_awesome, size: 18, color: AppColors.primary),
-                const SizedBox(width: 6),
-                const Text(
-                  'AI 文案生成',
-                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
-                ),
-                const Spacer(),
-                GestureDetector(
-                  onTap: () => Navigator.of(context).pop(),
-                  child: const Icon(Icons.close, size: 20, color: AppColors.textHint),
-                ),
-              ],
-            ),
-            const SizedBox(height: 14),
-            // 风格选择
-            Wrap(
-              spacing: 8,
-              runSpacing: 6,
-              children: _styles.map((s) {
-                final selected = _style == s.$1;
-                return GestureDetector(
-                  onTap: () {
-                    if (_style == s.$1) return;
-                    setState(() => _style = s.$1);
-                    _generate();
-                  },
-                  child: AnimatedContainer(
-                    duration: const Duration(milliseconds: 150),
-                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 5),
-                    decoration: BoxDecoration(
-                      color: selected ? AppColors.primary : Colors.transparent,
-                      borderRadius: BorderRadius.circular(14),
-                      border: Border.all(
-                        color: selected ? AppColors.primary : AppColors.border,
+      insetPadding: EdgeInsets.only(
+        left: 24,
+        right: 24,
+        top: 40,
+        bottom: MediaQuery.of(context).viewInsets.bottom + 40,
+      ),
+      child: SingleChildScrollView(
+        child: Padding(
+          padding: const EdgeInsets.all(20),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              // 标题栏
+              Row(
+                children: [
+                  const Icon(Icons.auto_awesome, size: 18, color: AppColors.primary),
+                  const SizedBox(width: 6),
+                  const Text(
+                    'AI 文案生成',
+                    style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
+                  ),
+                  const Spacer(),
+                  GestureDetector(
+                    onTap: () => Navigator.of(context).pop(),
+                    child: const Icon(Icons.close, size: 20, color: AppColors.textHint),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 14),
+              // 风格选择
+              Wrap(
+                spacing: 8,
+                runSpacing: 6,
+                children: _styles.map((s) {
+                  final selected = _style == s.$1;
+                  return GestureDetector(
+                    onTap: () {
+                      if (_style == s.$1) return;
+                      setState(() => _style = s.$1);
+                      _generate();
+                    },
+                    child: AnimatedContainer(
+                      duration: const Duration(milliseconds: 150),
+                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 5),
+                      decoration: BoxDecoration(
+                        color: selected ? AppColors.primary : Colors.transparent,
+                        borderRadius: BorderRadius.circular(14),
+                        border: Border.all(
+                          color: selected ? AppColors.primary : AppColors.border,
+                        ),
+                      ),
+                      child: Text(
+                        s.$2,
+                        style: TextStyle(
+                          fontSize: 13,
+                          fontWeight: selected ? FontWeight.w500 : FontWeight.normal,
+                          color: selected ? Colors.white : AppColors.textSecondary,
+                        ),
                       ),
                     ),
-                    child: Text(
-                      s.$2,
-                      style: TextStyle(
-                        fontSize: 13,
-                        fontWeight: selected ? FontWeight.w500 : FontWeight.normal,
-                        color: selected ? Colors.white : AppColors.textSecondary,
-                      ),
+                  );
+                }).toList(),
+              ),
+              const SizedBox(height: 12),
+              // 文案描绘（可选）
+              TextField(
+                controller: _descController,
+                maxLines: 2,
+                maxLength: 100,
+                textInputAction: TextInputAction.done,
+                decoration: InputDecoration(
+                  hintText: '添加描绘（选填），如：今天去电影了、队友聚会、心情好极了...',
+                  hintStyle: const TextStyle(
+                    color: AppColors.textDisabled,
+                    fontSize: 13,
+                  ),
+                  filled: true,
+                  fillColor: AppColors.surface,
+                  contentPadding: const EdgeInsets.symmetric(
+                    horizontal: 12,
+                    vertical: 8,
+                  ),
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(8),
+                    borderSide: BorderSide.none,
+                  ),
+                  focusedBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(8),
+                    borderSide: const BorderSide(
+                      color: AppColors.primary,
+                      width: 1,
                     ),
                   ),
-                );
-              }).toList(),
-            ),
-            const SizedBox(height: 14),
-            // 结果区
-            if (_isLoading)
-              _buildSkeleton()
-            else if (_error != null)
-              _buildError()
-            else
-              _buildResults(),
-            const SizedBox(height: 14),
-            // 重新生成
-            SizedBox(
-              width: double.infinity,
-              child: OutlinedButton.icon(
-                onPressed: _isLoading ? null : _generate,
-                icon: const Icon(Icons.refresh_rounded, size: 16),
-                label: const Text('重新生成'),
-                style: OutlinedButton.styleFrom(
-                  foregroundColor: AppColors.primary,
-                  side: const BorderSide(color: AppColors.primary),
-                  padding: const EdgeInsets.symmetric(vertical: 10),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(10),
+                  counterStyle: const TextStyle(
+                    fontSize: 11,
+                    color: AppColors.textDisabled,
                   ),
                 ),
               ),
-            ),
-          ],
+              const SizedBox(height: 12),
+              // 结果区
+              if (_isLoading)
+                _buildSkeleton()
+              else if (_error != null)
+                _buildError()
+              else
+                _buildResults(),
+              const SizedBox(height: 14),
+              // 重新生成
+              SizedBox(
+                width: double.infinity,
+                child: OutlinedButton.icon(
+                  onPressed: _isLoading ? null : _generate,
+                  icon: const Icon(Icons.refresh_rounded, size: 16),
+                  label: const Text('重新生成'),
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: AppColors.primary,
+                    side: const BorderSide(color: AppColors.primary),
+                    padding: const EdgeInsets.symmetric(vertical: 10),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ),
         ),
       ),
     );
