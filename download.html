@@ -1,0 +1,507 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+<title>小颜圈 - 图片/视频素材库</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Noto+Serif+SC:wght@400;600;700&family=Noto+Sans+SC:wght@300;400;500&display=swap');
+
+  :root {
+    --bg: #111111;
+    --bg2: #1a1a1a;
+    --bg3: #222222;
+    --gold: #c8a96e;
+    --gold-light: #e2c898;
+    --silver: #c0c0c0;
+    --text: #f0ede8;
+    --text-muted: #888888;
+    --border: rgba(200,169,110,0.2);
+    --radius: 16px;
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'Noto Sans SC', -apple-system, sans-serif;
+    min-height: 100vh;
+    overflow-x: hidden;
+  }
+
+  /* ── 顶部光晕背景 ── */
+  .hero-glow {
+    position: fixed;
+    top: -200px;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 600px;
+    height: 600px;
+    background: radial-gradient(circle, rgba(200,169,110,0.12) 0%, transparent 70%);
+    pointer-events: none;
+    z-index: 0;
+  }
+
+  .container {
+    max-width: 480px;
+    margin: 0 auto;
+    padding: 0 20px 60px;
+    position: relative;
+    z-index: 1;
+  }
+
+  /* ── 顶部 ── */
+  .header {
+    text-align: center;
+    padding: 36px 0 20px;
+    position: relative;
+  }
+
+  .official-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    background: linear-gradient(135deg, rgba(200,169,110,0.15), rgba(200,169,110,0.05));
+    border: 1px solid var(--border);
+    border-radius: 20px;
+    padding: 4px 12px;
+    font-size: 11px;
+    color: var(--gold);
+    letter-spacing: 0.5px;
+    margin-bottom: 16px;
+  }
+
+  .official-badge::before {
+    content: '✦';
+    font-size: 9px;
+  }
+
+  /* ── 截图轮播 ── */
+  .screenshots-wrap {
+    overflow: hidden;
+    margin: 0 -20px;
+    padding: 10px 0 20px;
+  }
+
+  .screenshots {
+    display: flex;
+    gap: 14px;
+    padding: 0 30px;
+    overflow-x: auto;
+    scroll-snap-type: x mandatory;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
+  }
+
+  .screenshots::-webkit-scrollbar { display: none; }
+
+  .phone-frame {
+    flex-shrink: 0;
+    width: 170px;
+    height: 300px;
+    border-radius: 26px;
+    border: 2px solid rgba(255,255,255,0.08);
+    background: var(--bg2);
+    overflow: hidden;
+    scroll-snap-align: center;
+    position: relative;
+    box-shadow: 0 20px 60px rgba(0,0,0,0.6), 0 0 0 1px rgba(255,255,255,0.04);
+  }
+
+  /* 截图图片 */
+  .phone-frame img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    display: block;
+  }
+
+  /* ── App 信息区 ── */
+  .app-info {
+    display: flex;
+    gap: 16px;
+    align-items: center;
+    padding: 24px 0 16px;
+  }
+
+  .app-icon {
+    width: 72px;
+    height: 72px;
+    border-radius: 18px;
+    background: #1a1a1a;
+    border: 1px solid rgba(200,169,110,0.3);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    box-shadow: 0 8px 32px rgba(0,0,0,0.5), inset 0 1px 0 rgba(255,255,255,0.05);
+    overflow: hidden;
+  }
+
+  .app-icon img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    border-radius: 18px;
+  }
+
+  .app-icon-fallback {
+    font-size: 28px;
+    font-weight: 700;
+    font-family: 'Noto Serif SC';
+    background: linear-gradient(135deg, #e8d5a8, #c8a96e, #8b5e1a);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+  }
+
+  .app-meta { flex: 1; }
+
+  .app-name {
+    font-size: 22px;
+    font-weight: 700;
+    font-family: 'Noto Serif SC';
+    background: linear-gradient(135deg, #f0e8d8, var(--gold-light));
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+    line-height: 1.2;
+    margin-bottom: 4px;
+  }
+
+  .app-subtitle {
+    font-size: 12px;
+    color: var(--text-muted);
+    line-height: 1.4;
+  }
+
+  /* ── 描述 ── */
+  .app-desc {
+    font-size: 14px;
+    line-height: 1.8;
+    color: #b0a898;
+    padding: 16px 0;
+    border-top: 1px solid rgba(255,255,255,0.05);
+    border-bottom: 1px solid rgba(255,255,255,0.05);
+  }
+
+  /* ── 统计数据 ── */
+  .stats {
+    display: flex;
+    justify-content: space-around;
+    padding: 24px 0;
+    border-top: 1px solid rgba(255,255,255,0.05);
+    border-bottom: 1px solid rgba(255,255,255,0.05);
+    margin-bottom: 32px;
+  }
+
+  .stat-item { text-align: center; }
+
+  .stat-num {
+    font-size: 24px;
+    font-weight: 700;
+    font-family: 'Noto Serif SC';
+    background: linear-gradient(135deg, var(--gold-light), var(--gold));
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+    line-height: 1;
+    margin-bottom: 6px;
+  }
+
+  .stat-label {
+    font-size: 11px;
+    color: var(--text-muted);
+    letter-spacing: 0.5px;
+  }
+
+  .stat-divider {
+    width: 1px;
+    background: rgba(255,255,255,0.06);
+    align-self: stretch;
+  }
+
+  /* 星星 */
+  .stars {
+    display: flex;
+    justify-content: center;
+    gap: 2px;
+    margin-bottom: 4px;
+  }
+
+  .star {
+    width: 12px;
+    height: 12px;
+    background: var(--gold);
+    clip-path: polygon(50% 0%,61% 35%,98% 35%,68% 57%,79% 91%,50% 70%,21% 91%,32% 57%,2% 35%,39% 35%);
+  }
+
+  /* ── 评价 ── */
+  .reviews-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 16px;
+  }
+
+  .reviews-title {
+    font-size: 18px;
+    font-weight: 700;
+    font-family: 'Noto Serif SC';
+    color: var(--text);
+  }
+
+  .reviews-title span {
+    font-size: 13px;
+    font-weight: 400;
+    color: var(--text-muted);
+    font-family: 'Noto Sans SC';
+    margin-left: 6px;
+  }
+
+  .reviews-more {
+    font-size: 13px;
+    color: var(--gold);
+    text-decoration: none;
+    display: flex;
+    align-items: center;
+    gap: 3px;
+  }
+
+  .review-card {
+    background: var(--bg2);
+    border: 1px solid rgba(255,255,255,0.05);
+    border-radius: var(--radius);
+    padding: 16px;
+    margin-bottom: 12px;
+    position: relative;
+    overflow: hidden;
+  }
+
+  .review-card::before {
+    content: '"';
+    position: absolute;
+    top: -10px;
+    right: 16px;
+    font-size: 80px;
+    color: rgba(200,169,110,0.06);
+    font-family: Georgia, serif;
+    line-height: 1;
+  }
+
+  .review-top {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 10px;
+  }
+
+  .reviewer-avatar {
+    width: 36px;
+    height: 36px;
+    border-radius: 50%;
+    background: linear-gradient(135deg, #333, #222);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 14px;
+    color: var(--gold);
+    font-weight: 600;
+    border: 1px solid rgba(200,169,110,0.2);
+    flex-shrink: 0;
+  }
+
+  .reviewer-info { flex: 1; }
+  .reviewer-name { font-size: 13px; font-weight: 500; color: var(--text); margin-bottom: 3px; }
+  .reviewer-stars { display: flex; gap: 2px; }
+  .r-star { width: 10px; height: 10px; background: var(--gold); clip-path: polygon(50% 0%,61% 35%,98% 35%,68% 57%,79% 91%,50% 70%,21% 91%,32% 57%,2% 35%,39% 35%); }
+
+  .review-text {
+    font-size: 14px;
+    line-height: 1.7;
+    color: #b0a898;
+  }
+
+  /* ── 底部安全区 ── */
+  .safe-bottom { height: 30px; }
+
+  /* ── 吸底下载栏（移动端）── */
+  .sticky-bar {
+    position: fixed;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    background: rgba(17,17,17,0.92);
+    backdrop-filter: blur(20px);
+    -webkit-backdrop-filter: blur(20px);
+    border-top: 1px solid rgba(200,169,110,0.15);
+    padding: 12px 20px;
+    display: flex;
+    gap: 10px;
+    z-index: 100;
+    max-width: 480px;
+    margin: 0 auto;
+  }
+
+  .sticky-btn {
+    flex: 1;
+    padding: 12px 0;
+    border-radius: 12px;
+    font-size: 14px;
+    font-weight: 600;
+    text-align: center;
+    text-decoration: none;
+    transition: opacity 0.15s;
+  }
+
+  .sticky-btn:active { opacity: 0.8; }
+
+  .sticky-android {
+    background: linear-gradient(135deg, #2d7a2d, #1f5c1f);
+    color: #fff;
+  }
+
+  .sticky-ios {
+    background: linear-gradient(135deg, #1a3a8f, #0d2066);
+    color: #fff;
+  }
+
+  /* ── 桌面居中 ── */
+  @media (min-width: 500px) {
+    .sticky-bar { left: 50%; right: auto; transform: translateX(-50%); width: 480px; }
+  }
+</style>
+</head>
+<body>
+
+<div class="hero-glow"></div>
+
+<div class="container">
+
+  <!-- 官方标识 -->
+  <div class="header">
+    <div class="official-badge">官方正版</div>
+  </div>
+
+  <!-- 截图轮播 -->
+  <div class="screenshots-wrap">
+    <div class="screenshots">
+
+      <div class="phone-frame">
+        <img src="screenshots/screen1.jpg" alt="小颜圈截图1">
+      </div>
+
+      <div class="phone-frame">
+        <img src="screenshots/screen2.jpg" alt="小颜圈截图2">
+      </div>
+
+      <div class="phone-frame">
+        <img src="screenshots/screen3.jpg" alt="小颜圈截图3">
+      </div>
+
+    </div>
+  </div>
+
+  <!-- App 信息 -->
+  <div class="app-info">
+    <div class="app-icon">
+      <img src="xiaoyanquan/ios/Runner/Assets.xcassets/AppIcon.appiconset/Icon-App-1024x1024@1x.png"
+           alt="小颜圈图标"
+           onerror="this.style.display='none';this.nextElementSibling.style.display='flex';">
+      <div class="app-icon-fallback" style="display:none;">YQ</div>
+    </div>
+    <div class="app-meta">
+      <div class="app-name">小颜圈</div>
+      <div class="app-subtitle">图片 / 视频素材库</div>
+    </div>
+  </div>
+
+  <!-- 描述 -->
+  <div class="app-desc">
+    海量高清图片与视频素材，一键收藏下载，支持分类管理与云端同步。创作者必备的专属素材库，让灵感触手可及。
+  </div>
+
+  <!-- 统计数据 -->
+  <div class="stats">
+    <div class="stat-item">
+      <div class="stars">
+        <div class="star"></div><div class="star"></div><div class="star"></div><div class="star"></div><div class="star"></div>
+      </div>
+      <div class="stat-num">4.9</div>
+      <div class="stat-label">综合评分</div>
+    </div>
+    <div class="stat-divider"></div>
+    <div class="stat-item">
+      <div class="stat-num">68.5</div>
+      <div class="stat-label">MB 大小</div>
+    </div>
+    <div class="stat-divider"></div>
+    <div class="stat-item">
+      <div class="stat-num">10万+</div>
+      <div class="stat-label">安装次数</div>
+    </div>
+  </div>
+
+  <!-- 评价 -->
+  <div class="reviews-header">
+    <div class="reviews-title">评价<span>(1000+)</span></div>
+    <a href="#" class="reviews-more">查看更多 ›</a>
+  </div>
+
+  <div class="review-card">
+    <div class="review-top">
+      <div class="reviewer-avatar">颜</div>
+      <div class="reviewer-info">
+        <div class="reviewer-name">创作者小白</div>
+        <div class="reviewer-stars">
+          <div class="r-star"></div><div class="r-star"></div><div class="r-star"></div><div class="r-star"></div><div class="r-star"></div>
+        </div>
+      </div>
+    </div>
+    <div class="review-text">找了好多素材 App，只有这个既好用又不乱收费，图片质量超高，分类也很清晰，设计师必备！</div>
+  </div>
+
+  <div class="review-card">
+    <div class="review-top">
+      <div class="reviewer-avatar">摄</div>
+      <div class="reviewer-info">
+        <div class="reviewer-name">影像记录者</div>
+        <div class="reviewer-stars">
+          <div class="r-star"></div><div class="r-star"></div><div class="r-star"></div><div class="r-star"></div><div class="r-star"></div>
+        </div>
+      </div>
+    </div>
+    <div class="review-text">视频素材库太丰富了，做剪辑省了大量时间，界面也非常简洁流畅，强烈推荐！</div>
+  </div>
+
+  <div class="safe-bottom"></div>
+</div>
+
+<!-- 吸底下载栏 -->
+<div class="sticky-bar">
+  <a href="#" class="sticky-btn sticky-android" id="sticky-android">安卓下载</a>
+  <a href="#" class="sticky-btn sticky-ios" id="sticky-ios">iOS 下载</a>
+</div>
+
+<script>
+  // UA 检测自动高亮对应按钮
+  const ua = navigator.userAgent;
+  const isAndroid = /android/i.test(ua);
+  const isIOS = /iphone|ipad|ipod/i.test(ua);
+
+  if (isAndroid) {
+    document.getElementById('sticky-android').style.background = 'linear-gradient(135deg,#3a9a3a,#267a26)';
+  } else if (isIOS) {
+    document.getElementById('sticky-ios').style.background = 'linear-gradient(135deg,#2045c0,#1030a0)';
+  }
+
+  // 替换下载链接（修改这里）
+  const ANDROID_URL = '#'; // 替换为安卓下载地址
+  const IOS_URL = '#';     // 替换为 iOS 下载地址（App Store 链接）
+
+  document.getElementById('sticky-android').href = ANDROID_URL;
+  document.getElementById('sticky-ios').href = IOS_URL;
+</script>
+</body>
+</html>
