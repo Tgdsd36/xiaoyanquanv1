@@ -414,7 +414,7 @@ class _AdminNativeWorkbenchPageState extends State<AdminNativeWorkbenchPage> {
     );
     if (confirmed != true) return;
     try {
-      final resp = await AdminHttpClient().dio.delete('/users/$userId/device-unbind');
+      final resp = await AdminHttpClient().dio.post('/users/$userId/device/unbind');
       final data = resp.data as Map<String, dynamic>;
       if ((data['code'] ?? -1) != 0) {
         throw Exception((data['message'] ?? '操作失败').toString());
