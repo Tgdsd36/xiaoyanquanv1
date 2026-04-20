@@ -350,11 +350,12 @@ class _AdminNativeWorkbenchPageState extends State<AdminNativeWorkbenchPage> {
                 items: const [
                   DropdownMenuItem(value: 'free', child: Text('免费用户')),
                   DropdownMenuItem(value: 'pro', child: Text('Pro 会员')),
+                  DropdownMenuItem(value: 'professional', child: Text('专业版会员')),
                 ],
                 onChanged: (v) => setDialogState(() => selectedType = v ?? 'free'),
               ),
               const SizedBox(height: 12),
-              if (selectedType == 'pro')
+              if (selectedType != 'free')
                 TextField(
                   controller: daysController,
                   keyboardType: TextInputType.number,
@@ -375,7 +376,7 @@ class _AdminNativeWorkbenchPageState extends State<AdminNativeWorkbenchPage> {
     if (submitted != true) return;
     try {
       final body = <String, dynamic>{'member_type': selectedType};
-      if (selectedType == 'pro') {
+      if (selectedType != 'free') {
         body['expire_days'] = int.tryParse(daysController.text.trim()) ?? 30;
       }
       final resp = await AdminHttpClient().dio.put(

@@ -103,6 +103,7 @@ class MomentsState {
 
 class MomentsNotifier extends StateNotifier<MomentsState> {
   final HttpClient _http = HttpClient();
+  static const int _pageSize = 20;
   MomentsNotifier() : super(const MomentsState());
 
   Map<String, dynamic> get _filterParams {
@@ -116,12 +117,20 @@ class MomentsNotifier extends StateNotifier<MomentsState> {
     return params;
   }
 
+  bool _resolveHasMore(Map<String, dynamic>? data, List<MomentItem> list) {
+    final serverHasMore = data?['has_more'];
+    if (serverHasMore is bool) {
+      return serverHasMore && list.isNotEmpty;
+    }
+    return list.length >= _pageSize;
+  }
+
   Future<void> refresh() async {
     state = state.copyWith(isLoading: true);
     try {
       final resp = await _http.get(
         Api.moments,
-        params: {'page': 1, 'page_size': 20, ..._filterParams},
+        params: {'page': 1, 'page_size': _pageSize, ..._filterParams},
       );
       if (resp.isSuccess && resp.data != null) {
         final list =
@@ -131,7 +140,7 @@ class MomentsNotifier extends StateNotifier<MomentsState> {
             [];
         state = state.copyWith(
           items: list,
-          hasMore: (resp.data['has_more'] as bool?) ?? false,
+          hasMore: _resolveHasMore(resp.data as Map<String, dynamic>?, list),
           page: 1,
           isLoading: false,
         );
@@ -150,7 +159,7 @@ class MomentsNotifier extends StateNotifier<MomentsState> {
       final next = state.page + 1;
       final resp = await _http.get(
         Api.moments,
-        params: {'page': next, 'page_size': 20, ..._filterParams},
+        params: {'page': next, 'page_size': _pageSize, ..._filterParams},
       );
       if (resp.isSuccess && resp.data != null) {
         final list =
@@ -160,8 +169,8 @@ class MomentsNotifier extends StateNotifier<MomentsState> {
             [];
         state = state.copyWith(
           items: [...state.items, ...list],
-          hasMore: (resp.data['has_more'] as bool?) ?? false,
-          page: next,
+          hasMore: _resolveHasMore(resp.data as Map<String, dynamic>?, list),
+          page: list.isEmpty ? state.page : next,
           isLoading: false,
         );
       } else {
@@ -204,26 +213,15 @@ class MomentsPage extends ConsumerStatefulWidget {
 }
 
 class _MomentsPageState extends ConsumerState<MomentsPage> {
-  final _scrollController = ScrollController();
-
-  @override
-  void initState() {
-    super.initState();
-    _scrollController.addListener(_onScroll);
-  }
-
-  @override
-  void dispose() {
-    _scrollController.removeListener(_onScroll);
-    _scrollController.dispose();
-    super.dispose();
-  }
-
-  void _onScroll() {
-    if (_scrollController.position.pixels >=
-        _scrollController.position.maxScrollExtent - 200) {
+  bool _handleBodyScroll(ScrollNotification notification) {
+    if (notification.depth != 0 || notification.metrics.axis != Axis.vertical) {
+      return false;
+    }
+    if (notification.metrics.pixels >=
+        notification.metrics.maxScrollExtent - 200) {
       ref.read(momentsProvider.notifier).loadMore();
     }
+    return false;
   }
 
   Future<void> _changeCover(BuildContext ctx) async {
@@ -372,7 +370,6 @@ class _MomentsPageState extends ConsumerState<MomentsPage> {
 
     return Scaffold(
       body: NestedScrollView(
-        controller: _scrollController,
         headerSliverBuilder:
             (context, innerBoxIsScrolled) => [
               // ========== 封面区 ==========
@@ -407,37 +404,42 @@ class _MomentsPageState extends ConsumerState<MomentsPage> {
             ],
         body: RefreshIndicator(
           onRefresh: () => ref.read(momentsProvider.notifier).refresh(),
-          child:
-              momentsState.items.isEmpty && !momentsState.isLoading
-                  ? ListView(
-                    children: const [
-                      SizedBox(height: 120),
-                      Center(
-                        child: Text(
-                          '暂无动态',
-                          style: TextStyle(color: AppColors.textHint),
-                        ),
-                      ),
-                    ],
-                  )
-                  : ListView.separated(
-                    padding: const EdgeInsets.fromLTRB(12, 12, 12, 24),
-                    itemCount:
-                        momentsState.items.length +
-                        (momentsState.hasMore ? 1 : 0),
-                    separatorBuilder: (_, __) => const SizedBox(height: 12),
-                    itemBuilder: (context, index) {
-                      if (index >= momentsState.items.length) {
-                        return const Padding(
-                          padding: EdgeInsets.all(16),
-                          child: Center(
-                            child: CircularProgressIndicator(strokeWidth: 2),
+          child: NotificationListener<ScrollNotification>(
+            onNotification: _handleBodyScroll,
+            child:
+                momentsState.items.isEmpty && !momentsState.isLoading
+                    ? ListView(
+                      physics: const AlwaysScrollableScrollPhysics(),
+                      children: const [
+                        SizedBox(height: 120),
+                        Center(
+                          child: Text(
+                            '暂无动态',
+                            style: TextStyle(color: AppColors.textHint),
                           ),
-                        );
-                      }
-                      return _MomentCard(moment: momentsState.items[index]);
-                    },
-                  ),
+                        ),
+                      ],
+                    )
+                    : ListView.separated(
+                      physics: const AlwaysScrollableScrollPhysics(),
+                      padding: const EdgeInsets.fromLTRB(12, 12, 12, 24),
+                      itemCount:
+                          momentsState.items.length +
+                          (momentsState.hasMore ? 1 : 0),
+                      separatorBuilder: (_, __) => const SizedBox(height: 12),
+                      itemBuilder: (context, index) {
+                        if (index >= momentsState.items.length) {
+                          return const Padding(
+                            padding: EdgeInsets.all(16),
+                            child: Center(
+                              child: CircularProgressIndicator(strokeWidth: 2),
+                            ),
+                          );
+                        }
+                        return _MomentCard(moment: momentsState.items[index]);
+                      },
+                    ),
+          ),
         ),
       ),
     );
