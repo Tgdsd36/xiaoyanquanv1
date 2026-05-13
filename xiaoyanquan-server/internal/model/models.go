@@ -43,6 +43,14 @@ type UserDeviceBinding struct {
 
 func (UserDeviceBinding) TableName() string { return "user_device_bindings" }
 
+// MaxDevices 返回该会员等级最多可绑定的设备数量
+func (u *User) MaxDevices() int {
+	if u.MemberType == "professional" {
+		return 2
+	}
+	return 1
+}
+
 func (u *User) IsMember() bool {
 	if u.MemberType == "free" || u.MemberType == "" {
 		return false

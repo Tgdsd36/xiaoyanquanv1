@@ -72,7 +72,7 @@ func (h *UserHandler) Profile(c *gin.Context) {
 
 	limit := 0
 	switch user.MemberType {
-	case "pro":
+	case "pro", "professional":
 		limit = 5000
 	case "flagship":
 		limit = 10000

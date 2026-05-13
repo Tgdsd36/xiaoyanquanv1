@@ -802,7 +802,7 @@ func (h *AdminHandler) UserSetMembership(c *gin.Context) {
 	}
 
 	var req struct {
-		MemberType string `json:"member_type" binding:"required,oneof=free pro"`
+		MemberType string `json:"member_type" binding:"required,oneof=free pro professional"`
 		ExpireDays int    `json:"expire_days"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
