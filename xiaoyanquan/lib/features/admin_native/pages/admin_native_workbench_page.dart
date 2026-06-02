@@ -9,6 +9,7 @@ import 'package:go_router/go_router.dart';
 import 'package:image_picker/image_picker.dart';
 import '../../../app/colors.dart';
 import '../../../core/utils/url_utils.dart';
+import '../utils/admin_native_membership.dart';
 import '../auth/admin_auth_storage.dart';
 import '../network/admin_http_client.dart';
 import '../services/native_live_picker.dart';
@@ -7366,7 +7367,8 @@ class _AdminNativeWorkbenchPageState extends State<AdminNativeWorkbenchPage> {
     final expireAt = (item['member_expire_at'] ?? '').toString();
     final deviceBound = item['device_bound'] == true;
     final isDisabled = status == 'disabled';
-    final isPro = memberType == 'pro';
+    final badgeLabel = memberBadgeLabel(memberType);
+    final isPaidMember = isPaidMemberType(memberType);
 
     return _sectionBlock(
       child: Column(
@@ -7410,15 +7412,15 @@ class _AdminNativeWorkbenchPageState extends State<AdminNativeWorkbenchPage> {
                         Container(
                           padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
                           decoration: BoxDecoration(
-                            color: isPro ? AppColors.memberPro.withValues(alpha: 0.12) : AppColors.surface,
+                            color: isPaidMember ? AppColors.memberPro.withValues(alpha: 0.12) : AppColors.surface,
                             borderRadius: BorderRadius.circular(6),
                           ),
                           child: Text(
-                            isPro ? 'Pro' : 'Free',
+                            badgeLabel,
                             style: TextStyle(
                               fontSize: 10,
                               fontWeight: FontWeight.w700,
-                              color: isPro ? AppColors.memberPro : AppColors.textHint,
+                              color: isPaidMember ? AppColors.memberPro : AppColors.textHint,
                             ),
                           ),
                         ),
@@ -7451,7 +7453,7 @@ class _AdminNativeWorkbenchPageState extends State<AdminNativeWorkbenchPage> {
             spacing: 8,
             runSpacing: 4,
             children: [
-              if (isPro && expireAt.isNotEmpty)
+              if (shouldShowMemberExpiry(memberType) && expireAt.isNotEmpty)
                 Text('到期: ${expireAt.substring(0, expireAt.length >= 10 ? 10 : expireAt.length)}',
                     style: const TextStyle(fontSize: 11, color: AppColors.textHint)),
               Row(
